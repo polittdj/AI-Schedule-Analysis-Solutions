@@ -179,252 +179,21 @@ def _save_upload(file_storage, upload_folder: Path, prefix: str) -> Path:
 
 
 # --------------------------------------------------------------------------- #
-# Export helpers (DOCX / XLSX / PDF)
+# Export dispatchers (DOCX / XLSX / PDF)
+#
+# The real report-building code lives in app/export/. This layer just
+# pulls the saved analysis from disk, wraps the bytes in a BytesIO, and
+# hands it to `send_file`. Keeps the web layer thin and makes the
+# exporters independently testable.
 # --------------------------------------------------------------------------- #
+
+from app.export.docx_report import generate_docx_report
+from app.export.pdf_report import generate_pdf_report
+from app.export.xlsx_export import generate_xlsx_export
 
 
 def _primary_schedule(results: Dict[str, Any]) -> Optional[ScheduleData]:
     return results.get("later_schedule") or results.get("prior_schedule")
-
-
-def _export_docx(results: Dict[str, Any]) -> io.BytesIO:
-    from docx import Document
-
-    doc = Document()
-    doc.add_heading("Schedule Forensics Report", 0)
-    doc.add_paragraph(f"Generated: {datetime.utcnow().isoformat()} UTC")
-
-    schedule = _primary_schedule(results)
-    if schedule is not None:
-        info = schedule.project_info
-        doc.add_heading("Project Overview", 1)
-        doc.add_paragraph(f"Name: {info.name or '—'}")
-        doc.add_paragraph(f"Status date: {info.status_date or '—'}")
-        doc.add_paragraph(f"Start / Finish: {info.start_date or '—'} → {info.finish_date or '—'}")
-        doc.add_paragraph(f"Task count: {len(schedule.tasks)}")
-
-    dcma = results.get("dcma")
-    if dcma is not None:
-        doc.add_heading("DCMA 14-Point Assessment", 1)
-        doc.add_paragraph(
-            f"Overall: {dcma.passed_count} passed / {dcma.failed_count} failed "
-            f"({dcma.overall_score_pct:.1f}%)."
-        )
-        table = doc.add_table(rows=1, cols=5)
-        table.style = "Light Grid Accent 1"
-        hdr = table.rows[0].cells
-        hdr[0].text = "#"
-        hdr[1].text = "Metric"
-        hdr[2].text = "Value"
-        hdr[3].text = "Threshold"
-        hdr[4].text = "Status"
-        for m in dcma.metrics:
-            row = table.add_row().cells
-            row[0].text = str(m.number)
-            row[1].text = m.name
-            row[2].text = f"{m.value}{m.unit}" if m.unit == "%" else f"{m.value}"
-            row[3].text = f"{m.comparison}{m.threshold}"
-            row[4].text = "PASS" if m.passed else "FAIL"
-
-    manipulation = results.get("manipulation")
-    if manipulation is not None:
-        doc.add_heading("Manipulation Findings", 1)
-        doc.add_paragraph(
-            f"Overall score: {manipulation.overall_score:.1f}/100 "
-            f"(HIGH={manipulation.confidence_summary.get('HIGH', 0)}, "
-            f"MEDIUM={manipulation.confidence_summary.get('MEDIUM', 0)}, "
-            f"LOW={manipulation.confidence_summary.get('LOW', 0)})"
-        )
-        for f in manipulation.findings[:50]:
-            p = doc.add_paragraph(style="List Bullet")
-            p.add_run(f"[{f.confidence}] [{f.category}] ").bold = True
-            p.add_run(f"{f.description}")
-
-    comparison = results.get("comparison")
-    if comparison is not None and comparison.task_deltas:
-        doc.add_heading("Top 10 Slipped Tasks", 1)
-        top = sorted(
-            comparison.task_deltas,
-            key=lambda d: d.finish_slip_days or 0.0,
-            reverse=True,
-        )[:10]
-        table = doc.add_table(rows=1, cols=4)
-        table.style = "Light Grid Accent 1"
-        hdr = table.rows[0].cells
-        hdr[0].text = "UID"
-        hdr[1].text = "Task"
-        hdr[2].text = "Finish Slip (d)"
-        hdr[3].text = "Duration Δ (d)"
-        for d in top:
-            row = table.add_row().cells
-            row[0].text = str(d.uid)
-            row[1].text = d.name or "—"
-            row[2].text = f"{d.finish_slip_days or 0:.1f}"
-            row[3].text = f"{d.duration_change_days or 0:.1f}"
-
-    buf = io.BytesIO()
-    doc.save(buf)
-    buf.seek(0)
-    return buf
-
-
-def _export_xlsx(results: Dict[str, Any]) -> io.BytesIO:
-    from openpyxl import Workbook
-
-    wb = Workbook()
-    ws_tasks = wb.active
-    ws_tasks.title = "Tasks"
-    ws_tasks.append(
-        [
-            "UID",
-            "ID",
-            "Name",
-            "WBS",
-            "Start",
-            "Finish",
-            "Duration (d)",
-            "% Complete",
-            "Total Slack (d)",
-            "Critical",
-            "Summary",
-            "Milestone",
-        ]
-    )
-    schedule = _primary_schedule(results)
-    if schedule is not None:
-        for t in schedule.tasks:
-            ws_tasks.append(
-                [
-                    t.uid,
-                    t.id,
-                    t.name,
-                    t.wbs,
-                    t.start.isoformat() if t.start else None,
-                    t.finish.isoformat() if t.finish else None,
-                    t.duration,
-                    t.percent_complete,
-                    t.total_slack,
-                    "Y" if t.critical else "",
-                    "Y" if t.summary else "",
-                    "Y" if t.milestone else "",
-                ]
-            )
-
-    dcma = results.get("dcma")
-    if dcma is not None:
-        ws_dcma = wb.create_sheet("DCMA")
-        ws_dcma.append(["#", "Metric", "Value", "Threshold", "Status"])
-        for m in dcma.metrics:
-            ws_dcma.append(
-                [
-                    m.number,
-                    m.name,
-                    m.value,
-                    f"{m.comparison}{m.threshold}",
-                    "PASS" if m.passed else "FAIL",
-                ]
-            )
-
-    comparison = results.get("comparison")
-    if comparison is not None:
-        ws_deltas = wb.create_sheet("Task Deltas")
-        ws_deltas.append(
-            [
-                "UID",
-                "Name",
-                "Start Slip (d)",
-                "Finish Slip (d)",
-                "Duration Δ (d)",
-                "Total Slack Δ (d)",
-            ]
-        )
-        for d in comparison.task_deltas:
-            ws_deltas.append(
-                [
-                    d.uid,
-                    d.name,
-                    d.start_slip_days,
-                    d.finish_slip_days,
-                    d.duration_change_days,
-                    d.total_slack_delta,
-                ]
-            )
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf
-
-
-def _export_pdf(results: Dict[str, Any]) -> io.BytesIO:
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import (
-        Paragraph,
-        SimpleDocTemplate,
-        Spacer,
-        Table,
-        TableStyle,
-    )
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=letter)
-    styles = getSampleStyleSheet()
-    story = [Paragraph("Schedule Forensics Report", styles["Title"])]
-    story.append(Spacer(1, 12))
-    story.append(
-        Paragraph(
-            f"Generated: {datetime.utcnow().isoformat()} UTC", styles["Normal"]
-        )
-    )
-    story.append(Spacer(1, 12))
-
-    schedule = _primary_schedule(results)
-    if schedule is not None:
-        info = schedule.project_info
-        story.append(Paragraph("Project Overview", styles["Heading2"]))
-        story.append(Paragraph(f"Name: {info.name or '—'}", styles["Normal"]))
-        story.append(
-            Paragraph(f"Status date: {info.status_date or '—'}", styles["Normal"])
-        )
-        story.append(
-            Paragraph(
-                f"Tasks: {len(schedule.tasks)}", styles["Normal"]
-            )
-        )
-        story.append(Spacer(1, 12))
-
-    dcma = results.get("dcma")
-    if dcma is not None:
-        story.append(Paragraph("DCMA 14-Point Assessment", styles["Heading2"]))
-        data = [["#", "Metric", "Value", "Threshold", "Status"]]
-        for m in dcma.metrics:
-            data.append(
-                [
-                    str(m.number),
-                    m.name,
-                    f"{m.value}{m.unit}" if m.unit == "%" else f"{m.value}",
-                    f"{m.comparison}{m.threshold}",
-                    "PASS" if m.passed else "FAIL",
-                ]
-            )
-        t = Table(data, repeatRows=1)
-        t.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1b2432")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ]
-            )
-        )
-        story.append(t)
-
-    doc.build(story)
-    buf.seek(0)
-    return buf
 
 
 # --------------------------------------------------------------------------- #
@@ -599,27 +368,34 @@ def create_app(config: Optional[Config] = None) -> Flask:
             flash("Analysis artifacts were purged. Please re-upload.", "error")
             return redirect(url_for("index"))
 
+        ai_narrative = results.get("ai_narrative")
+        analyst_name = results.get("analyst_name")
+
         try:
             if fmt == "docx":
-                buf = _export_docx(results)
+                data = generate_docx_report(
+                    results, ai_narrative=ai_narrative, analyst_name=analyst_name
+                )
                 return send_file(
-                    buf,
+                    io.BytesIO(data),
                     mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     as_attachment=True,
                     download_name="schedule_forensics_report.docx",
                 )
             if fmt == "xlsx":
-                buf = _export_xlsx(results)
+                data = generate_xlsx_export(results)
                 return send_file(
-                    buf,
+                    io.BytesIO(data),
                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     as_attachment=True,
                     download_name="schedule_forensics_data.xlsx",
                 )
             if fmt == "pdf":
-                buf = _export_pdf(results)
+                data = generate_pdf_report(
+                    results, ai_narrative=ai_narrative, analyst_name=analyst_name
+                )
                 return send_file(
-                    buf,
+                    io.BytesIO(data),
                     mimetype="application/pdf",
                     as_attachment=True,
                     download_name="schedule_forensics_report.pdf",
