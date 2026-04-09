@@ -19,15 +19,54 @@
 
 {% block content %}
 
+{# ------- Status date banner ------- #}
+<div class="status-date-banner">
+  {% if has_trend and results.trend %}
+    <div class="status-banner-label">Status Dates (chronological)</div>
+    <div class="status-banner-dates">
+      {% for dp in results.trend.data_points %}
+        <span class="status-date-chip">
+          {{ dp.update_label }}: {{ dp.status_date | readable_date }}
+        </span>
+        {% if not loop.last %}<span class="status-date-arrow">→</span>{% endif %}
+      {% endfor %}
+    </div>
+  {% elif has_comparison %}
+    <div class="status-banner-label">Schedule Update Comparison</div>
+    <div class="status-banner-dates">
+      <span class="status-date-chip">
+        Prior Status Date: {{ results.prior_schedule.project_info.status_date | readable_date }}
+      </span>
+      <span class="status-date-arrow">→</span>
+      <span class="status-date-chip">
+        Later Status Date: {{ results.later_schedule.project_info.status_date | readable_date }}
+      </span>
+    </div>
+  {% else %}
+    <div class="status-banner-label">Single Schedule Snapshot</div>
+    <div class="status-banner-dates">
+      <span class="status-date-chip">
+        Status Date: {{ info.status_date | readable_date }}
+      </span>
+      <span class="status-date-chip">
+        Start: {{ info.start_date | readable_date }}
+      </span>
+      <span class="status-date-chip">
+        Finish: {{ info.finish_date | readable_date }}
+      </span>
+    </div>
+  {% endif %}
+</div>
+
 {# ------- Key metrics ribbon ------- #}
 <div class="metric-cards">
   <div class="metric-card">
     <div class="metric-label">Project Finish</div>
-    <div class="metric-value">{{ info.finish_date or "—" }}</div>
+    <div class="metric-value">{{ info.finish_date | readable_date }}</div>
   </div>
   <div class="metric-card">
     <div class="metric-label">Status Date</div>
-    <div class="metric-value">{{ info.status_date or "—" }}</div>
+    <div class="metric-value">{{ info.status_date | readable_date }}</div>
   </div>
   <div class="metric-card">
     <div class="metric-label">Tasks</div>
@@ -37,22 +76,26 @@
     <div class="metric-label">Critical Path</div>
     <div class="metric-value">{{ results.cpm.critical_path_uids|length if results.cpm else 0 }} tasks</div>
   </div>
-  {% if results.comparison %}
   <div class="metric-card">
     <div class="metric-label">Completion Slip</div>
-    <div class="metric-value {% if (results.comparison.completion_date_slip_days or 0) > 0 %}metric-bad{% endif %}">
-      {% if results.comparison.completion_date_slip_days is not none %}
+    {% if has_comparison and results.comparison.completion_date_slip_days is not none %}
+      <div class="metric-value {% if (results.comparison.completion_date_slip_days or 0) > 0 %}metric-bad{% endif %}">
         {{ "%+.1f"|format(results.comparison.completion_date_slip_days) }} d
-      {% else %}—{% endif %}
-    </div>
+      </div>
+    {% else %}
+      <div class="metric-value metric-na" title="Requires two schedule updates to compare">N/A</div>
+    {% endif %}
   </div>
   <div class="metric-card">
     <div class="metric-label">Manipulation Score</div>
-    <div class="metric-value {% if results.manipulation and results.manipulation.overall_score > 20 %}metric-bad{% endif %}">
-      {{ "%.0f"|format(results.manipulation.overall_score) if results.manipulation else 0 }}/100
-    </div>
+    {% if has_comparison and results.manipulation and results.manipulation.overall_score is not none %}
+      <div class="metric-value {% if results.manipulation.overall_score > 20 %}metric-bad{% endif %}">
+        {{ "%.0f"|format(results.manipulation.overall_score) }}/100
+      </div>
+    {% else %}
+      <div class="metric-value metric-na" title="Requires two schedule updates to compare">N/A</div>
+    {% endif %}
   </div>
-  {% endif %}
 </div>
 
 {# ------- Tabs ------- #}
@@ -68,6 +111,7 @@
   {% if has_trend %}
   <button class="tab-btn" data-tab="trend" role="tab">Trend Analysis</button>
   {% endif %}
+  <button class="tab-btn" data-tab="gantt" role="tab">Gantt View</button>
   <button class="tab-btn" data-tab="tasks" role="tab">All Tasks</button>
 </div>
 
@@ -95,22 +139,96 @@
           All forensic numbers are already computed — the AI only writes prose.
         </p>
       </div>
+      <details class="ai-sources">
+        <summary>Data sources the AI will be given</summary>
+        <ul>
+          {% if results.comparison %}<li>Schedule comparison (per-task slippage, logic changes, completion drift)</li>{% endif %}
+          {% if results.dcma %}<li>DCMA 14-point scorecard ({{ results.dcma.passed_count }}/{{ results.dcma.metrics|length }} passed)</li>{% endif %}
+          {% if results.cpm %}<li>Critical path ({{ results.cpm.critical_path_uids|length }} tasks, {{ "%.1f"|format(results.cpm.project_duration_days) }} days)</li>{% endif %}
+          {% if results.manipulation and results.manipulation.overall_score is not none %}<li>Manipulation findings ({{ results.manipulation.findings|length }} flagged)</li>{% endif %}
+          {% if results.float_analysis %}<li>Float consumption analysis (trend: {{ results.float_analysis.trend }})</li>{% endif %}
+          {% if results.earned_value %}<li>Earned value (SPI = {{ "%.3f"|format(results.earned_value.schedule_performance_index) }})</li>{% endif %}
+          {% if results.delay %}<li>Delay root-cause trace</li>{% endif %}
+          {% if results.trend %}<li>Multi-update trend data ({{ results.trend.update_count }} updates)</li>{% endif %}
+        </ul>
+        <p class="muted">
+          Every claim the AI makes should be verifiable against the
+          tabs in this dashboard. If you cannot find the data the AI
+          cites, flag it as a hallucination and re-run the analysis.
+        </p>
+      </details>
     </div>
 
     <div class="panel">
-      <h3 class="panel-title">Project Overview</h3>
+      <h3 class="panel-title">Schedule Update Overview</h3>
       <dl class="summary-list">
         <dt>Name</dt><dd>{{ info.name or "—" }}</dd>
-        <dt>Start</dt><dd>{{ info.start_date or "—" }}</dd>
-        <dt>Finish</dt><dd>{{ info.finish_date or "—" }}</dd>
-        <dt>Status date</dt><dd>{{ info.status_date or "—" }}</dd>
-        {% if results.earned_value %}
-        <dt>SPI</dt><dd>{{ "%.2f"|format(results.earned_value.schedule_performance_index) }}</dd>
-        <dt>SV</dt><dd>{{ "%+.1f"|format(results.earned_value.schedule_variance) }} {{ results.earned_value.units }}</dd>
-        <dt>BAC</dt><dd>{{ "%.1f"|format(results.earned_value.budget_at_completion) }}</dd>
-        <dt>EV</dt><dd>{{ "%.1f"|format(results.earned_value.earned_value) }}</dd>
+        <dt>Start</dt><dd>{{ info.start_date | readable_date }}</dd>
+        <dt>Finish</dt><dd>{{ info.finish_date | readable_date }}</dd>
+        <dt>Status date</dt><dd>{{ info.status_date | readable_date }}</dd>
+      </dl>
+      {% if results.earned_value %}
+      <h4 class="subtitle">Earned Value (showing the math)</h4>
+      <dl class="summary-list ev-math">
+        <dt>BAC</dt>
+        <dd>
+          {{ "%.1f"|format(results.earned_value.budget_at_completion) }}
+          <small>(sum of baseline durations across all tasks)</small>
+        </dd>
+        <dt>PV</dt>
+        <dd>
+          {{ "%.1f"|format(results.earned_value.planned_value) }}
+          <small>(baseline work planned by status date)</small>
+        </dd>
+        <dt>EV</dt>
+        <dd>
+          {{ "%.1f"|format(results.earned_value.earned_value) }}
+          <small>(Σ baseline_duration × percent_complete / 100)</small>
+        </dd>
+        {% if results.earned_value.actual_cost is not none %}
+        <dt>AC</dt>
+        <dd>
+          {{ "%.1f"|format(results.earned_value.actual_cost) }}
+          <small>(sum of actual cost to date)</small>
+        </dd>
+        {% endif %}
+        <dt>SV</dt>
+        <dd>
+          {{ "%+.1f"|format(results.earned_value.schedule_variance) }}
+          <small>(EV − PV =
+            {{ "%.1f"|format(results.earned_value.earned_value) }}
+            −
+            {{ "%.1f"|format(results.earned_value.planned_value) }})</small>
+        </dd>
+        <dt>SPI</dt>
+        <dd>
+          {{ "%.3f"|format(results.earned_value.schedule_performance_index) }}
+          <small>(EV / PV =
+            {{ "%.1f"|format(results.earned_value.earned_value) }}
+            /
+            {{ "%.1f"|format(results.earned_value.planned_value) }})</small>
+        </dd>
+        {% if results.earned_value.cost_performance_index is not none %}
+        <dt>CPI</dt>
+        <dd>
+          {{ "%.3f"|format(results.earned_value.cost_performance_index) }}
+          <small>(EV / AC)</small>
+        </dd>
+        {% endif %}
+        {% if results.earned_value.estimate_at_completion is not none %}
+        <dt>EAC</dt>
+        <dd>
+          {{ "%.1f"|format(results.earned_value.estimate_at_completion) }}
+          <small>(BAC / CPI)</small>
+        </dd>
         {% endif %}
       </dl>
+      <p class="muted">
+        Units: {{ results.earned_value.units }}. All numbers above come
+        directly from the parser — every task's baseline_duration and
+        percent_complete can be inspected in the All Tasks tab.
+      </p>
+      {% endif %}
     </div>
   </div>
 </section>
@@ -126,15 +244,21 @@
         passed ({{ "%.0f"|format(results.dcma.overall_score_pct) }}%)
       </span>
     </h3>
-    <table class="dcma-table">
+    <p class="muted">
+      Click a row to see the exact tasks that triggered the finding.
+      Every number below can be traced to a specific list of tasks.
+    </p>
+    <table class="dcma-table dcma-drill">
       <thead>
         <tr>
-          <th>#</th><th>Metric</th><th>Value</th><th>Threshold</th><th>Status</th>
+          <th></th><th>#</th><th>Metric</th><th>Value</th><th>Threshold</th><th>Status</th>
         </tr>
       </thead>
       <tbody>
         {% for m in results.dcma.metrics %}
-        <tr class="dcma-row {% if m.passed %}dcma-pass{% else %}dcma-fail{% endif %}">
+        <tr class="dcma-row dcma-clickable {% if m.passed %}dcma-pass{% else %}dcma-fail{% endif %}"
+            data-dcma-row="{{ m.number }}">
+          <td class="drill-toggle">▸</td>
           <td>{{ m.number }}</td>
           <td>{{ m.name }}</td>
           <td>
@@ -151,6 +275,91 @@
             <span class="status-badge {% if m.passed %}status-pass{% else %}status-fail{% endif %}">
               {{ "PASS" if m.passed else "FAIL" }}
             </span>
+          </td>
+        </tr>
+        <tr class="dcma-details-row" data-dcma-details="{{ m.number }}" style="display:none">
+          <td colspan="6">
+            <div class="dcma-details">
+              <h4>{{ m.name }} — Triggering Tasks</h4>
+              {% set uids_key = None %}
+              {% for key in ['missing_uids', 'hard_uids', 'high_float_uids', 'high_duration_uids', 'negative_uids', 'missing_resource_uids', 'invalid_uids', 'missed_uids'] %}
+                {% if key in m.details and m.details[key] %}
+                  {% set uids_key = key %}
+                {% endif %}
+              {% endfor %}
+              {% if uids_key %}
+                <p class="muted">
+                  {{ m.details[uids_key]|length }} task(s) triggered this metric.
+                  Showing up to 50 below.
+                </p>
+                <table class="dcma-table">
+                  <thead>
+                    <tr><th>Unique ID</th><th>Name</th></tr>
+                  </thead>
+                  <tbody>
+                    {% for uid in m.details[uids_key][:50] %}
+                    {% set t = (results.later_schedule or results.prior_schedule).tasks|selectattr('uid', 'equalto', uid)|first %}
+                    <tr>
+                      <td>{{ uid }}</td>
+                      <td>{{ t.name if t else "—" }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              {% else %}
+                <p class="muted">
+                  Details:
+                  <code>{{ m.details | tojson }}</code>
+                </p>
+              {% endif %}
+              <p class="muted" style="margin-top:8px">
+                <strong>Why this metric exists:</strong>
+                {% if m.number == 1 %}
+                  Every incomplete task should have at least one predecessor
+                  and one successor so the schedule logic is complete. Tasks
+                  missing either side cannot roll up impacts correctly.
+                {% elif m.number == 2 %}
+                  Negative lag (leads) is ambiguous in most contracts and
+                  should be avoided; DCMA allows zero leads.
+                {% elif m.number == 3 %}
+                  Large amounts of positive lag make schedules hard to audit
+                  because work is being modeled as time rather than activities.
+                {% elif m.number == 4 %}
+                  Finish-to-start is the most auditable relationship type;
+                  other types should be the exception, not the rule.
+                {% elif m.number == 5 %}
+                  Must-Start-On and Must-Finish-On constraints override the
+                  schedule logic and hide real slippage.
+                {% elif m.number == 6 %}
+                  Tasks with more than 44 working days of total float are
+                  typically poorly linked or have missing successors.
+                {% elif m.number == 7 %}
+                  Negative float means the schedule is mathematically
+                  impossible to execute as currently planned.
+                {% elif m.number == 8 %}
+                  Activities longer than 44 working days should be broken
+                  into smaller tasks to enable progress tracking.
+                {% elif m.number == 9 %}
+                  Actual dates recorded after the status date are physically
+                  impossible and indicate data-entry errors.
+                {% elif m.number == 10 %}
+                  Incomplete tasks without resource assignments cannot be
+                  properly cost-loaded or progressed.
+                {% elif m.number == 11 %}
+                  Tasks whose baseline finish is in the past but are still
+                  incomplete represent actual missed milestones.
+                {% elif m.number == 12 %}
+                  Adding one day to a critical task must delay the project
+                  by exactly one day; if not, the critical path is broken.
+                {% elif m.number == 13 %}
+                  CPLI measures how much float is left on the critical path
+                  relative to its length; 1.0 is on track.
+                {% elif m.number == 14 %}
+                  BEI measures how many tasks have actually been completed
+                  versus how many were planned to be complete by now.
+                {% endif %}
+              </p>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -226,13 +435,22 @@
   <div class="panel">
     <h3 class="panel-title">
       Manipulation Score
-      {% if results.manipulation %}
+      {% if results.manipulation and results.manipulation.overall_score is not none %}
         <span class="pill">{{ "%.0f"|format(results.manipulation.overall_score) }}/100</span>
+      {% else %}
+        <span class="pill">N/A</span>
       {% endif %}
     </h3>
+    <p class="muted">
+      Manipulation detection compares two schedule updates to find
+      suspicious edits between them. A score of zero means nothing
+      was flagged; higher scores mean more high-confidence findings.
+      Each finding contributes weighted points (HIGH = 10, MEDIUM = 5,
+      LOW = 2) and the total is capped at 100.
+    </p>
     <div class="gauge-wrap">
       <canvas id="manipulation-gauge" width="260" height="160"></canvas>
-      {% if results.manipulation %}
+      {% if results.manipulation and results.manipulation.overall_score is not none %}
       <div class="gauge-legend">
         <span class="pill pill-high">HIGH: {{ results.manipulation.confidence_summary.HIGH or 0 }}</span>
         <span class="pill pill-medium">MEDIUM: {{ results.manipulation.confidence_summary.MEDIUM or 0 }}</span>
@@ -245,21 +463,124 @@
   <div class="panel">
     <h3 class="panel-title">Findings</h3>
     {% if results.manipulation and results.manipulation.findings %}
+    <p class="muted">
+      Each finding below shows the specific task and the exact values
+      that changed between updates, along with the reason it was flagged.
+    </p>
     <div class="finding-grid">
       {% for f in results.manipulation.findings %}
       <div class="finding-card finding-{{ f.confidence|lower }}">
         <header>
           <span class="pill pill-{{ f.confidence|lower }}">{{ f.confidence }}</span>
-          <span class="finding-cat">{{ f.category }}</span>
+          <span class="finding-cat">{{ f.category }} Manipulation</span>
         </header>
-        <h4>{{ f.pattern }}</h4>
+        <h4>{{ f.pattern | replace('_', ' ') | title }}</h4>
         <p>{{ f.description }}</p>
-        {% if f.task_name %}
-        <p class="finding-task">Task: <strong>{{ f.task_name }}</strong></p>
+
+        {% if f.task_uid %}
+        <div class="finding-evidence">
+          <strong>Task Identification</strong>
+          <dl>
+            <dt>Unique ID</dt><dd>{{ f.task_uid }}</dd>
+            <dt>Name</dt><dd>{{ f.task_name or "—" }}</dd>
+          </dl>
+        </div>
         {% endif %}
+
+        {% if f.evidence %}
+        <div class="finding-evidence">
+          <strong>Evidence (prior → later)</strong>
+          <dl>
+            {% if f.evidence.prior_duration_days is defined %}
+              <dt>Prior duration</dt>
+              <dd>{{ "%.1f"|format(f.evidence.prior_duration_days) }} days</dd>
+              <dt>Later duration</dt>
+              <dd>{{ "%.1f"|format(f.evidence.later_duration_days) }} days</dd>
+              <dt>Reduction</dt>
+              <dd>{{ "%.1f"|format(f.evidence.reduction_pct) }}%</dd>
+            {% endif %}
+            {% if f.evidence.baseline_start_delta_days is defined %}
+              <dt>Baseline start shift</dt>
+              <dd>{{ "%+.1f"|format(f.evidence.baseline_start_delta_days) }} cal days</dd>
+              <dt>Baseline finish shift</dt>
+              <dd>{{ "%+.1f"|format(f.evidence.baseline_finish_delta_days) }} cal days</dd>
+            {% endif %}
+            {% if f.evidence.prior_lag_days is defined %}
+              <dt>Prior lag</dt>
+              <dd>{{ "%+.1f"|format(f.evidence.prior_lag_days) }} days</dd>
+              <dt>Later lag</dt>
+              <dd>{{ "%+.1f"|format(f.evidence.later_lag_days) }} days</dd>
+            {% endif %}
+            {% if f.evidence.percent_complete is defined %}
+              <dt>% complete</dt>
+              <dd>{{ "%.0f"|format(f.evidence.percent_complete) }}%</dd>
+              <dt>Duration</dt>
+              <dd>{{ "%.1f"|format(f.evidence.duration_days) }} d</dd>
+              <dt>Expected remaining</dt>
+              <dd>{{ "%.1f"|format(f.evidence.expected_remaining_days) }} d</dd>
+              <dt>Reported remaining</dt>
+              <dd>{{ "%.1f"|format(f.evidence.remaining_duration_days) }} d</dd>
+            {% endif %}
+            {% if f.evidence.total_slack_delta_days is defined %}
+              <dt>Total float change</dt>
+              <dd>{{ "%+.1f"|format(f.evidence.total_slack_delta_days) }} days</dd>
+            {% endif %}
+            {% if f.evidence.incomplete_predecessor_uids is defined %}
+              <dt>Incomplete predecessor UIDs</dt>
+              <dd>{{ f.evidence.incomplete_predecessor_uids }}</dd>
+            {% endif %}
+          </dl>
+        </div>
+        {% endif %}
+
+        <p class="finding-rationale">
+          <strong>Why flagged:</strong>
+          {% if f.pattern == "critical_duration_reduction" %}
+            Large duration reductions on the critical path without
+            documented justification can indicate manipulation to
+            make the schedule look healthier than it is.
+          {% elif f.pattern == "baseline_date_change" %}
+            Baselines should be locked after they are set. Any movement
+            of a baseline date between updates is a red flag for
+            retroactive schedule correction.
+          {% elif f.pattern == "out_of_sequence_progress" %}
+            A task cannot legitimately be in progress if its
+            finish-to-start predecessors are not yet complete.
+          {% elif f.pattern == "unexplained_float_change" %}
+            Total float changed on this task without any logic or
+            duration change that would explain it locally.
+          {% elif f.pattern == "predecessors_removed" %}
+            Removing predecessors between updates can hide real
+            dependencies and make the schedule look healthier.
+          {% elif f.pattern == "fs_type_downgrade" %}
+            Changing a Finish-to-Start relationship to another type
+            can mask sequencing problems.
+          {% elif f.pattern == "lag_change" %}
+            Lag values should reflect physical requirements; changes
+            between updates may indicate schedule massaging.
+          {% elif f.pattern == "percent_vs_remaining_mismatch" %}
+            The percent-complete value and the remaining duration are
+            not self-consistent, suggesting progress was reported
+            without updating the work math.
+          {% elif f.pattern == "selective_baseline_correction" %}
+            Baselines were moved only on tasks that also slipped,
+            which is the signature of retroactive schedule correction.
+          {% elif f.pattern == "retroactive_baseline_equals_current" %}
+            The baseline finish was moved to match the current finish,
+            which zeroes out any apparent slippage.
+          {% else %}
+            This pattern is flagged based on the industry-standard
+            manipulation indicator described above.
+          {% endif %}
+        </p>
       </div>
       {% endfor %}
     </div>
+    {% elif not has_comparison %}
+    <p class="muted">
+      Manipulation detection requires two schedule updates to compare.
+      Upload a prior and later update to see the findings here.
+    </p>
     {% else %}
     <p class="muted">No manipulation patterns detected.</p>
     {% endif %}
@@ -401,10 +722,35 @@
 </section>
 {% endif %}
 
-{# ==================== TAB 7: All Tasks ==================== #}
+{# ==================== TAB 7: Gantt View ==================== #}
+<section class="tab-panel" id="tab-gantt" role="tabpanel">
+  <div class="panel">
+    <h3 class="panel-title">Gantt View (WBS indented)</h3>
+    <p class="muted">
+      Each task is shown as a horizontal bar from its start to its
+      finish date. Critical tasks are red, completed tasks are green,
+      in-progress tasks show a filled portion matching their
+      percent-complete, and the vertical dashed line is the status
+      date.
+    </p>
+    <div class="gantt-container" id="gantt-container">
+      <div class="gantt-left" id="gantt-left"></div>
+      <div class="gantt-right" id="gantt-right"></div>
+    </div>
+  </div>
+</section>
+
+{# ==================== TAB 8: All Tasks ==================== #}
 <section class="tab-panel" id="tab-tasks" role="tabpanel">
   <div class="panel">
-    <h3 class="panel-title">All Tasks</h3>
+    <h3 class="panel-title">
+      All Tasks
+      <button class="btn btn-ghost" id="field-selector-btn" type="button">⚙ Fields</button>
+    </h3>
+    <div id="field-selector-panel" class="field-selector-panel" style="display:none">
+      <p class="muted">Select which columns to display:</p>
+      <div class="field-checkbox-grid" id="field-checkbox-grid"></div>
+    </div>
     <div class="table-controls">
       <input type="text" id="task-search" placeholder="Filter by name or WBS…">
       <button id="export-tasks-csv" class="btn btn-ghost" type="button">Export CSV</button>
@@ -415,4 +761,8 @@
 
 {# Data payload for the JS layer #}
 <script id="results-data" type="application/json">{{ results_json|safe }}</script>
+<script>
+  window.__HAS_COMPARISON__ = {{ 'true' if has_comparison else 'false' }};
+  window.__HAS_TREND__ = {{ 'true' if has_trend else 'false' }};
+</script>
 {% endblock %}

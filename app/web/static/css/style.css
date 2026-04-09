@@ -408,6 +408,267 @@ code {
 }
 .metric-bad { color: var(--bad); }
 .metric-good { color: var(--good); }
+.metric-na { color: var(--text-dim); font-size: 16px; font-weight: 500; }
+
+/* ----------------------- Status date banner --------------------------- */
+.status-date-banner {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 16px;
+}
+.status-banner-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.status-banner-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.status-date-chip {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--text);
+}
+.status-date-arrow {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* ----------------------- AI data sources ----------------------------- */
+.ai-sources {
+  margin-top: 12px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.ai-sources summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.ai-sources summary:hover { color: var(--text); }
+.ai-sources ul { margin: 10px 0; padding-left: 18px; font-size: 12px; }
+.ai-sources li { margin-bottom: 4px; color: var(--text); }
+
+/* ----------------------- DCMA drill-down ----------------------------- */
+.dcma-clickable { cursor: pointer; transition: background 100ms ease; }
+.dcma-clickable:hover { background: var(--bg-hover); }
+.dcma-clickable .drill-toggle {
+  color: var(--text-muted);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  width: 20px;
+}
+.dcma-details {
+  padding: 16px 20px;
+  background: var(--bg-deep);
+  border-left: 3px solid var(--accent);
+  margin: 8px 0;
+}
+.dcma-details h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* ----------------------- Manipulation findings extras --------------- */
+.finding-evidence {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin: 8px 0;
+}
+.finding-evidence strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.finding-evidence dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+.finding-evidence dt { color: var(--text-muted); font-size: 12px; }
+.finding-evidence dd { margin: 0; color: var(--text); font-size: 12px; }
+.finding-rationale {
+  margin-top: 10px !important;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.finding-rationale strong {
+  color: var(--text);
+  font-style: normal;
+}
+
+/* ----------------------- EV math ------------------------------------- */
+.subtitle {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.ev-math dd small {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* ----------------------- Task focus ---------------------------------- */
+.driving-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 0;
+}
+.driving-chain-node { display: flex; gap: 12px; align-items: stretch; }
+.driving-chain-depth {
+  width: 60px;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding-top: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.driving-chain-card {
+  flex: 1;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--bad);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.driving-chain-card-driving {
+  border-left-color: var(--bad);
+}
+.driving-chain-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.driving-chain-body {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.driving-chain-relation {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.driving-chain-target {
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 14px;
+  border-radius: var(--radius);
+  text-align: center;
+  font-size: 14px;
+  margin-top: 8px;
+}
+.driving-row-driving { border-left: 3px solid var(--bad); }
+.driving-row-near    { border-left: 3px solid var(--warn); }
+.driving-row-non     { border-left: 3px solid var(--border); }
+
+/* ----------------------- Field selector ------------------------------ */
+.field-selector-panel {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.field-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px 16px;
+  margin-top: 8px;
+}
+.field-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.field-checkbox:hover { background: var(--bg-elev); }
+
+/* ----------------------- Focus button on rows ------------------------ */
+.btn-focus {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-focus:hover { background: var(--accent); color: #071221; }
+
+/* ----------------------- Gantt view ---------------------------------- */
+.gantt-container {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  height: 600px;
+}
+.gantt-left {
+  background: var(--bg-elev);
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: 1px solid var(--border);
+}
+.gantt-right {
+  overflow: auto;
+  background: var(--bg-deep);
+}
+.gantt-row-left {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gantt-row-left:hover { background: var(--bg-hover); }
+.gantt-svg { display: block; }
+
+/* Push the first SVG row down to clear the month labels. Nothing fancy
+   needed — the bars already start at y=24. */
 
 /* ---------------------------------- Tabs -------------------------------- */
 

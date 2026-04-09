@@ -17,6 +17,8 @@
     initUploadPage();
     initAnalysisPage();
     initSettingsPage();
+    initTaskFocusPage();
+    initDcmaDrilldown();
   });
 
   /* -------------------------------- Upload -------------------------------- */
@@ -163,6 +165,8 @@
     if (results.trend) {
       initTrendCharts(results);
     }
+    initGanttView(results);
+    initFieldSelector(results);
   }
 
   /* --------------------------------- AI ----------------------------------- */
@@ -248,18 +252,31 @@
     const schedule = results.later_schedule || results.prior_schedule || {};
     const taskByUid = {};
     (schedule.tasks || []).forEach((t) => (taskByUid[t.uid] = t));
+
+    function nameList(uids) {
+      return (uids || [])
+        .map((uid) => {
+          const t = taskByUid[uid];
+          return t && t.name ? `${t.name} (UID ${uid})` : `UID ${uid}`;
+        })
+        .join("; ");
+    }
+
     const rows = (cpm && cpm.critical_path_uids ? cpm.critical_path_uids : [])
       .map((uid) => {
         const t = taskByUid[uid] || { uid };
         return {
           uid: t.uid,
           name: t.name || "—",
-          start: t.start || "—",
-          finish: t.finish || "—",
+          wbs: t.wbs || "",
+          start: t.start || null,
+          finish: t.finish || null,
           duration: t.duration,
           percent_complete: t.percent_complete,
           total_slack: t.total_slack,
-          predecessors: (t.predecessors || []).join(", "),
+          free_slack: t.free_slack,
+          predecessors: nameList(t.predecessors),
+          successors: nameList(t.successors),
         };
       });
 
@@ -268,10 +285,29 @@
       layout: "fitColumns",
       height: 520,
       columns: [
+        {
+          title: "",
+          field: "uid",
+          width: 70,
+          formatter: focusButtonFormatter,
+          cellClick: focusButtonClick,
+          headerSort: false,
+        },
         { title: "UID", field: "uid", width: 70 },
         { title: "Name", field: "name", widthGrow: 3, formatter: progressFormatter },
-        { title: "Start", field: "start", width: 170 },
-        { title: "Finish", field: "finish", width: 170 },
+        { title: "WBS", field: "wbs", width: 110 },
+        {
+          title: "Start",
+          field: "start",
+          width: 130,
+          formatter: (cell) => readableDate(cell.getValue()),
+        },
+        {
+          title: "Finish",
+          field: "finish",
+          width: 130,
+          formatter: (cell) => readableDate(cell.getValue()),
+        },
         {
           title: "Dur (d)",
           field: "duration",
@@ -290,9 +326,35 @@
           width: 80,
           formatter: (cell) => numFmt(cell.getValue(), 1),
         },
+        {
+          title: "FF (d)",
+          field: "free_slack",
+          width: 80,
+          formatter: (cell) => numFmt(cell.getValue(), 1),
+        },
         { title: "Predecessors", field: "predecessors", widthGrow: 2 },
+        { title: "Successors", field: "successors", widthGrow: 2 },
       ],
     });
+  }
+
+  function readableDate(value) {
+    if (value === null || value === undefined || value === "") return "—";
+    if (value === "—") return "—";
+    const dt = typeof value === "string" ? new Date(value) : value;
+    if (!(dt instanceof Date) || isNaN(dt.getTime())) return String(value);
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${months[dt.getMonth()]} ${dt.getDate()}, ${dt.getFullYear()}`;
+  }
+
+  function focusButtonFormatter(cell) {
+    const uid = cell.getValue();
+    return `<button class="btn-focus" data-task-uid="${uid}">Focus</button>`;
+  }
+  function focusButtonClick(e, cell) {
+    const uid = cell.getValue();
+    if (uid === null || uid === undefined) return;
+    window.location.href = `/task-focus?uid=${encodeURIComponent(uid)}`;
   }
 
   function progressFormatter(cell) {
@@ -314,20 +376,95 @@
     const el = document.getElementById("all-tasks-table");
     if (!el || !hasTabulator()) return;
     const schedule = results.later_schedule || results.prior_schedule || {};
-    const rows = (schedule.tasks || []).map((t) => ({
-      uid: t.uid,
-      id: t.id,
-      name: t.name,
-      wbs: t.wbs,
-      duration: t.duration,
-      start: t.start,
-      finish: t.finish,
-      percent_complete: t.percent_complete,
-      total_slack: t.total_slack,
-      critical: t.critical ? "Y" : "",
-      summary: t.summary ? "Y" : "",
-      milestone: t.milestone ? "Y" : "",
-    }));
+    const priorSchedule = results.prior_schedule || {};
+    const priorByUid = {};
+    (priorSchedule.tasks || []).forEach((t) => (priorByUid[t.uid] = t));
+    const deltaByUid = {};
+    if (results.comparison && results.comparison.task_deltas) {
+      results.comparison.task_deltas.forEach((d) => (deltaByUid[d.uid] = d));
+    }
+
+    const rows = (schedule.tasks || []).map((t) => {
+      const d = deltaByUid[t.uid] || {};
+      return {
+        focus: t.uid,
+        uid: t.uid,
+        id: t.id,
+        name: t.name,
+        wbs: t.wbs,
+        outline_level: t.outline_level,
+        duration: t.duration,
+        start: t.start,
+        finish: t.finish,
+        actual_start: t.actual_start,
+        actual_finish: t.actual_finish,
+        baseline_start: t.baseline_start,
+        baseline_finish: t.baseline_finish,
+        baseline_duration: t.baseline_duration,
+        percent_complete: t.percent_complete,
+        remaining_duration: t.remaining_duration,
+        total_slack: t.total_slack,
+        free_slack: t.free_slack,
+        constraint_type: t.constraint_type,
+        constraint_date: t.constraint_date,
+        deadline: t.deadline,
+        priority: t.priority,
+        resource_names: t.resource_names,
+        notes: t.notes,
+        critical: t.critical ? "Y" : "",
+        summary: t.summary ? "Y" : "",
+        milestone: t.milestone ? "Y" : "",
+        start_slip_days: d.start_slip_days,
+        finish_slip_days: d.finish_slip_days,
+        duration_change_days: d.duration_change_days,
+        total_slack_delta: d.total_slack_delta,
+      };
+    });
+
+    const dateFmt = (cell) => readableDate(cell.getValue());
+    const numFmt1 = (cell) => numFmt(cell.getValue(), 1);
+    const signedFmt1 = (cell) => signedFmt(cell.getValue());
+
+    const columns = [
+      {
+        title: "",
+        field: "focus",
+        width: 70,
+        formatter: focusButtonFormatter,
+        cellClick: focusButtonClick,
+        headerSort: false,
+      },
+      { title: "UID", field: "uid", width: 70, sorter: "number" },
+      { title: "ID", field: "id", width: 60, sorter: "number" },
+      { title: "Name", field: "name", widthGrow: 3, headerFilter: "input" },
+      { title: "WBS", field: "wbs", width: 120, headerFilter: "input", visible: false },
+      { title: "Outline", field: "outline_level", width: 80, visible: false },
+      { title: "Start", field: "start", width: 130, formatter: dateFmt },
+      { title: "Finish", field: "finish", width: 130, formatter: dateFmt },
+      { title: "Actual Start", field: "actual_start", width: 130, formatter: dateFmt, visible: false },
+      { title: "Actual Finish", field: "actual_finish", width: 130, formatter: dateFmt, visible: false },
+      { title: "Baseline Start", field: "baseline_start", width: 130, formatter: dateFmt, visible: false },
+      { title: "Baseline Finish", field: "baseline_finish", width: 130, formatter: dateFmt, visible: false },
+      { title: "Baseline Dur", field: "baseline_duration", width: 100, formatter: numFmt1, visible: false },
+      { title: "Duration", field: "duration", width: 90, formatter: numFmt1, sorter: "number" },
+      { title: "Remaining", field: "remaining_duration", width: 100, formatter: numFmt1, visible: false },
+      { title: "% Done", field: "percent_complete", width: 90, formatter: (c) => numFmt(c.getValue(), 0), sorter: "number" },
+      { title: "TF", field: "total_slack", width: 80, formatter: numFmt1, sorter: "number" },
+      { title: "FF", field: "free_slack", width: 80, formatter: numFmt1, sorter: "number", visible: false },
+      { title: "Constraint", field: "constraint_type", width: 130, visible: false },
+      { title: "Constraint Date", field: "constraint_date", width: 130, formatter: dateFmt, visible: false },
+      { title: "Deadline", field: "deadline", width: 130, formatter: dateFmt, visible: false },
+      { title: "Priority", field: "priority", width: 80, visible: false },
+      { title: "Resources", field: "resource_names", widthGrow: 2, visible: false },
+      { title: "Notes", field: "notes", widthGrow: 3, visible: false },
+      { title: "CP", field: "critical", width: 60 },
+      { title: "Sum", field: "summary", width: 60, visible: false },
+      { title: "MS", field: "milestone", width: 60, visible: false },
+      { title: "Start Slip", field: "start_slip_days", width: 100, formatter: signedFmt1, sorter: "number", visible: false },
+      { title: "Finish Slip", field: "finish_slip_days", width: 100, formatter: signedFmt1, sorter: "number", visible: false },
+      { title: "Δ Duration", field: "duration_change_days", width: 110, formatter: signedFmt1, sorter: "number", visible: false },
+      { title: "Δ Float", field: "total_slack_delta", width: 100, formatter: signedFmt1, sorter: "number", visible: false },
+    ];
 
     const table = new Tabulator(el, {
       data: rows,
@@ -335,39 +472,9 @@
       height: 600,
       pagination: true,
       paginationSize: 50,
-      columns: [
-        { title: "UID", field: "uid", width: 70, sorter: "number" },
-        { title: "ID", field: "id", width: 60, sorter: "number" },
-        { title: "Name", field: "name", widthGrow: 3, headerFilter: "input" },
-        { title: "WBS", field: "wbs", width: 120, headerFilter: "input" },
-        { title: "Start", field: "start", width: 170 },
-        { title: "Finish", field: "finish", width: 170 },
-        {
-          title: "Duration",
-          field: "duration",
-          width: 90,
-          formatter: (cell) => numFmt(cell.getValue(), 1),
-          sorter: "number",
-        },
-        {
-          title: "% Done",
-          field: "percent_complete",
-          width: 90,
-          formatter: (cell) => numFmt(cell.getValue(), 0),
-          sorter: "number",
-        },
-        {
-          title: "TF",
-          field: "total_slack",
-          width: 80,
-          formatter: (cell) => numFmt(cell.getValue(), 1),
-          sorter: "number",
-        },
-        { title: "CP", field: "critical", width: 60 },
-        { title: "Sum", field: "summary", width: 60 },
-        { title: "MS", field: "milestone", width: 60 },
-      ],
+      columns,
     });
+    window.__ALL_TASKS_TABLE__ = table;
 
     const search = document.getElementById("task-search");
     if (search) {
@@ -847,5 +954,356 @@
 
   function initSettingsPage() {
     // No client-side state yet — Phase 4 settings are env-var driven.
+  }
+
+  /* ------------------------- DCMA drill-down ----------------------------- */
+
+  function initDcmaDrilldown() {
+    document.querySelectorAll(".dcma-clickable").forEach((row) => {
+      row.addEventListener("click", () => {
+        const num = row.dataset.dcmaRow;
+        const details = document.querySelector(
+          `tr[data-dcma-details="${num}"]`
+        );
+        if (!details) return;
+        if (details.style.display === "none") {
+          details.style.display = "";
+          const toggle = row.querySelector(".drill-toggle");
+          if (toggle) toggle.textContent = "▾";
+        } else {
+          details.style.display = "none";
+          const toggle = row.querySelector(".drill-toggle");
+          if (toggle) toggle.textContent = "▸";
+        }
+      });
+    });
+  }
+
+  /* ------------------------- Field selector ------------------------------ */
+
+  const FIELD_SELECTOR_STORAGE_KEY = "schedule-forensics-visible-fields";
+
+  function initFieldSelector(results) {
+    const btn = document.getElementById("field-selector-btn");
+    const panel = document.getElementById("field-selector-panel");
+    const grid = document.getElementById("field-checkbox-grid");
+    const table = window.__ALL_TASKS_TABLE__;
+    if (!btn || !panel || !grid || !table) return;
+
+    btn.addEventListener("click", () => {
+      panel.style.display = panel.style.display === "none" ? "" : "none";
+    });
+
+    // Load persisted selection
+    let saved = null;
+    try {
+      const raw = window.localStorage.getItem(FIELD_SELECTOR_STORAGE_KEY);
+      saved = raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      saved = null;
+    }
+
+    const cols = table.getColumns();
+    cols.forEach((col) => {
+      const def = col.getDefinition();
+      if (!def.field || def.field === "focus") return;
+
+      // Apply saved visibility
+      if (saved && typeof saved[def.field] === "boolean") {
+        if (saved[def.field]) col.show();
+        else col.hide();
+      }
+
+      const label = document.createElement("label");
+      label.className = "field-checkbox";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = col.isVisible();
+      input.dataset.field = def.field;
+      input.addEventListener("change", () => {
+        if (input.checked) col.show();
+        else col.hide();
+        saveFieldSelection();
+      });
+      const span = document.createElement("span");
+      span.textContent = def.title || def.field;
+      label.appendChild(input);
+      label.appendChild(span);
+      grid.appendChild(label);
+    });
+
+    function saveFieldSelection() {
+      const state = {};
+      table.getColumns().forEach((c) => {
+        const d = c.getDefinition();
+        if (d.field && d.field !== "focus") {
+          state[d.field] = c.isVisible();
+        }
+      });
+      try {
+        window.localStorage.setItem(
+          FIELD_SELECTOR_STORAGE_KEY,
+          JSON.stringify(state)
+        );
+      } catch (e) {
+        /* quota or privacy mode — ignore */
+      }
+    }
+  }
+
+  /* ---------------------------- Gantt view ------------------------------- */
+
+  function initGanttView(results) {
+    const container = document.getElementById("gantt-container");
+    if (!container) return;
+    const leftEl = document.getElementById("gantt-left");
+    const rightEl = document.getElementById("gantt-right");
+    if (!leftEl || !rightEl) return;
+
+    const schedule = results.later_schedule || results.prior_schedule || {};
+    const priorSchedule = results.prior_schedule || {};
+    const priorByUid = {};
+    (priorSchedule.tasks || []).forEach((t) => (priorByUid[t.uid] = t));
+
+    const tasks = (schedule.tasks || []).filter((t) => t.start && t.finish);
+    if (!tasks.length) {
+      container.innerHTML =
+        '<p class="muted">No tasks with dates to render.</p>';
+      return;
+    }
+
+    // Determine time range
+    let minT = Infinity;
+    let maxT = -Infinity;
+    tasks.forEach((t) => {
+      const s = new Date(t.start).getTime();
+      const f = new Date(t.finish).getTime();
+      if (s < minT) minT = s;
+      if (f > maxT) maxT = f;
+    });
+    const DAY_MS = 86400000;
+    const totalDays = Math.max(1, Math.ceil((maxT - minT) / DAY_MS));
+    const pxPerDay = 6;
+    const rowHeight = 24;
+    const width = Math.max(600, totalDays * pxPerDay + 80);
+    const height = tasks.length * rowHeight + 40;
+    const statusDateStr = (schedule.project_info || {}).status_date;
+    const statusX = statusDateStr
+      ? ((new Date(statusDateStr).getTime() - minT) / DAY_MS) * pxPerDay
+      : null;
+
+    // Build left-side task list (indented)
+    leftEl.innerHTML = "";
+    tasks.forEach((t) => {
+      const row = document.createElement("div");
+      row.className = "gantt-row-left";
+      row.style.paddingLeft = `${(t.outline_level || 0) * 16 + 8}px`;
+      row.style.height = `${rowHeight}px`;
+      let icon = "";
+      if (t.milestone) icon = "◆ ";
+      if (t.summary) icon = "▣ ";
+      const strong = t.summary ? "font-weight:600;" : "";
+      row.innerHTML =
+        `<span style="${strong}" title="${escapeHtml(t.name || "")}">` +
+        `${icon}${escapeHtml(truncate(t.name || `Task ${t.uid}`, 48))}</span>`;
+      row.dataset.uid = t.uid;
+      row.addEventListener("click", () => {
+        window.location.href = `/task-focus?uid=${t.uid}`;
+      });
+      leftEl.appendChild(row);
+    });
+
+    // Build right-side SVG
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    svg.setAttribute("class", "gantt-svg");
+
+    // Month gridlines + labels
+    const firstDate = new Date(minT);
+    firstDate.setDate(1);
+    const lastDate = new Date(maxT);
+    const cursor = new Date(firstDate);
+    while (cursor <= lastDate) {
+      const x = ((cursor.getTime() - minT) / DAY_MS) * pxPerDay;
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", x);
+      line.setAttribute("y1", 0);
+      line.setAttribute("x2", x);
+      line.setAttribute("y2", height);
+      line.setAttribute("stroke", "rgba(255,255,255,0.06)");
+      svg.appendChild(line);
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", x + 4);
+      label.setAttribute("y", 14);
+      label.setAttribute("fill", "#8690a3");
+      label.setAttribute("font-size", "11");
+      const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      label.textContent = `${monthNames[cursor.getMonth()]} ${cursor.getFullYear()}`;
+      svg.appendChild(label);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    // Task bars
+    tasks.forEach((t, i) => {
+      const y = 24 + i * rowHeight + 4;
+      const s = new Date(t.start).getTime();
+      const f = new Date(t.finish).getTime();
+      const x = ((s - minT) / DAY_MS) * pxPerDay;
+      const w = Math.max(2, ((f - s) / DAY_MS) * pxPerDay);
+      const prior = priorByUid[t.uid];
+      if (prior && prior.start && prior.finish) {
+        const ps = new Date(prior.start).getTime();
+        const pf = new Date(prior.finish).getTime();
+        const px = ((ps - minT) / DAY_MS) * pxPerDay;
+        const pw = Math.max(2, ((pf - ps) / DAY_MS) * pxPerDay);
+        const ghost = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        ghost.setAttribute("x", px);
+        ghost.setAttribute("y", y);
+        ghost.setAttribute("width", pw);
+        ghost.setAttribute("height", rowHeight - 8);
+        ghost.setAttribute("fill", "rgba(255,255,255,0.1)");
+        ghost.setAttribute("stroke", "rgba(255,255,255,0.2)");
+        ghost.setAttribute("stroke-dasharray", "3,3");
+        svg.appendChild(ghost);
+      }
+
+      if (t.milestone) {
+        const size = 6;
+        const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        poly.setAttribute(
+          "points",
+          `${x},${y + rowHeight / 2 - 4} ${x + size},${y + rowHeight / 2 - 4 - size} ${x + size * 2},${y + rowHeight / 2 - 4} ${x + size},${y + rowHeight / 2 - 4 + size}`
+        );
+        poly.setAttribute("fill", "#f5b83d");
+        svg.appendChild(poly);
+      } else if (t.summary) {
+        const bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        bar.setAttribute("x", x);
+        bar.setAttribute("y", y);
+        bar.setAttribute("width", w);
+        bar.setAttribute("height", 4);
+        bar.setAttribute("fill", "#e6ebf2");
+        svg.appendChild(bar);
+      } else {
+        const pct = Number(t.percent_complete || 0) / 100;
+        const bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        bar.setAttribute("x", x);
+        bar.setAttribute("y", y);
+        bar.setAttribute("width", w);
+        bar.setAttribute("height", rowHeight - 8);
+        bar.setAttribute("rx", 2);
+        let color = "#5a6578";
+        if (t.critical) color = "#ff5c6c";
+        else if (pct >= 1) color = "#3dd68c";
+        else if (pct > 0) color = "#4a9eff";
+        bar.setAttribute("fill", color);
+        bar.setAttribute("opacity", "0.85");
+        svg.appendChild(bar);
+
+        if (pct > 0 && pct < 1) {
+          const done = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          done.setAttribute("x", x);
+          done.setAttribute("y", y);
+          done.setAttribute("width", w * pct);
+          done.setAttribute("height", rowHeight - 8);
+          done.setAttribute("rx", 2);
+          done.setAttribute("fill", "#3dd68c");
+          svg.appendChild(done);
+        }
+
+        // Tooltip
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        title.textContent = `${t.name || "Task " + t.uid}\n${readableDate(t.start)} → ${readableDate(t.finish)}`;
+        bar.appendChild(title);
+      }
+    });
+
+    if (statusX !== null) {
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", statusX);
+      line.setAttribute("y1", 0);
+      line.setAttribute("x2", statusX);
+      line.setAttribute("y2", height);
+      line.setAttribute("stroke", "#4a9eff");
+      line.setAttribute("stroke-width", "1.5");
+      line.setAttribute("stroke-dasharray", "4,3");
+      svg.appendChild(line);
+    }
+
+    rightEl.innerHTML = "";
+    rightEl.appendChild(svg);
+
+    // Synchronized vertical scrolling
+    leftEl.addEventListener("scroll", () => {
+      rightEl.scrollTop = leftEl.scrollTop;
+    });
+    rightEl.addEventListener("scroll", () => {
+      leftEl.scrollTop = rightEl.scrollTop;
+    });
+  }
+
+  function escapeHtml(s) {
+    if (s === null || s === undefined) return "";
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  /* ---------------------- Task focus (separate page) --------------------- */
+
+  function initTaskFocusPage() {
+    const btn = document.getElementById("task-ai-btn");
+    const out = document.getElementById("task-ai-output");
+    if (!btn || !out) return;
+
+    btn.addEventListener("click", async () => {
+      btn.classList.add("loading");
+      btn.disabled = true;
+      out.innerHTML = "";
+      try {
+        const fd = new FormData();
+        fd.append(
+          "request",
+          "Explain this task's driving chain in plain English. " +
+            "Describe what is currently controlling its start date, " +
+            "which predecessors have slack, and what would happen if " +
+            "the target slipped by one day."
+        );
+        const resp = await fetch("/ai-analyze", { method: "POST", body: fd });
+        if (!resp.ok || !resp.body) {
+          out.textContent = `Error: ${resp.statusText}`;
+          return;
+        }
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buffer.indexOf("\n\n")) !== -1) {
+            const frame = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 2);
+            if (frame.startsWith("data: ")) {
+              try {
+                const msg = JSON.parse(frame.slice(6));
+                if (msg.chunk) out.textContent += msg.chunk;
+                if (msg.error) out.textContent += `\n[ERROR] ${msg.error}`;
+              } catch (e) {
+                /* ignore */
+              }
+            }
+          }
+        }
+      } catch (err) {
+        out.textContent = `Network error: ${err.message}`;
+      } finally {
+        btn.classList.remove("loading");
+        btn.disabled = false;
+      }
+    });
   }
 })();

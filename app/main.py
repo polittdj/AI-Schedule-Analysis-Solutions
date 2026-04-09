@@ -248,6 +248,56 @@ def create_app(config: Optional[Config] = None) -> Flask:
     def inject_config() -> Dict[str, Any]:
         return {"config": cfg}
 
+    # ------------------------------------------------------------------ #
+    # Template filters
+    # ------------------------------------------------------------------ #
+
+    @app.template_filter("readable_date")
+    def readable_date_filter(value: Any) -> str:
+        """Format a datetime or ISO string as "Feb 6, 2026".
+
+        Used throughout the templates so the UI never shows raw ISO
+        strings like ``2026-02-06T17:00:00``. Handles None, naive
+        datetimes, timezone-aware datetimes, and ISO-formatted strings.
+        """
+        if value is None or value == "":
+            return "—"
+        dt: Optional[datetime] = None
+        if isinstance(value, datetime):
+            dt = value
+        elif isinstance(value, str):
+            try:
+                dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return value
+        if dt is None:
+            return str(value)
+        try:
+            return dt.strftime("%b %-d, %Y")
+        except ValueError:
+            # Windows strftime does not support %-d; fall back to %d.
+            return dt.strftime("%b %d, %Y").replace(" 0", " ")
+
+    @app.template_filter("readable_datetime")
+    def readable_datetime_filter(value: Any) -> str:
+        """Format a datetime with time: "Feb 6, 2026 5:00 PM"."""
+        if value is None or value == "":
+            return "—"
+        dt: Optional[datetime] = None
+        if isinstance(value, datetime):
+            dt = value
+        elif isinstance(value, str):
+            try:
+                dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return value
+        if dt is None:
+            return str(value)
+        try:
+            return dt.strftime("%b %-d, %Y %-I:%M %p")
+        except ValueError:
+            return dt.strftime("%b %d, %Y %I:%M %p").replace(" 0", " ")
+
     @app.route("/")
     def index():
         return render_template("index.html")
@@ -419,6 +469,54 @@ def create_app(config: Optional[Config] = None) -> Flask:
             stream_with_context(generate()),
             mimetype="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.route("/task-focus", methods=["GET", "POST"])
+    def task_focus():
+        analysis_id = session.get("analysis_id")
+        if not analysis_id:
+            flash("No analysis loaded. Upload a schedule first.", "error")
+            return redirect(url_for("index"))
+        results = _load_analysis(cfg.UPLOAD_FOLDER, analysis_id)
+        if results is None:
+            session.pop("analysis_id", None)
+            flash("Analysis artifacts were purged. Please re-upload.", "info")
+            return redirect(url_for("index"))
+
+        if request.method == "POST":
+            raw_uid = request.form.get("task_uid", "").strip()
+        else:
+            raw_uid = request.args.get("uid", "").strip()
+        try:
+            target_uid = int(raw_uid)
+        except ValueError:
+            flash("Invalid task UID.", "error")
+            return redirect(url_for("analysis_page"))
+
+        schedule = results.get("later_schedule") or results.get("prior_schedule")
+        if schedule is None:
+            flash("No schedule data available for task focus.", "error")
+            return redirect(url_for("analysis_page"))
+
+        from app.engine.driving_path import analyze_driving_path
+
+        try:
+            dp_result = analyze_driving_path(
+                schedule, target_uid, cpm_results=results.get("cpm")
+            )
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("analysis_page"))
+
+        # Task name lookup for forward/backward displays.
+        task_lookup = {t.uid: t for t in schedule.tasks}
+        dp_dict = _to_json_safe(dp_result)
+        return render_template(
+            "task_focus.html",
+            driving=dp_dict,
+            target=_to_json_safe(task_lookup.get(target_uid)),
+            task_name_lookup={t.uid: (t.name or f"Task {t.uid}") for t in schedule.tasks},
+            has_comparison=results.get("comparison") is not None,
         )
 
     @app.route("/export/<string:fmt>")

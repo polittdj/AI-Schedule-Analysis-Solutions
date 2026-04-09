@@ -46,8 +46,8 @@ CONFIDENCE_WEIGHTS = {
 # Significant-change thresholds
 DURATION_REDUCTION_SIGNIFICANT = 0.25  # 25 %
 DURATION_REDUCTION_EGREGIOUS = 0.50   # 50 %
-FLOAT_DELTA_SIGNIFICANT = 1.0  # working days
-PROGRESS_MISMATCH_TOLERANCE = 0.05  # 5 percentage points
+FLOAT_DELTA_SIGNIFICANT = 5.0  # working days — ignore normal cascade jitter
+PROGRESS_MISMATCH_TOLERANCE = 0.15  # 15 percentage points — MSP auto-calc noise
 
 
 # --------------------------------------------------------------------------- #
@@ -71,14 +71,22 @@ class ManipulationFinding(BaseModel):
 
 
 class ManipulationResults(BaseModel):
-    """Output of `detect_manipulations`."""
+    """Output of `detect_manipulations`.
+
+    ``overall_score`` is ``None`` when manipulation detection cannot
+    run — the only current reason is "single-file analysis with no
+    prior schedule to compare against." Callers should render "N/A"
+    in that case, not zero, because zero would imply "no manipulation
+    detected" when in fact *no check was performed*.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     findings: List[ManipulationFinding] = Field(default_factory=list)
-    overall_score: float = 0.0
+    overall_score: Optional[float] = 0.0
     confidence_summary: Dict[str, int] = Field(default_factory=dict)
     findings_by_category: Dict[str, int] = Field(default_factory=dict)
+    applicable: bool = True  # False when run on single-file mode
 
 
 # --------------------------------------------------------------------------- #
@@ -578,6 +586,11 @@ def _check_progress_vs_remaining(later: ScheduleData) -> List[ManipulationFindin
         rem = task.remaining_duration
         if pct is None or dur is None or rem is None or dur <= 0:
             continue
+        # Skip tasks that are not in progress — MSP auto-calculates
+        # remaining_duration for 0% and 100% tasks and the math is
+        # never perfectly self-consistent on status-dated schedules.
+        if pct <= 0 or pct >= 100:
+            continue
         expected_rem = dur * (1.0 - pct / 100.0)
         if abs(expected_rem - rem) / max(dur, 1e-6) > PROGRESS_MISMATCH_TOLERANCE:
             findings.append(
@@ -670,11 +683,31 @@ def _check_status_date_misalignment(later: ScheduleData) -> List[ManipulationFin
 
 
 def detect_manipulations(
-    comparison: ComparisonResults,
-    prior: ScheduleData,
+    comparison: Optional[ComparisonResults],
+    prior: Optional[ScheduleData],
     later: ScheduleData,
 ) -> ManipulationResults:
-    """Run every manipulation check and return a scored result."""
+    """Run every manipulation check and return a scored result.
+
+    When ``comparison`` or ``prior`` is None, returns a
+    "not applicable" result with ``overall_score=None`` and no
+    findings. This is the correct behavior for single-file mode:
+    manipulation is a *differential* measurement, so with only one
+    snapshot there is literally nothing to detect.
+    """
+    if comparison is None or prior is None:
+        return ManipulationResults(
+            findings=[],
+            overall_score=None,
+            confidence_summary={
+                CONFIDENCE_HIGH: 0,
+                CONFIDENCE_MEDIUM: 0,
+                CONFIDENCE_LOW: 0,
+            },
+            findings_by_category={},
+            applicable=False,
+        )
+
     prior_tasks = _task_map(prior)
     later_tasks = _task_map(later)
 

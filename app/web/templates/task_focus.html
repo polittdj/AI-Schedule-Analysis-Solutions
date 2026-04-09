@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Task Focus · Schedule Forensics{% endblock %}
+{% block nav_analysis %}active{% endblock %}
+
+{% block page_title %}
+  Task Focus — {{ driving.target_name or "Task " ~ driving.target_uid }}
+{% endblock %}
+
+{% block page_status %}
+  <a href="{{ url_for('analysis_page') }}" class="btn btn-ghost">← Back to Analysis</a>
+{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <h3 class="panel-title">Task Details</h3>
+  <dl class="summary-list">
+    <dt>Unique ID</dt><dd>{{ driving.target_uid }}</dd>
+    {% if target and target.id is not none %}
+    <dt>Display ID</dt><dd>{{ target.id }}</dd>
+    {% endif %}
+    <dt>Name</dt><dd>{{ driving.target_name or "—" }}</dd>
+    {% if target and target.wbs %}
+    <dt>WBS</dt><dd>{{ target.wbs }}</dd>
+    {% endif %}
+    <dt>Start</dt><dd>{{ driving.target_start | readable_date }}</dd>
+    <dt>Finish</dt><dd>{{ driving.target_finish | readable_date }}</dd>
+    <dt>Duration</dt>
+    <dd>
+      {% if driving.target_duration is not none %}
+        {{ "%.1f"|format(driving.target_duration) }} working days
+      {% else %}—{% endif %}
+    </dd>
+    <dt>% Complete</dt>
+    <dd>
+      {% if driving.target_percent_complete is not none %}
+        {{ "%.0f"|format(driving.target_percent_complete) }}%
+      {% else %}—{% endif %}
+    </dd>
+    <dt>Total Float</dt>
+    <dd>
+      {% if driving.target_total_float is not none %}
+        {{ "%.1f"|format(driving.target_total_float) }} working days
+      {% else %}—{% endif %}
+    </dd>
+    <dt>Free Float</dt>
+    <dd>
+      {% if driving.target_free_float is not none %}
+        {{ "%.1f"|format(driving.target_free_float) }} working days
+      {% else %}—{% endif %}
+    </dd>
+  </dl>
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">
+    Driving Path
+    <span class="pill pill-high">{{ driving.driving_chain|length }} driver(s)</span>
+  </h3>
+  <p class="muted">
+    The tasks below directly control the target task's dates. A relative
+    float of zero means this predecessor is the single reason the target
+    cannot start (or finish) earlier than it currently does.
+  </p>
+
+  {% if driving.driving_chain %}
+  <div class="driving-chain">
+    {% for node in driving.driving_chain %}
+    <div class="driving-chain-node">
+      <div class="driving-chain-depth">Depth {{ node.depth }}</div>
+      <div class="driving-chain-card driving-chain-card-driving">
+        <div class="driving-chain-title">
+          <strong>UID {{ node.uid }} — {{ node.name or "—" }}</strong>
+          <span class="pill pill-high">DRIVING</span>
+        </div>
+        <div class="driving-chain-body">
+          {{ node.start | readable_date }} → {{ node.finish | readable_date }}
+          {% if node.duration is not none %}
+            · {{ "%.1f"|format(node.duration) }}d
+          {% endif %}
+          {% if node.percent_complete is not none %}
+            · {{ "%.0f"|format(node.percent_complete) }}% complete
+          {% endif %}
+        </div>
+        <div class="driving-chain-relation">
+          <code>{{ node.relationship_type }}</code>
+          {% if node.lag_days %}(lag {{ "%+.1f"|format(node.lag_days) }}d){% endif %}
+          → feeds
+          {% if node.successor_uid == driving.target_uid %}
+            <strong>{{ driving.target_name }}</strong>
+          {% else %}
+            {{ task_name_lookup.get(node.successor_uid, "Task " ~ node.successor_uid) }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    <div class="driving-chain-target">
+      ▼ <strong>TARGET: {{ driving.target_name or "Task " ~ driving.target_uid }}</strong>
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">
+    No driving predecessors found. This task either has no predecessors,
+    or every predecessor is already 100% complete, or the target is
+    already fully complete.
+  </p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">
+    Driving Path Table — All Predecessor Paths
+  </h3>
+  <table class="dcma-table">
+    <thead>
+      <tr>
+        <th>Category</th><th>UID</th><th>Name</th>
+        <th>Start</th><th>Finish</th><th>Dur (d)</th>
+        <th>Rel Float (d)</th><th>Rel Type</th><th>Lag</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for node in driving.driving_chain %}
+      <tr class="driving-row driving-row-driving">
+        <td><span class="pill pill-high">Driving</span></td>
+        <td>{{ node.uid }}</td>
+        <td>{{ node.name or "—" }}</td>
+        <td>{{ node.start | readable_date }}</td>
+        <td>{{ node.finish | readable_date }}</td>
+        <td>{{ "%.1f"|format(node.duration) if node.duration is not none else "—" }}</td>
+        <td>{{ "%.1f"|format(node.relative_float_days) }}</td>
+        <td>{{ node.relationship_type or "—" }}</td>
+        <td>{{ "%+.1f"|format(node.lag_days) if node.lag_days is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+      {% for node in driving.near_driving_paths %}
+      <tr class="driving-row driving-row-near">
+        <td><span class="pill pill-medium">Near-Driving</span></td>
+        <td>{{ node.uid }}</td>
+        <td>{{ node.name or "—" }}</td>
+        <td>{{ node.start | readable_date }}</td>
+        <td>{{ node.finish | readable_date }}</td>
+        <td>{{ "%.1f"|format(node.duration) if node.duration is not none else "—" }}</td>
+        <td>{{ "%.1f"|format(node.relative_float_days) }}</td>
+        <td>{{ node.relationship_type or "—" }}</td>
+        <td>{{ "%+.1f"|format(node.lag_days) if node.lag_days is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+      {% for node in driving.non_driving_paths %}
+      <tr class="driving-row driving-row-non">
+        <td><span class="pill">Non-Driving</span></td>
+        <td>{{ node.uid }}</td>
+        <td>{{ node.name or "—" }}</td>
+        <td>{{ node.start | readable_date }}</td>
+        <td>{{ node.finish | readable_date }}</td>
+        <td>{{ "%.1f"|format(node.duration) if node.duration is not none else "—" }}</td>
+        <td>{{ "%.1f"|format(node.relative_float_days) }}</td>
+        <td>{{ node.relationship_type or "—" }}</td>
+        <td>{{ "%+.1f"|format(node.lag_days) if node.lag_days is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if not driving.driving_chain and not driving.near_driving_paths and not driving.non_driving_paths %}
+  <p class="muted">No predecessors to show.</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">Forward Impact — Tasks This One Drives</h3>
+  {% if driving.forward_driven_tasks %}
+  <table class="dcma-table">
+    <thead>
+      <tr>
+        <th>Driven?</th><th>UID</th><th>Name</th>
+        <th>Start</th><th>Finish</th>
+        <th>Rel Type</th><th>Lag</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in driving.forward_driven_tasks %}
+      <tr class="{% if f.is_driven %}driving-row-driving{% endif %}">
+        <td>
+          {% if f.is_driven %}
+            <span class="pill pill-high">Driven</span>
+          {% else %}
+            <span class="pill">Independent</span>
+          {% endif %}
+        </td>
+        <td>{{ f.uid }}</td>
+        <td>{{ f.name or "—" }}</td>
+        <td>{{ f.start | readable_date }}</td>
+        <td>{{ f.finish | readable_date }}</td>
+        <td>{{ f.relationship_type or "—" }}</td>
+        <td>{{ "%+.1f"|format(f.lag_days) if f.lag_days is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">This task has no successors — it is a terminal task.</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h3 class="panel-title">AI Analysis of This Task</h3>
+  <p class="muted">
+    Click below to ask the AI backend to summarize this task's driving
+    chain in plain English. The AI only receives the driving-path data
+    above; no other tasks are sent.
+  </p>
+  <button class="btn btn-primary" id="task-ai-btn" type="button"
+          data-task-uid="{{ driving.target_uid }}">
+    <span class="btn-label">Analyze in AI</span>
+    <span class="btn-spinner" aria-hidden="true"></span>
+  </button>
+  <div id="task-ai-output" class="ai-output" aria-live="polite" style="margin-top: 12px;">
+    <p class="muted">AI narrative will stream here.</p>
+  </div>
+</div>
+{% endblock %}
