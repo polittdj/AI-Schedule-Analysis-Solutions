@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Schedule Forensics{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  {# -------------------------------------------------------------------- #}
+  {# Chart.js & Tabulator.js                                              #}
+  {#                                                                      #}
+  {# For air-gapped environments: download the real library bundles to   #}
+  {#   app/web/static/lib/chart.min.js                                    #}
+  {#   app/web/static/lib/tabulator.min.js                                #}
+  {#   app/web/static/lib/tabulator.min.css                               #}
+  {# and remove the CDN <script> tags below. The placeholders in          #}
+  {# static/lib/ load first and are intentionally empty; the CDN tag      #}
+  {# below is the working fallback.                                       #}
+  {# -------------------------------------------------------------------- #}
+  <script src="{{ url_for('static', filename='lib/chart.min.js') }}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+          crossorigin="anonymous"></script>
+  <link rel="stylesheet"
+        href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css">
+  <script src="{{ url_for('static', filename='lib/tabulator.min.js') }}"></script>
+  <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>Schedule<br>Forensics</h1>
+        <p class="version">Local Tool · Phase 4</p>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="{{ url_for('index') }}"
+           class="nav-link {% block nav_upload %}{% endblock %}">Upload</a>
+        <a href="{{ url_for('analysis_page') }}"
+           class="nav-link {% block nav_analysis %}{% endblock %}">Analysis</a>
+        <a href="{{ url_for('settings_page') }}"
+           class="nav-link {% block nav_settings %}{% endblock %}">Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        {% if config.is_cui_safe_mode() %}
+          <div class="mode-badge mode-safe">
+            <span class="dot"></span> CUI-Safe · Local
+          </div>
+        {% else %}
+          <div class="mode-badge mode-cloud">
+            <span class="dot"></span> Cloud Mode
+          </div>
+        {% endif %}
+        <p class="footer-note">Model: {{ config.OLLAMA_MODEL if config.is_cui_safe_mode() else config.ANTHROPIC_MODEL }}</p>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <header class="topbar">
+        <div class="topbar-title">{% block page_title %}Schedule Forensics{% endblock %}</div>
+        <div class="topbar-status">{% block page_status %}{% endblock %}</div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for cat, msg in messages %}
+              <div class="flash flash-{{ cat or 'info' }}">{{ msg }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <div class="content">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>
