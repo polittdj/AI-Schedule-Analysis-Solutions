@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}Analysis · Schedule Forensics{% endblock %}
+{% block nav_analysis %}active{% endblock %}
+
+{% set schedule = results.later_schedule or results.prior_schedule %}
+{% set info = (schedule.project_info if schedule else {}) %}
+
+{% block page_title %}
+  {{ info.name or "Analysis" }}
+{% endblock %}
+
+{% block page_status %}
+  <div class="export-actions">
+    <a class="btn btn-ghost" href="{{ url_for('export', fmt='docx') }}">DOCX</a>
+    <a class="btn btn-ghost" href="{{ url_for('export', fmt='xlsx') }}">XLSX</a>
+    <a class="btn btn-ghost" href="{{ url_for('export', fmt='pdf') }}">PDF</a>
+  </div>
+{% endblock %}
+
+{% block content %}
+
+{# ------- Key metrics ribbon ------- #}
+<div class="metric-cards">
+  <div class="metric-card">
+    <div class="metric-label">Project Finish</div>
+    <div class="metric-value">{{ info.finish_date or "—" }}</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Status Date</div>
+    <div class="metric-value">{{ info.status_date or "—" }}</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Tasks</div>
+    <div class="metric-value">{{ schedule.tasks|length if schedule else 0 }}</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Critical Path</div>
+    <div class="metric-value">{{ results.cpm.critical_path_uids|length if results.cpm else 0 }} tasks</div>
+  </div>
+  {% if results.comparison %}
+  <div class="metric-card">
+    <div class="metric-label">Completion Slip</div>
+    <div class="metric-value {% if (results.comparison.completion_date_slip_days or 0) > 0 %}metric-bad{% endif %}">
+      {% if results.comparison.completion_date_slip_days is not none %}
+        {{ "%+.1f"|format(results.comparison.completion_date_slip_days) }} d
+      {% else %}—{% endif %}
+    </div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Manipulation Score</div>
+    <div class="metric-value {% if results.manipulation and results.manipulation.overall_score > 20 %}metric-bad{% endif %}">
+      {{ "%.0f"|format(results.manipulation.overall_score) if results.manipulation else 0 }}/100
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{# ------- Tabs ------- #}
+<div class="tabs" role="tablist">
+  <button class="tab-btn active" data-tab="summary" role="tab">Executive Summary</button>
+  <button class="tab-btn" data-tab="dcma" role="tab">DCMA Scorecard</button>
+  <button class="tab-btn" data-tab="critical" role="tab">Critical Path</button>
+  {% if has_comparison %}
+  <button class="tab-btn" data-tab="slippage" role="tab">Slippage</button>
+  <button class="tab-btn" data-tab="manipulation" role="tab">Manipulation</button>
+  <button class="tab-btn" data-tab="float" role="tab">Float Analysis</button>
+  {% endif %}
+  <button class="tab-btn" data-tab="tasks" role="tab">All Tasks</button>
+</div>
+
+{# ==================== TAB 1: Executive Summary ==================== #}
+<section class="tab-panel active" id="tab-summary" role="tabpanel">
+  <div class="two-col">
+    <div class="panel">
+      <h3 class="panel-title">AI Narrative</h3>
+      <div class="ai-controls">
+        <label class="field">
+          <span>Request</span>
+          <textarea id="ai-request"
+                    placeholder="e.g. Explain the project-finish slip to the owner."
+                    rows="2">Provide a forensic executive summary for the project owner.</textarea>
+        </label>
+        <button id="ai-generate-btn" class="btn btn-primary" type="button">
+          <span class="btn-label">Generate AI Analysis</span>
+          <span class="btn-spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div id="ai-output" class="ai-output" aria-live="polite">
+        <p class="muted">
+          Click <strong>Generate AI Analysis</strong> to stream a narrative from the
+          {% if config.is_cui_safe_mode() %}local Ollama{% else %}cloud Claude{% endif %} backend.
+          All forensic numbers are already computed — the AI only writes prose.
+        </p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3 class="panel-title">Project Overview</h3>
+      <dl class="summary-list">
+        <dt>Name</dt><dd>{{ info.name or "—" }}</dd>
+        <dt>Start</dt><dd>{{ info.start_date or "—" }}</dd>
+        <dt>Finish</dt><dd>{{ info.finish_date or "—" }}</dd>
+        <dt>Status date</dt><dd>{{ info.status_date or "—" }}</dd>
+        {% if results.earned_value %}
+        <dt>SPI</dt><dd>{{ "%.2f"|format(results.earned_value.schedule_performance_index) }}</dd>
+        <dt>SV</dt><dd>{{ "%+.1f"|format(results.earned_value.schedule_variance) }} {{ results.earned_value.units }}</dd>
+        <dt>BAC</dt><dd>{{ "%.1f"|format(results.earned_value.budget_at_completion) }}</dd>
+        <dt>EV</dt><dd>{{ "%.1f"|format(results.earned_value.earned_value) }}</dd>
+        {% endif %}
+      </dl>
+    </div>
+  </div>
+</section>
+
+{# ==================== TAB 2: DCMA Scorecard ==================== #}
+<section class="tab-panel" id="tab-dcma" role="tabpanel">
+  {% if results.dcma %}
+  <div class="panel">
+    <h3 class="panel-title">
+      DCMA 14-Point Assessment
+      <span class="pill">
+        {{ results.dcma.passed_count }} / {{ results.dcma.metrics|length }}
+        passed ({{ "%.0f"|format(results.dcma.overall_score_pct) }}%)
+      </span>
+    </h3>
+    <table class="dcma-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Metric</th><th>Value</th><th>Threshold</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in results.dcma.metrics %}
+        <tr class="dcma-row {% if m.passed %}dcma-pass{% else %}dcma-fail{% endif %}">
+          <td>{{ m.number }}</td>
+          <td>{{ m.name }}</td>
+          <td>
+            {% if m.unit == "%" %}
+              {{ "%.2f"|format(m.value) }}%
+            {% elif m.unit == "index" %}
+              {{ "%.3f"|format(m.value) }}
+            {% else %}
+              {{ m.value }}
+            {% endif %}
+          </td>
+          <td>{{ m.comparison }}{{ m.threshold }}{{ m.unit if m.unit == "%" else "" }}</td>
+          <td>
+            <span class="status-badge {% if m.passed %}status-pass{% else %}status-fail{% endif %}">
+              {{ "PASS" if m.passed else "FAIL" }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No DCMA results available.</p>
+  {% endif %}
+</section>
+
+{# ==================== TAB 3: Critical Path ==================== #}
+<section class="tab-panel" id="tab-critical" role="tabpanel">
+  <div class="panel">
+    <h3 class="panel-title">
+      Critical Path
+      {% if results.cpm %}
+        <span class="pill">
+          {{ results.cpm.critical_path_uids|length }} tasks ·
+          {{ "%.1f"|format(results.cpm.project_duration_days) }} working days
+        </span>
+      {% endif %}
+    </h3>
+    <div id="critical-path-table"></div>
+  </div>
+</section>
+
+{% if has_comparison %}
+{# ==================== TAB 4: Slippage Analysis ==================== #}
+<section class="tab-panel" id="tab-slippage" role="tabpanel">
+  <div class="two-col">
+    <div class="panel">
+      <h3 class="panel-title">Top Finish-Date Slips</h3>
+      <canvas id="slippage-chart" height="300"></canvas>
+    </div>
+    <div class="panel">
+      <h3 class="panel-title">Delay Root-Cause</h3>
+      {% if results.delay %}
+        {% if results.delay.first_mover_uid %}
+          <p>
+            <strong>First mover:</strong>
+            {{ results.delay.first_mover_name or results.delay.first_mover_uid }}
+            (slipped {{ "%.1f"|format(results.delay.first_mover_slip_days or 0) }} days)
+          </p>
+        {% endif %}
+        <ul class="cause-list">
+          {% for cause in (results.delay.root_causes or [])[:10] %}
+            <li>
+              <span class="pill pill-{{ cause.category }}">{{ cause.category }}</span>
+              <strong>{{ cause.task_name or cause.task_uid }}</strong>
+              — {{ "%.1f"|format(cause.slip_days) }} days
+              {% if cause.on_critical_path %}<em>(CP)</em>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No delay analysis available.</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Slipped Tasks</h3>
+    <div id="slippage-table"></div>
+  </div>
+  <div class="panel">
+    <h3 class="panel-title">Duration Changes</h3>
+    <div id="duration-changes-table"></div>
+  </div>
+</section>
+
+{# ==================== TAB 5: Manipulation ==================== #}
+<section class="tab-panel" id="tab-manipulation" role="tabpanel">
+  <div class="panel">
+    <h3 class="panel-title">
+      Manipulation Score
+      {% if results.manipulation %}
+        <span class="pill">{{ "%.0f"|format(results.manipulation.overall_score) }}/100</span>
+      {% endif %}
+    </h3>
+    <div class="gauge-wrap">
+      <canvas id="manipulation-gauge" width="260" height="160"></canvas>
+      {% if results.manipulation %}
+      <div class="gauge-legend">
+        <span class="pill pill-high">HIGH: {{ results.manipulation.confidence_summary.HIGH or 0 }}</span>
+        <span class="pill pill-medium">MEDIUM: {{ results.manipulation.confidence_summary.MEDIUM or 0 }}</span>
+        <span class="pill pill-low">LOW: {{ results.manipulation.confidence_summary.LOW or 0 }}</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 class="panel-title">Findings</h3>
+    {% if results.manipulation and results.manipulation.findings %}
+    <div class="finding-grid">
+      {% for f in results.manipulation.findings %}
+      <div class="finding-card finding-{{ f.confidence|lower }}">
+        <header>
+          <span class="pill pill-{{ f.confidence|lower }}">{{ f.confidence }}</span>
+          <span class="finding-cat">{{ f.category }}</span>
+        </header>
+        <h4>{{ f.pattern }}</h4>
+        <p>{{ f.description }}</p>
+        {% if f.task_name %}
+        <p class="finding-task">Task: <strong>{{ f.task_name }}</strong></p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No manipulation patterns detected.</p>
+    {% endif %}
+  </div>
+</section>
+
+{# ==================== TAB 6: Float Analysis ==================== #}
+<section class="tab-panel" id="tab-float" role="tabpanel">
+  <div class="panel">
+    <h3 class="panel-title">
+      Float Trend
+      {% if results.float_analysis %}
+      <span class="pill pill-{{ results.float_analysis.trend }}">
+        {{ results.float_analysis.trend }}
+      </span>
+      {% endif %}
+    </h3>
+    <p>
+      Net float delta:
+      <strong>
+        {% if results.float_analysis %}
+        {{ "%+.1f"|format(results.float_analysis.net_float_delta) }} days
+        {% else %}—{% endif %}
+      </strong>
+    </p>
+    <canvas id="float-histogram" height="260"></canvas>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <h3 class="panel-title">Became Critical</h3>
+      <div id="became-critical-table"></div>
+    </div>
+    <div class="panel">
+      <h3 class="panel-title">Dropped off Critical</h3>
+      <div id="dropped-off-critical-table"></div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{# ==================== TAB 7: All Tasks ==================== #}
+<section class="tab-panel" id="tab-tasks" role="tabpanel">
+  <div class="panel">
+    <h3 class="panel-title">All Tasks</h3>
+    <div class="table-controls">
+      <input type="text" id="task-search" placeholder="Filter by name or WBS…">
+      <button id="export-tasks-csv" class="btn btn-ghost" type="button">Export CSV</button>
+    </div>
+    <div id="all-tasks-table"></div>
+  </div>
+</section>
+
+{# Data payload for the JS layer #}
+<script id="results-data" type="application/json">{{ results_json|safe }}</script>
+{% endblock %}

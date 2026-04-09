@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Upload · Schedule Forensics{% endblock %}
+{% block nav_upload %}active{% endblock %}
+{% block page_title %}Upload Schedule{% endblock %}
+{% block page_status %}
+  <span class="badge {% if config.is_cui_safe_mode() %}badge-safe{% else %}badge-cloud{% endif %}">
+    {% if config.is_cui_safe_mode() %}Local analysis — no data leaves this machine{% else %}Cloud mode — unclassified only{% endif %}
+  </span>
+{% endblock %}
+
+{% block content %}
+<div class="upload-wrap">
+  <form id="upload-form"
+        action="{{ url_for('analyze') }}"
+        method="post"
+        enctype="multipart/form-data"
+        class="upload-form">
+
+    <h2 class="section-title">1. Choose analysis mode</h2>
+    <div class="mode-toggle">
+      <label class="mode-option active" data-mode="single">
+        <input type="radio" name="mode" value="single" checked>
+        <div class="mode-title">Single schedule</div>
+        <div class="mode-desc">DCMA 14-point, CPM, earned value on one file.</div>
+      </label>
+      <label class="mode-option" data-mode="comparative">
+        <input type="radio" name="mode" value="comparative">
+        <div class="mode-title">Comparative (2 updates)</div>
+        <div class="mode-desc">
+          Slip tracing, manipulation detection, float consumption, delay root cause.
+        </div>
+      </label>
+    </div>
+
+    <h2 class="section-title">2. Drop your schedule file(s)</h2>
+    <div class="dropzones">
+      <div class="dropzone" id="dropzone-prior">
+        <div class="dropzone-label">Prior Update</div>
+        <div class="dropzone-body">
+          <p class="dropzone-hint">Drop <code>.mpp</code> here or click to browse</p>
+          <input type="file" name="prior_file" accept=".mpp,.xml,.mpx" required>
+        </div>
+        <div class="dropzone-filename" id="filename-prior"></div>
+      </div>
+
+      <div class="dropzone dropzone-later" id="dropzone-later" style="display:none">
+        <div class="dropzone-label">Later Update</div>
+        <div class="dropzone-body">
+          <p class="dropzone-hint">Drop <code>.mpp</code> here or click to browse</p>
+          <input type="file" name="later_file" accept=".mpp,.xml,.mpx">
+        </div>
+        <div class="dropzone-filename" id="filename-later"></div>
+      </div>
+    </div>
+
+    <div class="upload-actions">
+      <button type="submit" class="btn btn-primary" id="analyze-btn">
+        <span class="btn-label">Run Analysis</span>
+        <span class="btn-spinner" aria-hidden="true"></span>
+      </button>
+      <p class="fine-print">
+        Max file size: {{ (config.MAX_FILE_SIZE // (1024 * 1024)) }} MB.
+        Allowed extensions: {{ config.ALLOWED_EXTENSIONS|sort|join(", ") }}.
+      </p>
+    </div>
+  </form>
+
+  <aside class="upload-notes">
+    <h3>What runs when you click Analyze?</h3>
+    <ul>
+      <li><strong>MPP parser</strong> reads the file locally via MPXJ/JPype.</li>
+      <li><strong>Forensic engine</strong> computes CPM, DCMA 14-point, earned value, float, and (for 2 files) comparator, manipulation detection, delay root cause.</li>
+      <li><strong>AI narrative</strong> is not generated automatically — open the Analysis tab and click "Generate AI Analysis" when you're ready.</li>
+    </ul>
+    <p class="muted">
+      The forensic engine handles ~90% of the work deterministically. AI only writes the narrative from pre-computed metrics.
+    </p>
+  </aside>
+</div>
+{% endblock %}

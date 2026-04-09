@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Settings · Schedule Forensics{% endblock %}
+{% block nav_settings %}active{% endblock %}
+{% block page_title %}Settings{% endblock %}
+
+{% block content %}
+<form method="post" action="{{ url_for('settings_page') }}" class="settings-form">
+  <div class="panel">
+    <h3 class="panel-title">AI Backend</h3>
+    <p class="panel-note">
+      {% if config.is_cui_safe_mode() %}
+        Local (Ollama) — data stays on this machine. Required for CUI-rated projects.
+      {% else %}
+        Cloud (Claude API) — analyses are transmitted to Anthropic. Only for unclassified projects.
+      {% endif %}
+    </p>
+
+    <label class="field">
+      <span>AI Mode</span>
+      <select name="ai_mode" disabled>
+        <option value="local" {% if config.AI_MODE == "local" %}selected{% endif %}>Local (Ollama)</option>
+        <option value="cloud" {% if config.AI_MODE == "cloud" %}selected{% endif %}>Cloud (Claude API)</option>
+      </select>
+      <small class="muted">Current value from <code>AI_MODE</code> env var. Phase 4 reads from environment only.</small>
+    </label>
+
+    <div class="status-grid">
+      <div class="status-row">
+        <span class="dot {% if ollama_up %}dot-good{% else %}dot-bad{% endif %}"></span>
+        <strong>Ollama:</strong>
+        <span>{{ "online" if ollama_up else "offline" }}</span>
+        <code>{{ config.OLLAMA_URL }}</code>
+      </div>
+      <div class="status-row">
+        <span class="dot {% if claude_up %}dot-good{% else %}dot-bad{% endif %}"></span>
+        <strong>Claude API key:</strong>
+        <span>{{ "configured" if claude_up else "not set" }}</span>
+      </div>
+    </div>
+
+    <label class="field">
+      <span>Ollama model name</span>
+      <input type="text" name="ollama_model" value="{{ config.OLLAMA_MODEL }}" disabled>
+    </label>
+
+    <label class="field">
+      <span>Claude model</span>
+      <input type="text" name="anthropic_model" value="{{ config.ANTHROPIC_MODEL }}" disabled>
+    </label>
+
+    <label class="field">
+      <span>Anthropic API key</span>
+      <input type="password" name="anthropic_api_key"
+             placeholder="{{ cfg_snapshot.anthropic_api_key_set or 'not set' }}"
+             disabled>
+    </label>
+  </div>
+
+  <div class="panel">
+    <h3 class="panel-title">Data Handling</h3>
+    <label class="field checkbox">
+      <input type="checkbox" name="sanitize_data" {% if config.SANITIZE_DATA %}checked{% endif %} disabled>
+      <span>Sanitize task / resource / project names before sending to AI backend</span>
+    </label>
+    <p class="muted">
+      When on, all names are replaced with labels like <code>Task A</code> and the
+      original values are restored in the AI response. Recommended for cloud mode.
+    </p>
+
+    <label class="field">
+      <span>Max upload size</span>
+      <input type="text" value="{{ (config.MAX_FILE_SIZE // (1024 * 1024)) }} MB" disabled>
+    </label>
+
+    <label class="field">
+      <span>Upload folder</span>
+      <input type="text" value="{{ config.UPLOAD_FOLDER }}" disabled>
+    </label>
+  </div>
+
+  <div class="panel panel-footer">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <p class="muted">
+      Phase 4 note: settings are read from <code>os.environ</code> at startup. To
+      change them permanently, set the environment variable and restart the app.
+      A future phase will add persisted settings via <code>.env</code>.
+    </p>
+  </div>
+</form>
+{% endblock %}
