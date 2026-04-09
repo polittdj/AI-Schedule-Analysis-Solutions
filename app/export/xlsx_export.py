@@ -75,6 +75,9 @@ def generate_xlsx_export(results: Dict[str, Any]) -> bytes:
             wb.create_sheet("Manipulation"), results["manipulation"]
         )
 
+    if results.get("trend") is not None:
+        _write_trend(wb.create_sheet("Trend"), results["trend"])
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -446,4 +449,53 @@ def _write_manipulation(ws: Worksheet, manip) -> None:
             conf_cell.fill = LOW_FILL
         conf_cell.font = Font(bold=True)
 
+    _autosize_columns(ws)
+
+
+def _write_trend(ws: Worksheet, trend) -> None:
+    ws.append(
+        [
+            "Update",
+            "Status Date",
+            "Project Finish",
+            "Tasks",
+            "Complete",
+            "In Progress",
+            "Not Started",
+            "Critical Path Len",
+            "Avg Float",
+            "Min Float",
+            "SPI",
+            "BEI",
+            "Manipulation Score",
+            "Added Since Prior",
+            "Removed Since Prior",
+            "Completed Since Prior",
+            "Finish Slip Since Prior (d)",
+        ]
+    )
+    _style_header_row(ws)
+
+    for dp in trend.data_points:
+        ws.append(
+            [
+                dp.update_label,
+                _fmt_date(dp.status_date),
+                _fmt_date(dp.project_finish),
+                dp.task_count,
+                dp.tasks_complete,
+                dp.tasks_in_progress,
+                dp.tasks_not_started,
+                dp.critical_path_task_count,
+                dp.total_float_avg,
+                dp.total_float_min,
+                dp.spi,
+                dp.bei,
+                dp.manipulation_score,
+                dp.tasks_added_since_prior,
+                dp.tasks_removed_since_prior,
+                dp.tasks_completed_since_prior,
+                dp.finish_slip_since_prior_days,
+            ]
+        )
     _autosize_columns(ws)

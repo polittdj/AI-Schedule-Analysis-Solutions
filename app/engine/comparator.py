@@ -334,3 +334,21 @@ def compare_schedules(prior: ScheduleData, later: ScheduleData) -> ComparisonRes
         tasks_deleted_count=len(deleted_uids),
         baseline_movement_count=baseline_moved,
     )
+
+
+def chain_compare(schedules: List[ScheduleData]) -> List[ComparisonResults]:
+    """Run N-1 pairwise comparisons across a chronologically-sorted list.
+
+    Given ``[s1, s2, s3, s4]`` this returns three `ComparisonResults`:
+    ``[s1→s2, s2→s3, s3→s4]``. Used by the trend-analysis engine to
+    build time-series metrics, but exposed at the comparator level so
+    any caller that needs pairwise deltas can reuse it.
+
+    Returns an empty list when fewer than 2 schedules are supplied.
+    """
+    if len(schedules) < 2:
+        return []
+    return [
+        compare_schedules(schedules[i], schedules[i + 1])
+        for i in range(len(schedules) - 1)
+    ]

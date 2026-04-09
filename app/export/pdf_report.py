@@ -184,6 +184,9 @@ def generate_pdf_report(
     if results.get("earned_value") is not None:
         _add_earned_value(story, styles, results["earned_value"])
 
+    if results.get("trend") is not None:
+        _add_trend(story, styles, results["trend"])
+
     _add_recommendations(story, styles, results)
     _add_conclusion(story, styles, results, has_comparison)
 
@@ -631,6 +634,101 @@ def _add_earned_value(
     )
     table.setStyle(BASE_TABLE_STYLE)
     story.append(table)
+
+
+def _add_trend(
+    story: List[Any], styles: Dict[str, ParagraphStyle], trend
+) -> None:
+    story.append(
+        Paragraph("Trend Analysis (multi-update time-series)", styles["h1"])
+    )
+    story.append(
+        Paragraph(
+            f"<b>Updates analyzed:</b> {trend.update_count}   "
+            f"<b>Float:</b> {trend.float_trend}   "
+            f"<b>SPI:</b> {trend.spi_trend}   "
+            f"<b>Manipulation:</b> {trend.manipulation_trend}",
+            styles["body"],
+        )
+    )
+    if trend.completion_date_drift_days is not None:
+        story.append(
+            Paragraph(
+                f"<b>Completion drift:</b> "
+                f"{trend.completion_date_drift_days:+.1f} calendar days",
+                styles["body"],
+            )
+        )
+    if trend.narrative:
+        escaped = (
+            trend.narrative.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+        story.append(Paragraph(escaped, styles["body"]))
+
+    if trend.data_points:
+        story.append(Paragraph("Per-Update Metrics", styles["h2"]))
+        data: List[List[Any]] = [
+            ["Update", "Status Date", "Finish", "SPI", "Manip", "Slip (d)"]
+        ]
+        for dp in trend.data_points:
+            data.append(
+                [
+                    dp.update_label,
+                    _fmt_date(dp.status_date),
+                    _fmt_date(dp.project_finish),
+                    _fmt_num(dp.spi, decimals=3),
+                    _fmt_num(dp.manipulation_score),
+                    _fmt_signed(dp.finish_slip_since_prior_days),
+                ]
+            )
+        table = Table(
+            data,
+            repeatRows=1,
+            colWidths=[0.9 * inch, 1.1 * inch, 1.1 * inch, 0.8 * inch, 0.8 * inch, 1.0 * inch],
+        )
+        table.setStyle(BASE_TABLE_STYLE)
+        story.append(table)
+
+    if trend.task_compressions:
+        story.append(Paragraph("Cumulative Task Compressions", styles["h2"]))
+        data = [["UID", "Task", "Cumulative Δ (d)", "Events"]]
+        for tc in trend.task_compressions:
+            data.append(
+                [
+                    str(tc.uid),
+                    (tc.name or "—")[:60],
+                    _fmt_signed(tc.cumulative_duration_change_days),
+                    str(tc.compression_events),
+                ]
+            )
+        table = Table(
+            data,
+            repeatRows=1,
+            colWidths=[0.6 * inch, 3.6 * inch, 1.3 * inch, 0.6 * inch],
+        )
+        table.setStyle(BASE_TABLE_STYLE)
+        story.append(table)
+
+    if trend.baseline_resets:
+        story.append(Paragraph("Baseline Reset Events", styles["h2"]))
+        data = [["Update", "Affected Tasks", "Max Shift (d)"]]
+        for ev in trend.baseline_resets:
+            data.append(
+                [
+                    ev.update_label,
+                    str(ev.affected_task_count),
+                    _fmt_num(ev.max_baseline_shift_days),
+                ]
+            )
+        table = Table(
+            data,
+            repeatRows=1,
+            colWidths=[1.5 * inch, 1.5 * inch, 1.5 * inch],
+        )
+        table.setStyle(BASE_TABLE_STYLE)
+        story.append(table)
 
 
 def _add_recommendations(

@@ -299,8 +299,10 @@ class TestUploadFlow:
             follow_redirects=True,
         )
         assert resp.status_code == 200
-        # Should land back on index with an error flash.
-        assert b"Please upload a prior schedule file." in resp.data
+        # Should land back on index with an error flash. The refactor
+        # for multi-file uploads changed the error message to a unified
+        # "at least one" wording.
+        assert b"Please upload at least one schedule file." in resp.data
 
     def test_analysis_page_without_session_redirects(self, app_and_client):
         app, client = app_and_client

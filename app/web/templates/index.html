@@ -17,11 +17,11 @@
         class="upload-form">
 
     <h2 class="section-title">1. Choose analysis mode</h2>
-    <div class="mode-toggle">
+    <div class="mode-toggle mode-toggle-3">
       <label class="mode-option active" data-mode="single">
         <input type="radio" name="mode" value="single" checked>
         <div class="mode-title">Single schedule</div>
-        <div class="mode-desc">DCMA 14-point, CPM, earned value on one file.</div>
+        <div class="mode-desc">DCMA 14-point, CPM, and earned value on one file.</div>
       </label>
       <label class="mode-option" data-mode="comparative">
         <input type="radio" name="mode" value="comparative">
@@ -30,12 +30,25 @@
           Slip tracing, manipulation detection, float consumption, delay root cause.
         </div>
       </label>
+      <label class="mode-option" data-mode="trend">
+        <input type="radio" name="mode" value="trend">
+        <div class="mode-title">Trend (3+ updates)</div>
+        <div class="mode-desc">
+          Time-series trends for completion drift, float, SPI, and manipulation score.
+        </div>
+      </label>
     </div>
 
     <h2 class="section-title">2. Drop your schedule file(s)</h2>
-    <div class="dropzones">
+
+    <label class="field checkbox auto-sort-field">
+      <input type="checkbox" name="auto_sort" value="on" checked id="auto-sort-toggle">
+      <span>Auto-detect chronological order from each file's <code>status_date</code></span>
+    </label>
+
+    <div class="dropzones" id="dropzones">
       <div class="dropzone" id="dropzone-prior">
-        <div class="dropzone-label">Prior Update</div>
+        <div class="dropzone-label">Schedule File</div>
         <div class="dropzone-body">
           <p class="dropzone-hint">Drop <code>.mpp</code> here or click to browse</p>
           <input type="file" name="prior_file" accept=".mpp,.xml,.mpx" required>
@@ -44,12 +57,24 @@
       </div>
 
       <div class="dropzone dropzone-later" id="dropzone-later" style="display:none">
-        <div class="dropzone-label">Later Update</div>
+        <div class="dropzone-label">Second Update</div>
         <div class="dropzone-body">
           <p class="dropzone-hint">Drop <code>.mpp</code> here or click to browse</p>
           <input type="file" name="later_file" accept=".mpp,.xml,.mpx">
         </div>
         <div class="dropzone-filename" id="filename-later"></div>
+      </div>
+
+      <div class="dropzone dropzone-trend" id="dropzone-trend" style="display:none">
+        <div class="dropzone-label">Schedule Updates (3 or more)</div>
+        <div class="dropzone-body">
+          <p class="dropzone-hint">
+            Drop multiple <code>.mpp</code> files here or click to browse.
+            Files will be sorted chronologically by status date.
+          </p>
+          <input type="file" name="schedule_files" accept=".mpp,.xml,.mpx" multiple>
+        </div>
+        <div class="dropzone-filename" id="filename-trend"></div>
       </div>
     </div>
 
@@ -68,8 +93,10 @@
   <aside class="upload-notes">
     <h3>What runs when you click Analyze?</h3>
     <ul>
-      <li><strong>MPP parser</strong> reads the file locally via MPXJ/JPype.</li>
-      <li><strong>Forensic engine</strong> computes CPM, DCMA 14-point, earned value, float, and (for 2 files) comparator, manipulation detection, delay root cause.</li>
+      <li><strong>MPP parser</strong> reads each file locally via MPXJ/JPype.</li>
+      <li><strong>Auto-detect order</strong> reads each file's status date and sorts chronologically before analysis.</li>
+      <li><strong>Forensic engine</strong> computes CPM, DCMA 14-point, earned value, float, and (for 2+ files) comparator, manipulation detection, and delay root cause.</li>
+      <li><strong>Trend analysis</strong> runs when you upload 3+ files — builds time-series for float erosion, SPI drift, and baseline resets.</li>
       <li><strong>AI narrative</strong> is not generated automatically — open the Analysis tab and click "Generate AI Analysis" when you're ready.</li>
     </ul>
     <p class="muted">

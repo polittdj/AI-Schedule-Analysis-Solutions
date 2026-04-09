@@ -85,6 +85,9 @@ def generate_docx_report(
     if results.get("earned_value") is not None:
         _add_earned_value_section(doc, results["earned_value"])
 
+    if results.get("trend") is not None:
+        _add_trend_section(doc, results["trend"])
+
     _add_recommendations(doc, results)
     _add_conclusion(doc, results, has_comparison)
 
@@ -517,6 +520,69 @@ def _add_earned_value_section(doc: Document, ev) -> None:
         r = table.add_row()
         r.cells[0].text = label
         r.cells[1].text = value
+
+
+def _add_trend_section(doc: Document, trend) -> None:
+    doc.add_heading("Trend Analysis (multi-update time-series)", 1)
+
+    summary = doc.add_paragraph()
+    summary.add_run(
+        f"Updates analyzed: {trend.update_count}   "
+        f"Float: {trend.float_trend}   "
+        f"SPI: {trend.spi_trend}   "
+        f"Manipulation: {trend.manipulation_trend}"
+    ).bold = True
+    if trend.completion_date_drift_days is not None:
+        doc.add_paragraph(
+            f"Completion drift (first → last): "
+            f"{trend.completion_date_drift_days:+.1f} calendar days."
+        )
+    if trend.narrative:
+        doc.add_paragraph(trend.narrative)
+
+    if trend.data_points:
+        doc.add_heading("Per-Update Metrics", 2)
+        table = doc.add_table(rows=1, cols=6)
+        table.style = "Light Grid Accent 1"
+        _style_header_row(
+            table.rows[0],
+            ["Update", "Status Date", "Finish", "SPI", "Manip", "Slip (d)"],
+        )
+        for dp in trend.data_points:
+            row = table.add_row()
+            row.cells[0].text = dp.update_label
+            row.cells[1].text = _fmt_date(dp.status_date)
+            row.cells[2].text = _fmt_date(dp.project_finish)
+            row.cells[3].text = _fmt_num(dp.spi, decimals=3)
+            row.cells[4].text = _fmt_num(dp.manipulation_score)
+            row.cells[5].text = _fmt_signed(dp.finish_slip_since_prior_days)
+
+    if trend.task_compressions:
+        doc.add_heading("Cumulative Task Compressions", 2)
+        table = doc.add_table(rows=1, cols=4)
+        table.style = "Light Grid Accent 1"
+        _style_header_row(
+            table.rows[0], ["UID", "Task", "Cumulative Δ (d)", "Events"]
+        )
+        for tc in trend.task_compressions:
+            row = table.add_row()
+            row.cells[0].text = str(tc.uid)
+            row.cells[1].text = tc.name or "—"
+            row.cells[2].text = _fmt_signed(tc.cumulative_duration_change_days)
+            row.cells[3].text = str(tc.compression_events)
+
+    if trend.baseline_resets:
+        doc.add_heading("Baseline Reset Events", 2)
+        table = doc.add_table(rows=1, cols=3)
+        table.style = "Light Grid Accent 1"
+        _style_header_row(
+            table.rows[0], ["Update", "Affected Tasks", "Max Shift (d)"]
+        )
+        for ev in trend.baseline_resets:
+            row = table.add_row()
+            row.cells[0].text = ev.update_label
+            row.cells[1].text = str(ev.affected_task_count)
+            row.cells[2].text = _fmt_num(ev.max_baseline_shift_days)
 
 
 def _add_recommendations(doc: Document, results: Dict[str, Any]) -> None:

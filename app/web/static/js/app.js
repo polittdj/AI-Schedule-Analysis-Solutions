@@ -25,11 +25,44 @@
     const form = document.getElementById("upload-form");
     if (!form) return;
 
+    const dropzonePrior = document.getElementById("dropzone-prior");
     const dropzoneLater = document.getElementById("dropzone-later");
+    const dropzoneTrend = document.getElementById("dropzone-trend");
+    const priorInput = dropzonePrior
+      ? dropzonePrior.querySelector('input[name="prior_file"]')
+      : null;
     const laterInput = dropzoneLater
       ? dropzoneLater.querySelector('input[name="later_file"]')
       : null;
+    const trendInput = dropzoneTrend
+      ? dropzoneTrend.querySelector('input[name="schedule_files"]')
+      : null;
     const modeOptions = form.querySelectorAll(".mode-option");
+
+    function applyMode(mode) {
+      if (mode === "single") {
+        if (dropzonePrior) dropzonePrior.style.display = "";
+        if (dropzoneLater) dropzoneLater.style.display = "none";
+        if (dropzoneTrend) dropzoneTrend.style.display = "none";
+        if (priorInput) priorInput.setAttribute("required", "required");
+        if (laterInput) laterInput.removeAttribute("required");
+        if (trendInput) trendInput.removeAttribute("required");
+      } else if (mode === "comparative") {
+        if (dropzonePrior) dropzonePrior.style.display = "";
+        if (dropzoneLater) dropzoneLater.style.display = "";
+        if (dropzoneTrend) dropzoneTrend.style.display = "none";
+        if (priorInput) priorInput.setAttribute("required", "required");
+        if (laterInput) laterInput.setAttribute("required", "required");
+        if (trendInput) trendInput.removeAttribute("required");
+      } else if (mode === "trend") {
+        if (dropzonePrior) dropzonePrior.style.display = "none";
+        if (dropzoneLater) dropzoneLater.style.display = "none";
+        if (dropzoneTrend) dropzoneTrend.style.display = "";
+        if (priorInput) priorInput.removeAttribute("required");
+        if (laterInput) laterInput.removeAttribute("required");
+        if (trendInput) trendInput.setAttribute("required", "required");
+      }
+    }
 
     modeOptions.forEach((opt) => {
       opt.addEventListener("click", () => {
@@ -38,15 +71,7 @@
         const mode = opt.dataset.mode;
         const radio = opt.querySelector('input[type="radio"]');
         if (radio) radio.checked = true;
-        if (mode === "comparative") {
-          form.classList.add("comparative");
-          if (dropzoneLater) dropzoneLater.style.display = "";
-          if (laterInput) laterInput.setAttribute("required", "required");
-        } else {
-          form.classList.remove("comparative");
-          if (dropzoneLater) dropzoneLater.style.display = "none";
-          if (laterInput) laterInput.removeAttribute("required");
-        }
+        applyMode(mode);
       });
     });
 
@@ -68,7 +93,7 @@
         })
       );
       zone.addEventListener("drop", (e) => {
-        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
           input.files = e.dataTransfer.files;
           updateFilename();
         }
@@ -76,8 +101,12 @@
       if (input) input.addEventListener("change", updateFilename);
 
       function updateFilename() {
-        if (nameDiv && input.files && input.files[0]) {
+        if (!nameDiv || !input.files || !input.files.length) return;
+        if (input.files.length === 1) {
           nameDiv.textContent = input.files[0].name;
+        } else {
+          const names = Array.from(input.files).map((f) => f.name).join(", ");
+          nameDiv.textContent = `${input.files.length} files: ${names}`;
         }
       }
     });
@@ -130,6 +159,9 @@
     if (results.float_analysis) {
       initFloatHistogram(results);
       initFloatTables(results);
+    }
+    if (results.trend) {
+      initTrendCharts(results);
     }
   }
 
@@ -644,6 +676,171 @@
   function truncate(s, n) {
     if (!s) return "";
     return s.length > n ? s.slice(0, n - 1) + "…" : s;
+  }
+
+  /* --------------------------- Trend charts ------------------------------ */
+
+  function initTrendCharts(results) {
+    const trend = results.trend;
+    if (!trend || !hasChart()) return;
+    const points = trend.data_points || [];
+    if (!points.length) return;
+
+    const labels = points.map((p) => p.update_label);
+    const axis = {
+      x: {
+        ticks: { color: "#8690a3" },
+        grid: { color: "rgba(255,255,255,0.06)" },
+      },
+      y: {
+        ticks: { color: "#8690a3" },
+        grid: { color: "rgba(255,255,255,0.06)" },
+      },
+    };
+    const legend = { labels: { color: "#e6ebf2" } };
+
+    // Completion drift: days of slip from the first update's finish.
+    const compCanvas = document.getElementById("trend-completion-chart");
+    if (compCanvas) {
+      const baselineFinish = points[0].project_finish
+        ? new Date(points[0].project_finish).getTime()
+        : null;
+      const driftDays = points.map((p) => {
+        if (!p.project_finish || baselineFinish === null) return null;
+        return (new Date(p.project_finish).getTime() - baselineFinish) / 86400000;
+      });
+      new Chart(compCanvas.getContext("2d"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Drift from initial finish (cal days)",
+              data: driftDays,
+              borderColor: "#ff5c6c",
+              backgroundColor: "rgba(255,92,108,0.2)",
+              tension: 0.2,
+              fill: true,
+            },
+          ],
+        },
+        options: { responsive: true, plugins: { legend }, scales: axis },
+      });
+    }
+
+    // Float trend (min + avg)
+    const floatCanvas = document.getElementById("trend-float-chart");
+    if (floatCanvas) {
+      new Chart(floatCanvas.getContext("2d"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Min total float (d)",
+              data: points.map((p) => p.total_float_min),
+              borderColor: "#ff5c6c",
+              tension: 0.2,
+            },
+            {
+              label: "Avg total float (d)",
+              data: points.map((p) => p.total_float_avg),
+              borderColor: "#4a9eff",
+              tension: 0.2,
+            },
+          ],
+        },
+        options: { responsive: true, plugins: { legend }, scales: axis },
+      });
+    }
+
+    // SPI + BEI
+    const spiCanvas = document.getElementById("trend-spi-chart");
+    if (spiCanvas) {
+      new Chart(spiCanvas.getContext("2d"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "SPI",
+              data: points.map((p) => p.spi),
+              borderColor: "#3dd68c",
+              tension: 0.2,
+            },
+            {
+              label: "BEI",
+              data: points.map((p) => p.bei),
+              borderColor: "#f5b83d",
+              tension: 0.2,
+            },
+          ],
+        },
+        options: { responsive: true, plugins: { legend }, scales: axis },
+      });
+    }
+
+    // Manipulation score
+    const manipCanvas = document.getElementById("trend-manip-chart");
+    if (manipCanvas) {
+      new Chart(manipCanvas.getContext("2d"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Manipulation score",
+              data: points.map((p) => p.manipulation_score),
+              borderColor: "#f5b83d",
+              backgroundColor: "rgba(245,184,61,0.2)",
+              tension: 0.2,
+              fill: true,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend },
+          scales: { ...axis, y: { ...axis.y, min: 0, max: 100 } },
+        },
+      });
+    }
+
+    // Stacked task status over time
+    const statusCanvas = document.getElementById("trend-status-chart");
+    if (statusCanvas) {
+      new Chart(statusCanvas.getContext("2d"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Complete",
+              data: points.map((p) => p.tasks_complete),
+              backgroundColor: "rgba(61,214,140,0.75)",
+            },
+            {
+              label: "In progress",
+              data: points.map((p) => p.tasks_in_progress),
+              backgroundColor: "rgba(245,184,61,0.75)",
+            },
+            {
+              label: "Not started",
+              data: points.map((p) => p.tasks_not_started),
+              backgroundColor: "rgba(255,255,255,0.08)",
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend },
+          scales: {
+            x: { ...axis.x, stacked: true },
+            y: { ...axis.y, stacked: true },
+          },
+        },
+      });
+    }
   }
 
   /* ------------------------------ Settings ------------------------------- */

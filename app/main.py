@@ -96,14 +96,38 @@ def _assemble_results(
             "manipulation": None,
             "float_analysis": None,
             "delay": None,
+            "trend": None,
             **_run_single_schedule_pipeline(prior),
         }
     else:
         base = {
             "prior_schedule": prior,
             "later_schedule": later,
+            "trend": None,
             **_run_comparative_pipeline(prior, later),
         }
+    base["generated_at"] = datetime.utcnow().isoformat()
+    return base
+
+
+def _assemble_trend_results(schedules: List[ScheduleData]) -> Dict[str, Any]:
+    """Run the full pipeline for a 3+ schedule trend analysis.
+
+    The ``prior_schedule`` / ``later_schedule`` keys point at the first
+    and last updates so the rest of the forensic engine (which is
+    two-schedule-shaped) keeps working unchanged. The new ``trend``
+    key carries the time-series built from every pairwise comparison.
+    """
+    from app.engine.trend_analysis import compute_trend_analysis
+
+    earliest = schedules[0]
+    latest = schedules[-1]
+    base: Dict[str, Any] = {
+        "prior_schedule": earliest,
+        "later_schedule": latest,
+        **_run_comparative_pipeline(earliest, latest),
+        "trend": compute_trend_analysis(schedules),
+    }
     base["generated_at"] = datetime.utcnow().isoformat()
     return base
 
@@ -230,26 +254,37 @@ def create_app(config: Optional[Config] = None) -> Flask:
 
     @app.route("/analyze", methods=["POST"])
     def analyze():
-        mode = request.form.get("mode", "single")
+        mode = request.form.get("mode", "auto")
+        auto_sort_raw = request.form.get("auto_sort", "on").strip().lower()
+        auto_sort = auto_sort_raw in {"on", "1", "true", "yes"}
+
+        # Collect every uploaded file from both the new multi-file input
+        # (`schedule_files`) and the legacy `prior_file` / `later_file`
+        # fields that the Phase 4 UI shipped with. The legacy fields are
+        # treated as "prior goes first" only when the user has explicitly
+        # disabled auto-sort.
+        uploaded = []
+        for f in request.files.getlist("schedule_files"):
+            if f and (f.filename or "").strip():
+                uploaded.append(("schedule", f))
         prior_file = request.files.get("prior_file")
+        if prior_file and (prior_file.filename or "").strip():
+            uploaded.append(("prior", prior_file))
         later_file = request.files.get("later_file")
+        if later_file and (later_file.filename or "").strip():
+            uploaded.append(("later", later_file))
 
-        if prior_file is None or not (prior_file.filename or "").strip():
-            flash("Please upload a prior schedule file.", "error")
-            return redirect(url_for("index"))
-        if not _valid_extension(prior_file.filename, set(cfg.ALLOWED_EXTENSIONS)):
-            flash(
-                f"Unsupported file type. Allowed: {', '.join(sorted(cfg.ALLOWED_EXTENSIONS))}.",
-                "error",
-            )
+        if not uploaded:
+            flash("Please upload at least one schedule file.", "error")
             return redirect(url_for("index"))
 
-        if mode == "comparative":
-            if later_file is None or not (later_file.filename or "").strip():
-                flash("Comparative mode requires two files.", "error")
-                return redirect(url_for("index"))
-            if not _valid_extension(later_file.filename, set(cfg.ALLOWED_EXTENSIONS)):
-                flash("Unsupported later-file type.", "error")
+        for _, f in uploaded:
+            if not _valid_extension(f.filename, set(cfg.ALLOWED_EXTENSIONS)):
+                flash(
+                    f"Unsupported file type: {f.filename}. Allowed: "
+                    f"{', '.join(sorted(cfg.ALLOWED_EXTENSIONS))}.",
+                    "error",
+                )
                 return redirect(url_for("index"))
 
         try:
@@ -258,16 +293,44 @@ def create_app(config: Optional[Config] = None) -> Flask:
             flash(f"Parser unavailable: {exc}", "error")
             return redirect(url_for("index"))
 
+        # Save and parse every file. The order on disk preserves the
+        # upload order so we can detect auto-sort reorders below.
         try:
-            prior_path = _save_upload(prior_file, cfg.UPLOAD_FOLDER, "prior")
-            prior_schedule = parse_mpp(str(prior_path))
+            schedules: List[ScheduleData] = []
+            for idx, (kind, f) in enumerate(uploaded):
+                prefix = kind if kind != "schedule" else f"update{idx}"
+                path = _save_upload(f, cfg.UPLOAD_FOLDER, prefix)
+                schedules.append(parse_mpp(str(path)))
+        except Exception as exc:
+            app.logger.error("Parse failed: %s", exc)
+            app.logger.error(traceback.format_exc())
+            flash(f"Analysis failed: {exc}", "error")
+            return redirect(url_for("index"))
 
-            later_schedule: Optional[ScheduleData] = None
-            if mode == "comparative" and later_file is not None:
-                later_path = _save_upload(later_file, cfg.UPLOAD_FOLDER, "later")
-                later_schedule = parse_mpp(str(later_path))
+        # Auto-sort by status_date (earliest → latest). We only flash the
+        # reorder message when the order actually changed — no point
+        # nagging the user when they already dropped things in sequence.
+        if auto_sort and len(schedules) >= 2:
+            indexed = list(enumerate(schedules))
+            indexed.sort(
+                key=lambda pair: pair[1].project_info.status_date or datetime.max
+            )
+            new_order = [pair[0] for pair in indexed]
+            if new_order != list(range(len(schedules))):
+                schedules = [pair[1] for pair in indexed]
+                flash(
+                    "Files were automatically reordered based on status dates.",
+                    "info",
+                )
 
-            results = _assemble_results(prior_schedule, later_schedule)
+        # Dispatch: 1 → single, 2 → comparative, 3+ → trend.
+        try:
+            if len(schedules) == 1:
+                results = _assemble_results(schedules[0], None)
+            elif len(schedules) == 2:
+                results = _assemble_results(schedules[0], schedules[1])
+            else:
+                results = _assemble_trend_results(schedules)
         except Exception as exc:
             app.logger.error("Analysis failed: %s", exc)
             app.logger.error(traceback.format_exc())
@@ -298,6 +361,7 @@ def create_app(config: Optional[Config] = None) -> Flask:
             results=template_ctx,
             results_json=json.dumps(template_ctx, default=str),
             has_comparison=results.get("comparison") is not None,
+            has_trend=results.get("trend") is not None,
         )
 
     @app.route("/ai-analyze", methods=["POST"])

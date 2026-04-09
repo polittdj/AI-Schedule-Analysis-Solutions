@@ -65,6 +65,9 @@
   <button class="tab-btn" data-tab="manipulation" role="tab">Manipulation</button>
   <button class="tab-btn" data-tab="float" role="tab">Float Analysis</button>
   {% endif %}
+  {% if has_trend %}
+  <button class="tab-btn" data-tab="trend" role="tab">Trend Analysis</button>
+  {% endif %}
   <button class="tab-btn" data-tab="tasks" role="tab">All Tasks</button>
 </div>
 
@@ -294,6 +297,106 @@
       <h3 class="panel-title">Dropped off Critical</h3>
       <div id="dropped-off-critical-table"></div>
     </div>
+  </div>
+</section>
+{% endif %}
+
+{% if has_trend %}
+{# ==================== TAB 8: Trend Analysis ==================== #}
+<section class="tab-panel" id="tab-trend" role="tabpanel">
+  <div class="panel">
+    <h3 class="panel-title">
+      Trend Summary
+      <span class="pill">{{ results.trend.update_count }} updates</span>
+    </h3>
+    <p>{{ results.trend.narrative }}</p>
+    <div class="trend-stats">
+      <span class="pill pill-{{ results.trend.float_trend }}">Float: {{ results.trend.float_trend }}</span>
+      <span class="pill pill-{{ results.trend.spi_trend }}">SPI: {{ results.trend.spi_trend }}</span>
+      <span class="pill pill-{{ results.trend.manipulation_trend }}">Manipulation: {{ results.trend.manipulation_trend }}</span>
+      {% if results.trend.completion_date_drift_days is not none %}
+      <span class="pill">Drift: {{ "%+.1f"|format(results.trend.completion_date_drift_days) }} cal days</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <h3 class="panel-title">Project Completion Drift</h3>
+      <canvas id="trend-completion-chart" height="260"></canvas>
+    </div>
+    <div class="panel">
+      <h3 class="panel-title">Float Trend</h3>
+      <canvas id="trend-float-chart" height="260"></canvas>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <h3 class="panel-title">SPI &amp; BEI Over Time</h3>
+      <canvas id="trend-spi-chart" height="260"></canvas>
+    </div>
+    <div class="panel">
+      <h3 class="panel-title">Manipulation Score Over Time</h3>
+      <canvas id="trend-manip-chart" height="260"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 class="panel-title">Task Status Over Time</h3>
+    <canvas id="trend-status-chart" height="300"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3 class="panel-title">Cumulative Task Compressions</h3>
+    {% if results.trend.task_compressions %}
+    <table class="dcma-table">
+      <thead>
+        <tr>
+          <th>UID</th><th>Task</th><th>First Dur</th><th>Last Dur</th>
+          <th>Cumulative Δ (d)</th><th>Events</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tc in results.trend.task_compressions %}
+        <tr>
+          <td>{{ tc.uid }}</td>
+          <td>{{ tc.name or "—" }}</td>
+          <td>{{ "%.1f"|format(tc.first_duration) if tc.first_duration is not none else "—" }}</td>
+          <td>{{ "%.1f"|format(tc.last_duration) if tc.last_duration is not none else "—" }}</td>
+          <td>{{ "%+.1f"|format(tc.cumulative_duration_change_days) }}</td>
+          <td>{{ tc.compression_events }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No significant cumulative duration changes detected.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h3 class="panel-title">Baseline Reset Events</h3>
+    {% if results.trend.baseline_resets %}
+    <table class="dcma-table">
+      <thead>
+        <tr>
+          <th>Update</th><th>Affected Tasks</th><th>Max Shift (d)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ev in results.trend.baseline_resets %}
+        <tr class="dcma-fail">
+          <td>{{ ev.update_label }}</td>
+          <td>{{ ev.affected_task_count }}</td>
+          <td>{{ "%.1f"|format(ev.max_baseline_shift_days) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No baseline resets detected across updates.</p>
+    {% endif %}
   </div>
 </section>
 {% endif %}

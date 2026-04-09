@@ -380,6 +380,65 @@ def _section_delay_analysis(delay: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _section_trend_analysis(trend: Dict[str, Any]) -> str:
+    lines = ["## TREND ANALYSIS (multi-update time-series)"]
+    lines.append(f"Updates analyzed: {trend.get('update_count', 0)}")
+    lines.append(f"Float trend: {trend.get('float_trend', 'stable')}")
+    lines.append(f"SPI trend: {trend.get('spi_trend', 'stable')}")
+    lines.append(
+        f"Manipulation trend: {trend.get('manipulation_trend', 'stable')}"
+    )
+    drift = trend.get("completion_date_drift_days")
+    if drift is not None:
+        lines.append(
+            f"Completion drift (first → last): {_fmt_num(drift, suffix=' calendar days')}"
+        )
+    narrative = trend.get("narrative")
+    if narrative:
+        lines.append("")
+        lines.append(f"Summary: {narrative}")
+
+    data_points = trend.get("data_points") or []
+    if data_points:
+        lines.append("")
+        lines.append("| Update | Status Date | Project Finish | SPI | Manip | Slip (d) |")
+        lines.append("|--------|-------------|----------------|-----|-------|----------|")
+        for dp in data_points[:20]:
+            lines.append(
+                f"| {dp.get('update_label')} | "
+                f"{_fmt_date(dp.get('status_date'))} | "
+                f"{_fmt_date(dp.get('project_finish'))} | "
+                f"{_fmt_num(dp.get('spi'))} | "
+                f"{_fmt_num(dp.get('manipulation_score'))} | "
+                f"{_fmt_num(dp.get('finish_slip_since_prior_days'))} |"
+            )
+
+    compressions = trend.get("task_compressions") or []
+    if compressions:
+        lines.append("")
+        lines.append("Top cumulative task compressions:")
+        for tc in compressions[:10]:
+            task_label = tc.get("name") or f"Task {tc.get('uid')}"
+            delta = tc.get("cumulative_duration_change_days")
+            events = tc.get("compression_events", 0)
+            lines.append(
+                f"- {task_label}: {_fmt_num(delta)}d cumulative over "
+                f"{events} update(s)"
+            )
+
+    resets = trend.get("baseline_resets") or []
+    if resets:
+        lines.append("")
+        lines.append("Baseline reset events:")
+        for ev in resets:
+            lines.append(
+                f"- {ev.get('update_label')}: {ev.get('affected_task_count')} "
+                f"task(s) affected, max shift "
+                f"{_fmt_num(ev.get('max_baseline_shift_days'), suffix=' d')}"
+            )
+    return "\n".join(lines)
+
+
 # --------------------------------------------------------------------------- #
 # Task-name lookup helper
 # --------------------------------------------------------------------------- #
@@ -437,6 +496,7 @@ def build_prompt(
     delay = _to_dict(engine_results.get("delay"))
     earned_value = _to_dict(engine_results.get("earned_value"))
     float_analysis = _to_dict(engine_results.get("float_analysis"))
+    trend = _to_dict(engine_results.get("trend"))
     task_name_lookup = _build_task_name_lookup(engine_results)
 
     parts: List[str] = [
@@ -464,6 +524,8 @@ def build_prompt(
         parts.append(_section_earned_value(earned_value))
     if delay:
         parts.append(_section_delay_analysis(delay))
+    if trend:
+        parts.append(_section_trend_analysis(trend))
 
     if user_request:
         parts.append("## REQUEST")

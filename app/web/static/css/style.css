@@ -296,6 +296,18 @@ code {
   gap: 12px;
   margin-bottom: 24px;
 }
+.mode-toggle-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) { .mode-toggle-3 { grid-template-columns: 1fr; } }
+.auto-sort-field { margin-bottom: 16px; }
+
+.trend-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.pill-eroding { background: rgba(255, 92, 108, 0.15); color: var(--bad); }
+.pill-recovering { background: rgba(61, 214, 140, 0.15); color: var(--good); }
 .mode-option {
   padding: 16px;
   border: 1px solid var(--border);
