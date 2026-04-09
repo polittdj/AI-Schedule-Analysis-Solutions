@@ -1,0 +1,9 @@
+flask
+jpype1
+mpxj
+pydantic
+python-docx
+openpyxl
+reportlab
+anthropic
+requests
