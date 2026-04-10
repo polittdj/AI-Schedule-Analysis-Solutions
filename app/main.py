@@ -252,51 +252,44 @@ def create_app(config: Optional[Config] = None) -> Flask:
     # Template filters
     # ------------------------------------------------------------------ #
 
+    def _parse_date(value: Any) -> Optional[datetime]:
+        """Parse a datetime, ISO string, or date into a Python datetime."""
+        if value is None or value == "" or value == "—":
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        return None
+
+    @app.template_filter("short_date")
+    def short_date_filter(value: Any) -> str:
+        """Format any date value as short US date: M/D/YYYY.
+
+        Examples: "1/5/2026", "2/13/2026", "12/31/2029".
+        Returns "—" for None/empty values.
+        """
+        dt = _parse_date(value)
+        if dt is None:
+            return "—"
+        return f"{dt.month}/{dt.day}/{dt.year}"
+
+    # Keep the old name as an alias so existing templates don't break
+    # during the transition. Both filters return the same M/D/YYYY format.
     @app.template_filter("readable_date")
     def readable_date_filter(value: Any) -> str:
-        """Format a datetime or ISO string as "Feb 6, 2026".
-
-        Used throughout the templates so the UI never shows raw ISO
-        strings like ``2026-02-06T17:00:00``. Handles None, naive
-        datetimes, timezone-aware datetimes, and ISO-formatted strings.
-        """
-        if value is None or value == "":
-            return "—"
-        dt: Optional[datetime] = None
-        if isinstance(value, datetime):
-            dt = value
-        elif isinstance(value, str):
-            try:
-                dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                return value
-        if dt is None:
-            return str(value)
-        try:
-            return dt.strftime("%b %-d, %Y")
-        except ValueError:
-            # Windows strftime does not support %-d; fall back to %d.
-            return dt.strftime("%b %d, %Y").replace(" 0", " ")
+        return short_date_filter(value)
 
     @app.template_filter("readable_datetime")
     def readable_datetime_filter(value: Any) -> str:
-        """Format a datetime with time: "Feb 6, 2026 5:00 PM"."""
-        if value is None or value == "":
-            return "—"
-        dt: Optional[datetime] = None
-        if isinstance(value, datetime):
-            dt = value
-        elif isinstance(value, str):
-            try:
-                dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                return value
+        """Format a datetime with time: "1/5/2026 8:00 AM"."""
+        dt = _parse_date(value)
         if dt is None:
-            return str(value)
-        try:
-            return dt.strftime("%b %-d, %Y %-I:%M %p")
-        except ValueError:
-            return dt.strftime("%b %d, %Y %I:%M %p").replace(" 0", " ")
+            return "—"
+        return f"{dt.month}/{dt.day}/{dt.year} {dt.strftime('%I:%M %p').lstrip('0')}"
 
     @app.route("/")
     def index():

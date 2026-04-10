@@ -42,8 +42,8 @@
     {% if driving.target_wbs %}
     <dt>WBS</dt><dd>{{ driving.target_wbs }}</dd>
     {% endif %}
-    <dt>Start</dt><dd>{{ driving.target_start | readable_date }}</dd>
-    <dt>Finish</dt><dd>{{ driving.target_finish | readable_date }}</dd>
+    <dt>Start</dt><dd>{{ driving.target_start | short_date }}</dd>
+    <dt>Finish</dt><dd>{{ driving.target_finish | short_date }}</dd>
     <dt>Duration</dt>
     <dd>
       {% if driving.target_duration is not none %}
@@ -133,7 +133,7 @@
           <span class="pill pill-high">PRIMARY</span>
         </div>
         <div class="driving-chain-body">
-          {{ node.start | readable_date }} → {{ node.finish | readable_date }}
+          {{ node.start | short_date }} → {{ node.finish | short_date }}
           {% if node.duration is not none %}
             · {{ "%.1f"|format(node.duration) }}d
           {% endif %}
@@ -184,8 +184,8 @@
         <td><span class="pill pill-high">Primary</span></td>
         <td>{{ node.uid }}</td>
         <td>{{ node.name or "—" }}</td>
-        <td>{{ node.start | readable_date }}</td>
-        <td>{{ node.finish | readable_date }}</td>
+        <td>{{ node.start | short_date }}</td>
+        <td>{{ node.finish | short_date }}</td>
         <td>{{ "%.1f"|format(node.duration) if node.duration is not none else "—" }}</td>
         <td>{{ "%.1f"|format(node.relative_float_days) }}</td>
         <td>{{ node.relationship_type or "—" }}</td>
@@ -197,8 +197,8 @@
         <td><span class="pill pill-medium">Secondary</span></td>
         <td>{{ node.uid }}</td>
         <td>{{ node.name or "—" }}</td>
-        <td>{{ node.start | readable_date }}</td>
-        <td>{{ node.finish | readable_date }}</td>
+        <td>{{ node.start | short_date }}</td>
+        <td>{{ node.finish | short_date }}</td>
         <td>{{ "%.1f"|format(node.duration) if node.duration is not none else "—" }}</td>
         <td>{{ "%.1f"|format(node.relative_float_days) }}</td>
         <td>{{ node.relationship_type or "—" }}</td>
@@ -210,8 +210,8 @@
         <td><span class="pill pill-tertiary">Tertiary</span></td>
         <td>{{ node.uid }}</td>
         <td>{{ node.name or "—" }}</td>
-        <td>{{ node.start | readable_date }}</td>
-        <td>{{ node.finish | readable_date }}</td>
+        <td>{{ node.start | short_date }}</td>
+        <td>{{ node.finish | short_date }}</td>
         <td>{{ "%.1f"|format(node.duration) if node.duration is not none else "—" }}</td>
         <td>{{ "%.1f"|format(node.relative_float_days) }}</td>
         <td>{{ node.relationship_type or "—" }}</td>
@@ -223,8 +223,8 @@
         <td><span class="pill">Non-Critical</span></td>
         <td>{{ node.uid }}</td>
         <td>{{ node.name or "—" }}</td>
-        <td>{{ node.start | readable_date }}</td>
-        <td>{{ node.finish | readable_date }}</td>
+        <td>{{ node.start | short_date }}</td>
+        <td>{{ node.finish | short_date }}</td>
         <td>{{ "%.1f"|format(node.duration) if node.duration is not none else "—" }}</td>
         <td>{{ "%.1f"|format(node.relative_float_days) }}</td>
         <td>{{ node.relationship_type or "—" }}</td>
@@ -262,8 +262,8 @@
         </td>
         <td>{{ f.uid }}</td>
         <td>{{ f.name or "—" }}</td>
-        <td>{{ f.start | readable_date }}</td>
-        <td>{{ f.finish | readable_date }}</td>
+        <td>{{ f.start | short_date }}</td>
+        <td>{{ f.finish | short_date }}</td>
         <td>{{ f.relationship_type or "—" }}</td>
         <td>{{ "%+.1f"|format(f.lag_days) if f.lag_days is not none else "—" }}</td>
       </tr>

@@ -338,14 +338,14 @@
     });
   }
 
-  function readableDate(value) {
-    if (value === null || value === undefined || value === "") return "—";
-    if (value === "—") return "—";
+  function shortDate(value) {
+    if (value === null || value === undefined || value === "" || value === "—") return "—";
     const dt = typeof value === "string" ? new Date(value) : value;
     if (!(dt instanceof Date) || isNaN(dt.getTime())) return String(value);
-    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    return `${months[dt.getMonth()]} ${dt.getDate()}, ${dt.getFullYear()}`;
+    return `${dt.getMonth() + 1}/${dt.getDate()}/${dt.getFullYear()}`;
   }
+  // Alias for backward compat
+  var readableDate = shortDate;
 
   function focusButtonFormatter(cell) {
     const uid = cell.getValue();

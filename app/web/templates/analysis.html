@@ -26,7 +26,7 @@
     <div class="status-banner-dates">
       {% for dp in results.trend.data_points %}
         <span class="status-date-chip">
-          {{ dp.update_label }}: {{ dp.status_date | readable_date }}
+          {{ dp.update_label }}: {{ dp.status_date | short_date }}
         </span>
         {% if not loop.last %}<span class="status-date-arrow">→</span>{% endif %}
       {% endfor %}
@@ -35,24 +35,24 @@
     <div class="status-banner-label">Schedule Update Comparison</div>
     <div class="status-banner-dates">
       <span class="status-date-chip">
-        Prior Status Date: {{ results.prior_schedule.project_info.status_date | readable_date }}
+        Prior Status Date: {{ results.prior_schedule.project_info.status_date | short_date }}
       </span>
       <span class="status-date-arrow">→</span>
       <span class="status-date-chip">
-        Later Status Date: {{ results.later_schedule.project_info.status_date | readable_date }}
+        Later Status Date: {{ results.later_schedule.project_info.status_date | short_date }}
       </span>
     </div>
   {% else %}
     <div class="status-banner-label">Single Schedule Snapshot</div>
     <div class="status-banner-dates">
       <span class="status-date-chip">
-        Status Date: {{ info.status_date | readable_date }}
+        Status Date: {{ info.status_date | short_date }}
       </span>
       <span class="status-date-chip">
-        Start: {{ info.start_date | readable_date }}
+        Start: {{ info.start_date | short_date }}
       </span>
       <span class="status-date-chip">
-        Finish: {{ info.finish_date | readable_date }}
+        Finish: {{ info.finish_date | short_date }}
       </span>
     </div>
   {% endif %}
@@ -78,11 +78,11 @@
 <div class="metric-cards">
   <div class="metric-card">
     <div class="metric-label">Project Finish</div>
-    <div class="metric-value">{{ info.finish_date | readable_date }}</div>
+    <div class="metric-value">{{ info.finish_date | short_date }}</div>
   </div>
   <div class="metric-card">
     <div class="metric-label">Status Date</div>
-    <div class="metric-value">{{ info.status_date | readable_date }}</div>
+    <div class="metric-value">{{ info.status_date | short_date }}</div>
   </div>
   <div class="metric-card">
     <div class="metric-label">Tasks</div>
@@ -179,9 +179,9 @@
       <h3 class="panel-title">Schedule Update Overview</h3>
       <dl class="summary-list">
         <dt>Name</dt><dd>{{ info.name or "—" }}</dd>
-        <dt>Start</dt><dd>{{ info.start_date | readable_date }}</dd>
-        <dt>Finish</dt><dd>{{ info.finish_date | readable_date }}</dd>
-        <dt>Status date</dt><dd>{{ info.status_date | readable_date }}</dd>
+        <dt>Start</dt><dd>{{ info.start_date | short_date }}</dd>
+        <dt>Finish</dt><dd>{{ info.finish_date | short_date }}</dd>
+        <dt>Status date</dt><dd>{{ info.status_date | short_date }}</dd>
       </dl>
       {% if results.earned_value %}
       <h4 class="subtitle">Earned Value (showing the math)</h4>
@@ -324,8 +324,14 @@
                 </table>
               {% else %}
                 <p class="muted">
-                  Details:
-                  <code>{{ m.details | tojson }}</code>
+                  {% for dkey, dval in m.details.items() %}
+                    <strong>{{ dkey }}:</strong>
+                    {% if dval is string and 'T' in dval and '-' in dval %}
+                      {{ dval | short_date }}
+                    {% else %}
+                      {{ dval }}
+                    {% endif %}<br>
+                  {% endfor %}
                 </p>
               {% endif %}
               <p class="muted" style="margin-top:8px">
@@ -465,7 +471,7 @@
       LOW = 2) and the total is capped at 100.
     </p>
     <div class="gauge-wrap">
-      <canvas id="manipulation-gauge" width="260" height="160"></canvas>
+      <canvas id="manipulation-gauge" width="200" height="120"></canvas>
       {% if results.manipulation and results.manipulation.overall_score is not none %}
       <div class="gauge-legend">
         <span class="pill pill-high">HIGH: {{ results.manipulation.confidence_summary.HIGH or 0 }}</span>

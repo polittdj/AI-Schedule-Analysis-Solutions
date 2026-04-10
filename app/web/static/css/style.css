@@ -910,12 +910,23 @@ code {
   flex-direction: column;
   align-items: center;
   gap: 12px;
+  max-width: 300px;
+  margin: 0 auto;
+}
+.gauge-wrap canvas {
+  max-width: 220px;
+  max-height: 140px;
 }
 .gauge-legend {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+/* Constrain all chart containers so none explode to fill the screen */
+canvas {
+  max-height: 320px;
 }
 
 /* ------------------------------ Forms ---------------------------------- */
