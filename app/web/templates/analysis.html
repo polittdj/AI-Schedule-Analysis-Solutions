@@ -87,7 +87,7 @@
     <div class="metric-label">Completion Slip</div>
     {% if has_comparison and results.comparison.completion_date_slip_days is not none %}
       <div class="metric-value {% if (results.comparison.completion_date_slip_days or 0) > 0 %}metric-bad{% endif %}">
-        {{ "%+.1f"|format(results.comparison.completion_date_slip_days) }} d
+        {% if results.comparison and results.comparison.completion_date_slip_days is not none %}{{ "%+.1f"|format(results.comparison.completion_date_slip_days) }} d{% else %}N/A{% endif %}
       </div>
     {% else %}
       <div class="metric-value metric-na" title="Requires two schedule updates to compare">N/A</div>
@@ -97,7 +97,7 @@
     <div class="metric-label">Manipulation Score</div>
     {% if has_comparison and results.manipulation and results.manipulation.overall_score is not none %}
       <div class="metric-value {% if results.manipulation.overall_score > 20 %}metric-bad{% endif %}">
-        {{ "%.0f"|format(results.manipulation.overall_score) }}/100
+        {% if results.manipulation and results.manipulation.overall_score is not none %}{{ "%.0f"|format(results.manipulation.overall_score) }}/100{% else %}N/A{% endif %}
       </div>
     {% else %}
       <div class="metric-value metric-na" title="Requires two schedule updates to compare">N/A</div>
@@ -449,7 +449,7 @@
     <h3 class="panel-title">
       Manipulation Score
       {% if results.manipulation and results.manipulation.overall_score is not none %}
-        <span class="pill">{{ "%.0f"|format(results.manipulation.overall_score) }}/100</span>
+        <span class="pill">{% if results.manipulation and results.manipulation.overall_score is not none %}{{ "%.0f"|format(results.manipulation.overall_score) }}/100{% else %}N/A{% endif %}</span>
       {% else %}
         <span class="pill">N/A</span>
       {% endif %}

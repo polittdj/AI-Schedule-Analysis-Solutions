@@ -255,13 +255,14 @@ def create_app(config: Optional[Config] = None) -> Flask:
     @app.template_filter("short_date")
     def short_date_filter(value):
         if not value:
-            return "N/A"
+            return 'N/A'
         s = str(value)
-        if "T" in s:
-            s = s.split("T")[0]
-        parts = s.split("-")
-        if len(parts) == 3:
-            return f"{int(parts[1])}/{int(parts[2])}/{parts[0]}"
+        if 'T' in s:
+            s = s.split('T')[0]
+        if '-' in s:
+            parts = s.split('-')
+            if len(parts) == 3:
+                return str(int(parts[1])) + '/' + str(int(parts[2])) + '/' + parts[0]
         return s
 
     @app.template_filter("readable_date")
