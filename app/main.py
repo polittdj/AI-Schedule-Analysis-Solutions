@@ -252,44 +252,21 @@ def create_app(config: Optional[Config] = None) -> Flask:
     # Template filters
     # ------------------------------------------------------------------ #
 
-    def _parse_date(value: Any) -> Optional[datetime]:
-        """Parse a datetime, ISO string, or date into a Python datetime."""
-        if value is None or value == "" or value == "—":
-            return None
-        if isinstance(value, datetime):
-            return value
-        if isinstance(value, str):
-            try:
-                return datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                return None
-        return None
-
     @app.template_filter("short_date")
-    def short_date_filter(value: Any) -> str:
-        """Format any date value as short US date: M/D/YYYY.
+    def short_date_filter(value):
+        if not value:
+            return "N/A"
+        s = str(value)
+        if "T" in s:
+            s = s.split("T")[0]
+        parts = s.split("-")
+        if len(parts) == 3:
+            return f"{int(parts[1])}/{int(parts[2])}/{parts[0]}"
+        return s
 
-        Examples: "1/5/2026", "2/13/2026", "12/31/2029".
-        Returns "—" for None/empty values.
-        """
-        dt = _parse_date(value)
-        if dt is None:
-            return "—"
-        return f"{dt.month}/{dt.day}/{dt.year}"
-
-    # Keep the old name as an alias so existing templates don't break
-    # during the transition. Both filters return the same M/D/YYYY format.
     @app.template_filter("readable_date")
-    def readable_date_filter(value: Any) -> str:
+    def readable_date_filter(value):
         return short_date_filter(value)
-
-    @app.template_filter("readable_datetime")
-    def readable_datetime_filter(value: Any) -> str:
-        """Format a datetime with time: "1/5/2026 8:00 AM"."""
-        dt = _parse_date(value)
-        if dt is None:
-            return "—"
-        return f"{dt.month}/{dt.day}/{dt.year} {dt.strftime('%I:%M %p').lstrip('0')}"
 
     @app.route("/")
     def index():
@@ -500,40 +477,44 @@ def create_app(config: Optional[Config] = None) -> Flask:
             dp_result = analyze_driving_path(
                 schedule, target_uid, cpm_results=results.get("cpm")
             )
-        except ValueError as exc:
-            flash(str(exc), "error")
+
+            chain_uids = set(dp_result.all_chain_uids)
+            filtered = filter_engine_results_by_uids(results, chain_uids)
+
+            task_lookup = {t.uid: t for t in schedule.tasks}
+            return render_template(
+                "task_focus.html",
+                driving=_to_json_safe(dp_result),
+                target=_to_json_safe(task_lookup.get(target_uid)),
+                task_name_lookup={
+                    t.uid: (t.name or f"Task {t.uid}") for t in schedule.tasks
+                },
+                has_comparison=results.get("comparison") is not None,
+                filtered_task_deltas=_to_json_safe(
+                    filtered.get("filtered_task_deltas", [])
+                ),
+                filtered_manipulation_findings=_to_json_safe(
+                    filtered.get("filtered_manipulation_findings", [])
+                ),
+                filtered_float_changes=_to_json_safe(
+                    filtered.get("filtered_float_changes", [])
+                ),
+                filtered_dcma_metrics=_to_json_safe(
+                    filtered.get("filtered_dcma_metrics", [])
+                ),
+                all_tasks_for_search=[
+                    {"uid": t.uid, "name": t.name or f"Task {t.uid}"}
+                    for t in schedule.tasks
+                    if not t.summary
+                ],
+            )
+        except Exception as exc:
+            app.logger.error("Task focus failed: %s", exc)
+            app.logger.error(traceback.format_exc())
+            print(f"TASK FOCUS ERROR: {exc}")
+            print(traceback.format_exc())
+            flash(f"Task focus failed: {exc}", "error")
             return redirect(url_for("analysis_page"))
-
-        chain_uids = set(dp_result.all_chain_uids)
-        filtered = filter_engine_results_by_uids(results, chain_uids)
-
-        task_lookup = {t.uid: t for t in schedule.tasks}
-        return render_template(
-            "task_focus.html",
-            driving=_to_json_safe(dp_result),
-            target=_to_json_safe(task_lookup.get(target_uid)),
-            task_name_lookup={
-                t.uid: (t.name or f"Task {t.uid}") for t in schedule.tasks
-            },
-            has_comparison=results.get("comparison") is not None,
-            filtered_task_deltas=_to_json_safe(
-                filtered.get("filtered_task_deltas", [])
-            ),
-            filtered_manipulation_findings=_to_json_safe(
-                filtered.get("filtered_manipulation_findings", [])
-            ),
-            filtered_float_changes=_to_json_safe(
-                filtered.get("filtered_float_changes", [])
-            ),
-            filtered_dcma_metrics=_to_json_safe(
-                filtered.get("filtered_dcma_metrics", [])
-            ),
-            all_tasks_for_search=[
-                {"uid": t.uid, "name": t.name or f"Task {t.uid}"}
-                for t in schedule.tasks
-                if not t.summary
-            ],
-        )
 
     @app.route("/export/<string:fmt>")
     def export(fmt: str):

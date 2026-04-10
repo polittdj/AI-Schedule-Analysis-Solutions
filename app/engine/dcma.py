@@ -117,7 +117,10 @@ def _evaluate(value: float, threshold: float, comparison: str) -> bool:
 
 def _metric_logic(schedule: ScheduleData) -> DCMAMetric:
     detail = _detail_tasks(schedule)
-    incomplete = _incomplete(detail)
+    # Exclude milestones from the logic check per Acumen Fuse methodology —
+    # milestones legitimately have either no predecessors or no successors.
+    non_milestone = [t for t in detail if not t.milestone]
+    incomplete = _incomplete(non_milestone)
     missing = [
         t for t in incomplete if (not t.predecessors) or (not t.successors)
     ]

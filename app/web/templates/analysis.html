@@ -58,20 +58,11 @@
   {% endif %}
 </div>
 
-{# ------- Focus on task switcher ------- #}
-<div class="panel panel-slim">
-  <form method="get" action="{{ url_for('task_focus') }}" class="focus-switch-form">
-    <label>
-      <span>Focus on a task — enter a Unique ID to pivot every analysis around it</span>
-      <input type="number" name="uid" placeholder="Unique ID (e.g. 147)" required>
-    </label>
-    <button type="submit" class="btn btn-primary">Focus</button>
-  </form>
-  <p class="muted" style="margin:8px 0 0">
-    Choose any task to see its primary (0 d), secondary (≤ 15 d), and
-    tertiary (≤ 30 d) critical paths, with all DCMA, slippage,
-    manipulation, and float findings filtered to just that chain.
-  </p>
+{# ------- Focus on task UID ------- #}
+<div style="background:#1a2332; padding:12px 20px; border-radius:8px; margin:15px 0; display:flex; align-items:center; gap:10px;">
+    <label style="color:#ccc; font-weight:bold; white-space:nowrap;">Focus on Task UID:</label>
+    <input type="number" id="focusUid" placeholder="Enter Unique ID" style="padding:8px 12px; border-radius:4px; border:1px solid #444; background:#0d1520; color:white; width:200px;">
+    <button onclick="window.location='/task-focus?uid='+document.getElementById('focusUid').value" style="padding:8px 20px; background:#2196F3; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Go</button>
 </div>
 
 {# ------- Key metrics ribbon ------- #}

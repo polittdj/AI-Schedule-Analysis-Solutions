@@ -586,13 +586,17 @@ def _check_progress_vs_remaining(later: ScheduleData) -> List[ManipulationFindin
         rem = task.remaining_duration
         if pct is None or dur is None or rem is None or dur <= 0:
             continue
-        # Skip tasks that are not in progress — MSP auto-calculates
-        # remaining_duration for 0% and 100% tasks and the math is
-        # never perfectly self-consistent on status-dated schedules.
+        # Only flag tasks that are actually in progress (1-99% complete).
+        # MSP auto-calculates remaining_duration for 0% and 100% tasks
+        # and the math is never perfectly self-consistent. Also require
+        # a significant discrepancy (>20%) to avoid false positives.
         if pct <= 0 or pct >= 100:
             continue
         expected_rem = dur * (1.0 - pct / 100.0)
-        if abs(expected_rem - rem) / max(dur, 1e-6) > PROGRESS_MISMATCH_TOLERANCE:
+        discrepancy = abs(expected_rem - rem) / max(dur, 1e-6)
+        if discrepancy <= 0.20:
+            continue
+        if discrepancy > PROGRESS_MISMATCH_TOLERANCE:
             findings.append(
                 _finding(
                     category="PROGRESS",
@@ -737,7 +741,20 @@ def detect_manipulations(
     findings.extend(_check_actual_start_zero_progress(later))
     findings.extend(_check_status_date_misalignment(later))
 
-    overall_score = min(100.0, sum(f.severity_score for f in findings))
+    total_points = 0
+    for finding in findings:
+        if finding.confidence == "HIGH":
+            total_points += 10
+        elif finding.confidence == "MEDIUM":
+            total_points += 5
+        elif finding.confidence == "LOW":
+            total_points += 2
+    overall_score = min(100, total_points)
+    print(
+        f"MANIPULATION DEBUG: {len(findings)} findings, "
+        f"total_points={total_points}, score={overall_score}"
+    )
+
     confidence_summary: Dict[str, int] = {
         CONFIDENCE_HIGH: 0,
         CONFIDENCE_MEDIUM: 0,

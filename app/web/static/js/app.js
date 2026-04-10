@@ -257,7 +257,7 @@
       return (uids || [])
         .map((uid) => {
           const t = taskByUid[uid];
-          return t && t.name ? `${t.name} (UID ${uid})` : `UID ${uid}`;
+          return t && t.name ? `${t.name} (UID: ${uid})` : `UID: ${uid}`;
         })
         .join("; ");
     }
@@ -285,29 +285,11 @@
       layout: "fitColumns",
       height: 520,
       columns: [
-        {
-          title: "",
-          field: "uid",
-          width: 70,
-          formatter: focusButtonFormatter,
-          cellClick: focusButtonClick,
-          headerSort: false,
-        },
         { title: "UID", field: "uid", width: 70 },
         { title: "Name", field: "name", widthGrow: 3, formatter: progressFormatter },
         { title: "WBS", field: "wbs", width: 110 },
-        {
-          title: "Start",
-          field: "start",
-          width: 130,
-          formatter: (cell) => readableDate(cell.getValue()),
-        },
-        {
-          title: "Finish",
-          field: "finish",
-          width: 130,
-          formatter: (cell) => readableDate(cell.getValue()),
-        },
+        { title: "Start", field: "start", width: 110, formatter: shortDate },
+        { title: "Finish", field: "finish", width: 110, formatter: shortDate },
         {
           title: "Dur (d)",
           field: "duration",
@@ -338,14 +320,24 @@
     });
   }
 
-  function shortDate(value) {
-    if (value === null || value === undefined || value === "" || value === "—") return "—";
-    const dt = typeof value === "string" ? new Date(value) : value;
-    if (!(dt instanceof Date) || isNaN(dt.getTime())) return String(value);
-    return `${dt.getMonth() + 1}/${dt.getDate()}/${dt.getFullYear()}`;
+  function shortDate(cell) {
+    var v = cell.getValue ? cell.getValue() : cell;
+    if (!v) return "";
+    var s = String(v);
+    if (s.includes("T")) s = s.split("T")[0];
+    var p = s.split("-");
+    if (p.length === 3) return parseInt(p[1]) + "/" + parseInt(p[2]) + "/" + p[0];
+    return s;
   }
-  // Alias for backward compat
-  var readableDate = shortDate;
+  // Standalone version for non-Tabulator use (tooltips, Gantt, etc.)
+  function shortDateValue(v) {
+    if (!v) return "";
+    var s = String(v);
+    if (s.includes("T")) s = s.split("T")[0];
+    var p = s.split("-");
+    if (p.length === 3) return parseInt(p[1]) + "/" + parseInt(p[2]) + "/" + p[0];
+    return s;
+  }
 
   function focusButtonFormatter(cell) {
     const uid = cell.getValue();
@@ -421,19 +413,11 @@
       };
     });
 
-    const dateFmt = (cell) => readableDate(cell.getValue());
+    const dateFmt = shortDate;
     const numFmt1 = (cell) => numFmt(cell.getValue(), 1);
     const signedFmt1 = (cell) => signedFmt(cell.getValue());
 
     const columns = [
-      {
-        title: "",
-        field: "focus",
-        width: 70,
-        formatter: focusButtonFormatter,
-        cellClick: focusButtonClick,
-        headerSort: false,
-      },
       { title: "UID", field: "uid", width: 70, sorter: "number" },
       { title: "ID", field: "id", width: 60, sorter: "number" },
       { title: "Name", field: "name", widthGrow: 3, headerFilter: "input" },
@@ -471,7 +455,8 @@
       layout: "fitDataStretch",
       height: 600,
       pagination: true,
-      paginationSize: 50,
+      paginationSize: 100,
+      paginationSizeSelector: [25, 50, 100, 250, 500, true],
       columns,
     });
     window.__ALL_TASKS_TABLE__ = table;
@@ -1214,7 +1199,7 @@
 
         // Tooltip
         const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-        title.textContent = `${t.name || "Task " + t.uid}\n${readableDate(t.start)} → ${readableDate(t.finish)}`;
+        title.textContent = `${t.name || "Task " + t.uid}\n${shortDateValue(t.start)} → ${shortDateValue(t.finish)}`;
         bar.appendChild(title);
       }
     });
