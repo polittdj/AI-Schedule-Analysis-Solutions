@@ -58,6 +58,22 @@
   {% endif %}
 </div>
 
+{# ------- Focus on task switcher ------- #}
+<div class="panel panel-slim">
+  <form method="get" action="{{ url_for('task_focus') }}" class="focus-switch-form">
+    <label>
+      <span>Focus on a task — enter a Unique ID to pivot every analysis around it</span>
+      <input type="number" name="uid" placeholder="Unique ID (e.g. 147)" required>
+    </label>
+    <button type="submit" class="btn btn-primary">Focus</button>
+  </form>
+  <p class="muted" style="margin:8px 0 0">
+    Choose any task to see its primary (0 d), secondary (≤ 15 d), and
+    tertiary (≤ 30 d) critical paths, with all DCMA, slippage,
+    manipulation, and float findings filtered to just that chain.
+  </p>
+</div>
+
 {# ------- Key metrics ribbon ------- #}
 <div class="metric-cards">
   <div class="metric-card">

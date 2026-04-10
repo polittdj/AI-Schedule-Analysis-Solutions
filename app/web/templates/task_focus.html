@@ -11,16 +11,36 @@
 {% endblock %}
 
 {% block content %}
+
+{# ---- Focus-on switcher ------------------------------------------------ #}
+<div class="panel panel-slim">
+  <form method="get" action="{{ url_for('task_focus') }}" class="focus-switch-form">
+    <label>
+      <span>Focus on another task — Unique ID</span>
+      <input type="number" name="uid"
+             placeholder="Enter a Unique ID (e.g. 147)"
+             value="{{ driving.target_uid }}" required>
+    </label>
+    <button type="submit" class="btn btn-primary">Focus</button>
+  </form>
+  <p class="muted">
+    Every section below — driving chain, DCMA, slippage, manipulation,
+    float — is filtered to only include tasks related to the Unique
+    ID you choose. Change the number above to retarget the analysis.
+  </p>
+</div>
+
+{# ---- Target task header ---------------------------------------------- #}
 <div class="panel">
-  <h3 class="panel-title">Task Details</h3>
+  <h3 class="panel-title">Target Task Details</h3>
   <dl class="summary-list">
     <dt>Unique ID</dt><dd>{{ driving.target_uid }}</dd>
     {% if target and target.id is not none %}
     <dt>Display ID</dt><dd>{{ target.id }}</dd>
     {% endif %}
     <dt>Name</dt><dd>{{ driving.target_name or "—" }}</dd>
-    {% if target and target.wbs %}
-    <dt>WBS</dt><dd>{{ target.wbs }}</dd>
+    {% if driving.target_wbs %}
+    <dt>WBS</dt><dd>{{ driving.target_wbs }}</dd>
     {% endif %}
     <dt>Start</dt><dd>{{ driving.target_start | readable_date }}</dd>
     <dt>Finish</dt><dd>{{ driving.target_finish | readable_date }}</dd>
@@ -51,26 +71,66 @@
   </dl>
 </div>
 
+{# ---- Tier summary counters ------------------------------------------- #}
+<div class="metric-cards">
+  <div class="metric-card">
+    <div class="metric-label">Primary Critical</div>
+    <div class="metric-value" style="color: var(--bad)">
+      {{ driving.primary_critical_path|length }}
+    </div>
+    <div class="metric-sub muted">relative float = 0 d</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Secondary Critical</div>
+    <div class="metric-value" style="color: var(--warn)">
+      {{ driving.secondary_critical_path|length }}
+    </div>
+    <div class="metric-sub muted">rel float 0 – 15 d</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Tertiary Critical</div>
+    <div class="metric-value" style="color: #f5d83d">
+      {{ driving.tertiary_critical_path|length }}
+    </div>
+    <div class="metric-sub muted">rel float 15 – 30 d</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Non-Critical</div>
+    <div class="metric-value muted">
+      {{ driving.non_critical_paths|length }}
+    </div>
+    <div class="metric-sub muted">rel float &gt; 30 d</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Forward Impact</div>
+    <div class="metric-value">
+      {{ driving.forward_driven_tasks|length }}
+    </div>
+    <div class="metric-sub muted">successors this task feeds</div>
+  </div>
+</div>
+
+{# ---- Primary critical path waterfall --------------------------------- #}
 <div class="panel">
   <h3 class="panel-title">
-    Driving Path
-    <span class="pill pill-high">{{ driving.driving_chain|length }} driver(s)</span>
+    Primary Critical Path
+    <span class="pill pill-high">{{ driving.primary_critical_path|length }} driver(s)</span>
   </h3>
   <p class="muted">
-    The tasks below directly control the target task's dates. A relative
-    float of zero means this predecessor is the single reason the target
-    cannot start (or finish) earlier than it currently does.
+    Every task below directly controls this target's dates. A relative
+    float of zero days means the predecessor is the single reason the
+    target cannot start (or finish) earlier than it currently does.
   </p>
 
-  {% if driving.driving_chain %}
+  {% if driving.primary_critical_path %}
   <div class="driving-chain">
-    {% for node in driving.driving_chain %}
+    {% for node in driving.primary_critical_path %}
     <div class="driving-chain-node">
       <div class="driving-chain-depth">Depth {{ node.depth }}</div>
-      <div class="driving-chain-card driving-chain-card-driving">
+      <div class="driving-chain-card driving-chain-card-primary">
         <div class="driving-chain-title">
           <strong>UID {{ node.uid }} — {{ node.name or "—" }}</strong>
-          <span class="pill pill-high">DRIVING</span>
+          <span class="pill pill-high">PRIMARY</span>
         </div>
         <div class="driving-chain-body">
           {{ node.start | readable_date }} → {{ node.finish | readable_date }}
@@ -100,29 +160,28 @@
   </div>
   {% else %}
   <p class="muted">
-    No driving predecessors found. This task either has no predecessors,
-    or every predecessor is already 100% complete, or the target is
+    No primary drivers found. This task either has no predecessors,
+    every predecessor is already 100% complete, or the target is
     already fully complete.
   </p>
   {% endif %}
 </div>
 
+{# ---- Tiered predecessor table ---------------------------------------- #}
 <div class="panel">
-  <h3 class="panel-title">
-    Driving Path Table — All Predecessor Paths
-  </h3>
+  <h3 class="panel-title">Tiered Predecessor Paths</h3>
   <table class="dcma-table">
     <thead>
       <tr>
-        <th>Category</th><th>UID</th><th>Name</th>
+        <th>Tier</th><th>Unique ID</th><th>Name</th>
         <th>Start</th><th>Finish</th><th>Dur (d)</th>
         <th>Rel Float (d)</th><th>Rel Type</th><th>Lag</th>
       </tr>
     </thead>
     <tbody>
-      {% for node in driving.driving_chain %}
-      <tr class="driving-row driving-row-driving">
-        <td><span class="pill pill-high">Driving</span></td>
+      {% for node in driving.primary_critical_path %}
+      <tr class="driving-row driving-row-primary">
+        <td><span class="pill pill-high">Primary</span></td>
         <td>{{ node.uid }}</td>
         <td>{{ node.name or "—" }}</td>
         <td>{{ node.start | readable_date }}</td>
@@ -133,9 +192,9 @@
         <td>{{ "%+.1f"|format(node.lag_days) if node.lag_days is not none else "—" }}</td>
       </tr>
       {% endfor %}
-      {% for node in driving.near_driving_paths %}
-      <tr class="driving-row driving-row-near">
-        <td><span class="pill pill-medium">Near-Driving</span></td>
+      {% for node in driving.secondary_critical_path %}
+      <tr class="driving-row driving-row-secondary">
+        <td><span class="pill pill-medium">Secondary</span></td>
         <td>{{ node.uid }}</td>
         <td>{{ node.name or "—" }}</td>
         <td>{{ node.start | readable_date }}</td>
@@ -146,9 +205,22 @@
         <td>{{ "%+.1f"|format(node.lag_days) if node.lag_days is not none else "—" }}</td>
       </tr>
       {% endfor %}
-      {% for node in driving.non_driving_paths %}
+      {% for node in driving.tertiary_critical_path %}
+      <tr class="driving-row driving-row-tertiary">
+        <td><span class="pill pill-tertiary">Tertiary</span></td>
+        <td>{{ node.uid }}</td>
+        <td>{{ node.name or "—" }}</td>
+        <td>{{ node.start | readable_date }}</td>
+        <td>{{ node.finish | readable_date }}</td>
+        <td>{{ "%.1f"|format(node.duration) if node.duration is not none else "—" }}</td>
+        <td>{{ "%.1f"|format(node.relative_float_days) }}</td>
+        <td>{{ node.relationship_type or "—" }}</td>
+        <td>{{ "%+.1f"|format(node.lag_days) if node.lag_days is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+      {% for node in driving.non_critical_paths %}
       <tr class="driving-row driving-row-non">
-        <td><span class="pill">Non-Driving</span></td>
+        <td><span class="pill">Non-Critical</span></td>
         <td>{{ node.uid }}</td>
         <td>{{ node.name or "—" }}</td>
         <td>{{ node.start | readable_date }}</td>
@@ -161,25 +233,26 @@
       {% endfor %}
     </tbody>
   </table>
-  {% if not driving.driving_chain and not driving.near_driving_paths and not driving.non_driving_paths %}
+  {% if not driving.primary_critical_path and not driving.secondary_critical_path and not driving.tertiary_critical_path and not driving.non_critical_paths %}
   <p class="muted">No predecessors to show.</p>
   {% endif %}
 </div>
 
+{# ---- Forward impact -------------------------------------------------- #}
 <div class="panel">
-  <h3 class="panel-title">Forward Impact — Tasks This One Drives</h3>
+  <h3 class="panel-title">Forward Impact — Tasks This Task Drives</h3>
   {% if driving.forward_driven_tasks %}
   <table class="dcma-table">
     <thead>
       <tr>
-        <th>Driven?</th><th>UID</th><th>Name</th>
+        <th>Driven?</th><th>Unique ID</th><th>Name</th>
         <th>Start</th><th>Finish</th>
         <th>Rel Type</th><th>Lag</th>
       </tr>
     </thead>
     <tbody>
       {% for f in driving.forward_driven_tasks %}
-      <tr class="{% if f.is_driven %}driving-row-driving{% endif %}">
+      <tr class="{% if f.is_driven %}driving-row-primary{% endif %}">
         <td>
           {% if f.is_driven %}
             <span class="pill pill-high">Driven</span>
@@ -202,12 +275,164 @@
   {% endif %}
 </div>
 
+{# ---- Filtered DCMA (only metrics that touch the chain) ---------------- #}
+<div class="panel">
+  <h3 class="panel-title">DCMA Findings Touching This Chain</h3>
+  <p class="muted">
+    Only shows DCMA metrics that flag at least one task in this focus
+    chain (plus any metric that the overall schedule already fails).
+  </p>
+  {% if filtered_dcma_metrics %}
+  <table class="dcma-table">
+    <thead>
+      <tr><th>#</th><th>Metric</th><th>Value</th><th>Status</th><th>Tasks In Chain</th></tr>
+    </thead>
+    <tbody>
+      {% for m in filtered_dcma_metrics %}
+      <tr class="{% if m.passed %}dcma-pass{% else %}dcma-fail{% endif %}">
+        <td>{{ m.number }}</td>
+        <td>{{ m.name }}</td>
+        <td>
+          {% if m.unit == "%" %}
+            {{ "%.2f"|format(m.value) }}%
+          {% elif m.unit == "index" %}
+            {{ "%.3f"|format(m.value) }}
+          {% else %}
+            {{ m.value }}
+          {% endif %}
+        </td>
+        <td>
+          <span class="status-badge {% if m.passed %}status-pass{% else %}status-fail{% endif %}">
+            {{ "PASS" if m.passed else "FAIL" }}
+          </span>
+        </td>
+        <td>
+          {% set task_list = [] %}
+          {% for key in ['missing_uids', 'hard_uids', 'high_float_uids', 'high_duration_uids', 'negative_uids', 'missing_resource_uids', 'invalid_uids', 'missed_uids'] %}
+            {% if key in m.details and m.details[key] %}
+              {% for uid in m.details[key][:10] %}
+                {% if task_list.append(uid) %}{% endif %}
+              {% endfor %}
+            {% endif %}
+          {% endfor %}
+          {% if task_list %}
+            {% for uid in task_list %}
+              <div>UID {{ uid }} — {{ task_name_lookup.get(uid, "—") }}</div>
+            {% endfor %}
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No DCMA results available, or no metrics touch this chain.</p>
+  {% endif %}
+</div>
+
+{% if has_comparison %}
+{# ---- Filtered slippage ------------------------------------------------ #}
+<div class="panel">
+  <h3 class="panel-title">Slippage on This Chain</h3>
+  <p class="muted">
+    Every task in the focus chain that slipped between the prior and
+    later schedule updates.
+  </p>
+  {% if filtered_task_deltas %}
+  <table class="dcma-table">
+    <thead>
+      <tr>
+        <th>Unique ID</th><th>Name</th>
+        <th>Start Slip (d)</th><th>Finish Slip (d)</th>
+        <th>Δ Duration (d)</th><th>Δ Float (d)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in filtered_task_deltas %}
+      <tr>
+        <td>{{ d.uid }}</td>
+        <td>{{ d.name or "—" }}</td>
+        <td>{% if d.start_slip_days is not none %}{{ "%+.1f"|format(d.start_slip_days) }}{% else %}—{% endif %}</td>
+        <td>{% if d.finish_slip_days is not none %}{{ "%+.1f"|format(d.finish_slip_days) }}{% else %}—{% endif %}</td>
+        <td>{% if d.duration_change_days is not none %}{{ "%+.1f"|format(d.duration_change_days) }}{% else %}—{% endif %}</td>
+        <td>{% if d.total_slack_delta is not none %}{{ "%+.1f"|format(d.total_slack_delta) }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No slippage on tasks in this chain.</p>
+  {% endif %}
+</div>
+
+{# ---- Filtered manipulation ------------------------------------------- #}
+<div class="panel">
+  <h3 class="panel-title">Manipulation Findings Touching This Chain</h3>
+  {% if filtered_manipulation_findings %}
+  <div class="finding-grid">
+    {% for f in filtered_manipulation_findings %}
+    <div class="finding-card finding-{{ f.confidence|lower }}">
+      <header>
+        <span class="pill pill-{{ f.confidence|lower }}">{{ f.confidence }}</span>
+        <span class="finding-cat">{{ f.category }} Manipulation</span>
+      </header>
+      <h4>{{ f.pattern | replace('_', ' ') | title }}</h4>
+      <p>{{ f.description }}</p>
+      {% if f.task_uid %}
+      <p class="finding-task">
+        Task: <strong>UID {{ f.task_uid }} — {{ f.task_name or "—" }}</strong>
+      </p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No manipulation patterns touching this chain.</p>
+  {% endif %}
+</div>
+
+{# ---- Filtered float changes ------------------------------------------ #}
+<div class="panel">
+  <h3 class="panel-title">Float Changes on This Chain</h3>
+  {% if filtered_float_changes %}
+  <table class="dcma-table">
+    <thead>
+      <tr>
+        <th>Unique ID</th><th>Name</th>
+        <th>Prior Float (d)</th><th>Later Float (d)</th><th>Δ Float (d)</th>
+        <th>Became Critical</th><th>Left Critical</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in filtered_float_changes %}
+      <tr>
+        <td>{{ c.uid }}</td>
+        <td>{{ c.name or "—" }}</td>
+        <td>{% if c.prior_total_float is not none %}{{ "%.1f"|format(c.prior_total_float) }}{% else %}—{% endif %}</td>
+        <td>{% if c.later_total_float is not none %}{{ "%.1f"|format(c.later_total_float) }}{% else %}—{% endif %}</td>
+        <td>{% if c.float_delta is not none %}{{ "%+.1f"|format(c.float_delta) }}{% else %}—{% endif %}</td>
+        <td>{{ "Y" if c.became_critical else "" }}</td>
+        <td>{{ "Y" if c.dropped_off_critical else "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No float changes on tasks in this chain.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---- AI analysis for this chain -------------------------------------- #}
 <div class="panel">
   <h3 class="panel-title">AI Analysis of This Task</h3>
   <p class="muted">
-    Click below to ask the AI backend to summarize this task's driving
-    chain in plain English. The AI only receives the driving-path data
-    above; no other tasks are sent.
+    Click below to ask the AI backend to summarize this task's
+    driving chain and the filtered findings in plain English. The AI
+    only receives the data rendered on this page; no other tasks are
+    sent.
   </p>
   <button class="btn btn-primary" id="task-ai-btn" type="button"
           data-task-uid="{{ driving.target_uid }}">
@@ -215,7 +440,7 @@
     <span class="btn-spinner" aria-hidden="true"></span>
   </button>
   <div id="task-ai-output" class="ai-output" aria-live="polite" style="margin-top: 12px;">
-    <p class="muted">AI narrative will stream here.</p>
+    <p class="muted">The AI narrative will stream here.</p>
   </div>
 </div>
 {% endblock %}

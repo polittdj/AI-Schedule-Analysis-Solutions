@@ -498,7 +498,10 @@ def create_app(config: Optional[Config] = None) -> Flask:
             flash("No schedule data available for task focus.", "error")
             return redirect(url_for("analysis_page"))
 
-        from app.engine.driving_path import analyze_driving_path
+        from app.engine.driving_path import (
+            analyze_driving_path,
+            filter_engine_results_by_uids,
+        )
 
         try:
             dp_result = analyze_driving_path(
@@ -508,15 +511,35 @@ def create_app(config: Optional[Config] = None) -> Flask:
             flash(str(exc), "error")
             return redirect(url_for("analysis_page"))
 
-        # Task name lookup for forward/backward displays.
+        chain_uids = set(dp_result.all_chain_uids)
+        filtered = filter_engine_results_by_uids(results, chain_uids)
+
         task_lookup = {t.uid: t for t in schedule.tasks}
-        dp_dict = _to_json_safe(dp_result)
         return render_template(
             "task_focus.html",
-            driving=dp_dict,
+            driving=_to_json_safe(dp_result),
             target=_to_json_safe(task_lookup.get(target_uid)),
-            task_name_lookup={t.uid: (t.name or f"Task {t.uid}") for t in schedule.tasks},
+            task_name_lookup={
+                t.uid: (t.name or f"Task {t.uid}") for t in schedule.tasks
+            },
             has_comparison=results.get("comparison") is not None,
+            filtered_task_deltas=_to_json_safe(
+                filtered.get("filtered_task_deltas", [])
+            ),
+            filtered_manipulation_findings=_to_json_safe(
+                filtered.get("filtered_manipulation_findings", [])
+            ),
+            filtered_float_changes=_to_json_safe(
+                filtered.get("filtered_float_changes", [])
+            ),
+            filtered_dcma_metrics=_to_json_safe(
+                filtered.get("filtered_dcma_metrics", [])
+            ),
+            all_tasks_for_search=[
+                {"uid": t.uid, "name": t.name or f"Task {t.uid}"}
+                for t in schedule.tasks
+                if not t.summary
+            ],
         )
 
     @app.route("/export/<string:fmt>")
