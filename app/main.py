@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import pickle
 import traceback
 import uuid
@@ -247,6 +248,19 @@ def create_app(config: Optional[Config] = None) -> Flask:
     app.config["MAX_FORM_MEMORY_SIZE"] = cfg.MAX_FILE_SIZE
     app.config["MAX_FORM_PARTS"] = 2000
     app.config["APP_CONFIG"] = cfg
+
+    # Loud, one-shot banner so the operator can see the effective
+    # upload ceiling without opening devtools. Printed to stdout (not
+    # Flask's logger) so it shows up even before the dev server comes
+    # up and regardless of log level.
+    mb = cfg.MAX_FILE_SIZE // (1024 * 1024)
+    env_override = os.environ.get("MAX_FILE_SIZE")
+    source = f"MAX_FILE_SIZE env var={env_override}" if env_override else "default"
+    print(
+        f"[schedule-forensics] Upload cap: MAX_CONTENT_LENGTH="
+        f"{cfg.MAX_FILE_SIZE:,} bytes ({mb} MB)  [{source}]",
+        flush=True,
+    )
 
     cfg.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
