@@ -448,22 +448,34 @@
   <div class="panel">
     <h3 class="panel-title">
       Manipulation Score
-      {% if results.manipulation and results.manipulation.overall_score is not none %}
-        <span class="pill">{% if results.manipulation and results.manipulation.overall_score is not none %}{{ "%.0f"|format(results.manipulation.overall_score) }}/100{% else %}N/A{% endif %}</span>
-      {% else %}
-        <span class="pill">N/A</span>
-      {% endif %}
+      <span class="pill" id="manipulation-gauge-label">
+        {% if results.manipulation and results.manipulation.overall_score is not none %}{{ "%.1f"|format(results.manipulation.overall_score) }}/100{% else %}N/A{% endif %}
+      </span>
     </h3>
     <p class="muted">
-      Manipulation detection compares two schedule updates to find
-      suspicious edits between them. A score of zero means nothing
-      was flagged; higher scores mean more high-confidence findings.
-      Each finding contributes weighted points (HIGH = 10, MEDIUM = 5,
-      LOW = 2) and the total is capped at 100.
+      This is a <strong>local composite indicator</strong>, not an Acumen Fuse
+      metric. Fuse reports Schedule Health (DCMA pass rate) and a Forensic
+      Change Report separately — both are available elsewhere on this page
+      under the DCMA tab. The composite below is a single 0–100 number
+      derived from Fuse-category findings for quick triage:
+      weighted-sum-of-findings &divide; (detail-tasks &times; 3),
+      deduplicated by task UID so a single task can't flood the score.
+      <strong>Comparative analysis is required</strong> to interpret the
+      composite; in single-file mode it shows "N/A" while the static
+      findings still populate below.
     </p>
     <div class="gauge-wrap">
       <canvas id="manipulation-gauge" width="200" height="120"></canvas>
-      {% if results.manipulation and results.manipulation.overall_score is not none %}
+      <p id="manipulation-gauge-subtitle" class="muted gauge-subtitle">
+        {% if results.manipulation and results.manipulation.overall_score is not none %}
+          {{ results.manipulation.change_count }} findings across {{ results.manipulation.detail_task_count }} tasks ({{ results.manipulation.deduplicated_count }} deduplicated, scored {{ "%.1f"|format(results.manipulation.overall_score) }}/100)
+        {% elif results.manipulation %}
+          N/A — Comparative analysis required. {{ results.manipulation.change_count }} single-file findings shown below.
+        {% else %}
+          Manipulation detection did not run.
+        {% endif %}
+      </p>
+      {% if results.manipulation %}
       <div class="gauge-legend">
         <span class="pill pill-high">HIGH: {{ results.manipulation.confidence_summary.HIGH or 0 }}</span>
         <span class="pill pill-medium">MEDIUM: {{ results.manipulation.confidence_summary.MEDIUM or 0 }}</span>
@@ -524,7 +536,7 @@
               <dt>Later lag</dt>
               <dd>{{ "%+.1f"|format(f.evidence.later_lag_days) }} days</dd>
             {% endif %}
-            {% if f.evidence.percent_complete is defined %}
+            {% if f.pattern == 'percent_vs_remaining_mismatch' and f.evidence.duration_days is defined %}
               <dt>% complete</dt>
               <dd>{{ "%.0f"|format(f.evidence.percent_complete) }}%</dd>
               <dt>Duration</dt>
@@ -533,14 +545,41 @@
               <dd>{{ "%.1f"|format(f.evidence.expected_remaining_days) }} d</dd>
               <dt>Reported remaining</dt>
               <dd>{{ "%.1f"|format(f.evidence.remaining_duration_days) }} d</dd>
+            {% elif f.evidence.percent_complete is defined and f.evidence.duration_days is not defined %}
+              <dt>% complete</dt>
+              <dd>{{ "%.0f"|format(f.evidence.percent_complete) }}%</dd>
+            {% endif %}
+            {% if f.evidence.prior_percent_complete is defined %}
+              <dt>Prior % complete</dt>
+              <dd>{{ "%.0f"|format(f.evidence.prior_percent_complete) }}%</dd>
+              <dt>Later % complete</dt>
+              <dd>{{ "%.0f"|format(f.evidence.later_percent_complete) }}%</dd>
+              <dt>Reversal</dt>
+              <dd>{{ "%.0f"|format(f.evidence.reversal_points) }} points</dd>
             {% endif %}
             {% if f.evidence.total_slack_delta_days is defined %}
               <dt>Total float change</dt>
               <dd>{{ "%+.1f"|format(f.evidence.total_slack_delta_days) }} days</dd>
             {% endif %}
+            {% if f.evidence.total_slack_days is defined %}
+              <dt>Total float</dt>
+              <dd>{{ "%+.1f"|format(f.evidence.total_slack_days) }} days</dd>
+            {% endif %}
+            {% if f.evidence.constraint_type is defined and f.pattern == 'single_file_hard_constraint' %}
+              <dt>Constraint type</dt>
+              <dd>{{ f.evidence.constraint_type }}</dd>
+            {% endif %}
+            {% if f.evidence.missing_fields is defined %}
+              <dt>Missing fields</dt>
+              <dd>{{ f.evidence.missing_fields }}</dd>
+            {% endif %}
             {% if f.evidence.incomplete_predecessor_uids is defined %}
               <dt>Incomplete predecessor UIDs</dt>
               <dd>{{ f.evidence.incomplete_predecessor_uids }}</dd>
+            {% endif %}
+            {% if f.evidence.change is defined %}
+              <dt>Scope change</dt>
+              <dd>{{ f.evidence.change }}</dd>
             {% endif %}
           </dl>
         </div>

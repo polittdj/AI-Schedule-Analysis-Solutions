@@ -4,24 +4,42 @@ Takes the output of `compare_schedules` (plus the two original
 `ScheduleData` objects) and surfaces forensic red flags — patterns
 commonly associated with intentional or inadvertent schedule
 manipulation. Each pattern yields a `ManipulationFinding` with a
-confidence level (HIGH/MEDIUM/LOW) and a severity score; these
-roll up into a single 0–100 `overall_score` that the AI narrative
-layer can cite directly.
+confidence level (HIGH/MEDIUM/LOW); one finding per task is counted
+toward a normalized composite score while every finding is still
+displayed for analyst review.
 
-Scoring
--------
-Confidence weights (per finding):
-    HIGH    = 10
-    MEDIUM  =  5
-    LOW     =  2
+Fuse alignment
+--------------
+Manipulation detection here mirrors the categories Acumen Fuse's
+Forensic module reports: logic changes, duration changes, date
+changes, progress reversals, out-of-sequence progress, constraint
+changes, and scope changes (tasks added/deleted). Fuse does **not**
+publish a single 0–100 manipulation score, so the one we compute
+below is labeled "local composite indicator" in the UI. Schedule
+Health (DCMA pass rate) comes from `app.engine.dcma` and is shown
+alongside the composite as a Fuse-standard readout.
 
-The overall score is the sum of all finding weights, capped at 100.
-A clean schedule scores 0; a score above 40 warrants an in-depth
-human review.
+Scoring (local composite, not a Fuse metric)
+--------------------------------------------
+* Each finding carries a weight: HIGH = 3, MEDIUM = 2, LOW = 1.
+* Findings are deduplicated by ``task_uid`` — only the single
+  highest-weight finding per UID contributes to the score. The rest
+  are shown in the UI with ``score_contribution = False``.
+* Project-wide findings (no UID) always contribute to the score.
+* ``max_theoretical_score = detail_task_count * 3`` — one HIGH
+  finding per detail task is the worst realistic case.
+* ``overall_score = round(weighted / max_theoretical * 100, 1)``
+  floored at 0 and capped at 100.
+* Single-file mode (no prior snapshot) still runs the static checks
+  (hard constraints, negative float, 100%-complete-no-actuals) but
+  sets ``overall_score = None`` — the normalized composite is a
+  differential metric and requires a prior snapshot to interpret.
+  Fuse Schedule Health still works in single-file mode, and the
+  UI continues to display the change count and finding table.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,17 +55,37 @@ CONFIDENCE_HIGH = "HIGH"
 CONFIDENCE_MEDIUM = "MEDIUM"
 CONFIDENCE_LOW = "LOW"
 
+# Normalized scoring weights. One HIGH finding per detail task is the
+# worst realistic case, so HIGH = 3 makes max_theoretical_score map
+# cleanly to detail_task_count * 3.
 CONFIDENCE_WEIGHTS = {
-    CONFIDENCE_HIGH: 10.0,
-    CONFIDENCE_MEDIUM: 5.0,
-    CONFIDENCE_LOW: 2.0,
+    CONFIDENCE_HIGH: 3.0,
+    CONFIDENCE_MEDIUM: 2.0,
+    CONFIDENCE_LOW: 1.0,
 }
 
-# Significant-change thresholds
+# Significant-change thresholds (comparative checks)
 DURATION_REDUCTION_SIGNIFICANT = 0.25  # 25 %
 DURATION_REDUCTION_EGREGIOUS = 0.50   # 50 %
 FLOAT_DELTA_SIGNIFICANT = 5.0  # working days — ignore normal cascade jitter
 PROGRESS_MISMATCH_TOLERANCE = 0.15  # 15 percentage points — MSP auto-calc noise
+PROGRESS_REVERSAL_TOLERANCE = 1.0  # percent — MSP sometimes nudges by <1%
+
+# Hard constraint types Fuse flags as non-ASAP/ALAP (single-file static check).
+HARD_CONSTRAINT_TYPES = {
+    "MUST_START_ON",
+    "MUST_FINISH_ON",
+    "START_NO_EARLIER_THAN",
+    "START_NO_LATER_THAN",
+    "FINISH_NO_EARLIER_THAN",
+    "FINISH_NO_LATER_THAN",
+    "MSO",
+    "MFO",
+    "SNET",
+    "SNLT",
+    "FNET",
+    "FNLT",
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -60,7 +98,7 @@ class ManipulationFinding(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    category: str  # "DURATION" | "LOGIC" | "BASELINE" | "FLOAT" | "PROGRESS"
+    category: str  # "DURATION" | "LOGIC" | "BASELINE" | "FLOAT" | "PROGRESS" | "SCOPE"
     pattern: str  # machine-readable key, e.g. "critical_duration_reduction"
     confidence: str  # HIGH | MEDIUM | LOW
     severity_score: float
@@ -68,16 +106,21 @@ class ManipulationFinding(BaseModel):
     task_name: Optional[str] = None
     description: str
     evidence: Dict[str, float | int | str | bool] = Field(default_factory=dict)
+    # True if this finding was counted toward ``overall_score``. When a
+    # higher-weight finding for the same UID wins the dedup, losing
+    # findings stay in the list (for audit) with score_contribution = False.
+    # Project-wide findings (no task_uid) always contribute.
+    score_contribution: bool = True
 
 
 class ManipulationResults(BaseModel):
     """Output of `detect_manipulations`.
 
-    ``overall_score`` is ``None`` when manipulation detection cannot
-    run — the only current reason is "single-file analysis with no
-    prior schedule to compare against." Callers should render "N/A"
-    in that case, not zero, because zero would imply "no manipulation
-    detected" when in fact *no check was performed*.
+    ``overall_score`` is ``None`` when the normalized composite cannot
+    be computed — either the schedule has no detail tasks (denominator
+    is zero) or single-file mode offers no comparative basis. Callers
+    should render "N/A — Comparative analysis required" in the
+    single-file case and continue to show the findings table.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -87,6 +130,15 @@ class ManipulationResults(BaseModel):
     confidence_summary: Dict[str, int] = Field(default_factory=dict)
     findings_by_category: Dict[str, int] = Field(default_factory=dict)
     applicable: bool = True  # False when run on single-file mode
+
+    # Fuse-aligned readout fields (displayed in the UI alongside DCMA
+    # Schedule Health, which comes from app.engine.dcma).
+    change_count: int = 0  # total number of findings BEFORE dedup
+    deduplicated_count: int = 0  # findings that contributed to overall_score
+    detail_task_count: int = 0  # denominator basis for normalization
+    max_theoretical_score: float = 0.0  # detail_task_count * HIGH weight
+    weighted_score: float = 0.0  # sum of contributing weights
+    single_file_mode: bool = False  # True when no prior was supplied
 
 
 # --------------------------------------------------------------------------- #
@@ -323,7 +375,20 @@ def _check_lag_changes(
 def _check_out_of_sequence_progress(
     later: ScheduleData,
 ) -> List[ManipulationFinding]:
-    """Any task with % complete > 0 whose FS predecessors are not done."""
+    """Any task with % complete > 0 whose FS predecessors are not done.
+
+    Fuse treats OOS progress as a binary flag without a "chain depth"
+    concept. Severity is modulated only by whether the task is on the
+    critical path:
+
+        * critical-path OOS → MEDIUM (forensically significant)
+        * non-critical OOS  → LOW    (normal cascade churn in most
+                                      schedules; still reported)
+
+    A previous version classified every OOS hit as HIGH, which was
+    the root cause of the "manipulation score = 100/100" bug on large
+    schedules — any in-progress cascade would flood the score.
+    """
     findings: List[ManipulationFinding] = []
     task_by_uid = _task_map(later)
 
@@ -360,26 +425,32 @@ def _check_out_of_sequence_progress(
             pred_pct = pred.percent_complete or 0.0
             if pred_pct < 100.0:
                 violations.append(pred.uid)
-        if violations:
-            findings.append(
-                _finding(
-                    category="LOGIC",
-                    pattern="out_of_sequence_progress",
-                    confidence=CONFIDENCE_HIGH,
-                    description=(
-                        f"Task shows {pct:.0f}% progress but {len(violations)} "
-                        "FS predecessor(s) are still incomplete."
+        if not violations:
+            continue
+        on_critical_path = bool(task.critical) or (
+            task.total_slack is not None and task.total_slack <= 0.0
+        )
+        confidence = CONFIDENCE_MEDIUM if on_critical_path else CONFIDENCE_LOW
+        findings.append(
+            _finding(
+                category="LOGIC",
+                pattern="out_of_sequence_progress",
+                confidence=confidence,
+                description=(
+                    f"Task shows {pct:.0f}% progress but {len(violations)} "
+                    "FS predecessor(s) are still incomplete."
+                ),
+                task_uid=task.uid,
+                task_name=task.name,
+                evidence={
+                    "percent_complete": pct,
+                    "incomplete_predecessor_uids": ",".join(
+                        str(u) for u in violations
                     ),
-                    task_uid=task.uid,
-                    task_name=task.name,
-                    evidence={
-                        "percent_complete": pct,
-                        "incomplete_predecessor_uids": ",".join(
-                            str(u) for u in violations
-                        ),
-                    },
-                )
+                    "on_critical_path": on_critical_path,
+                },
             )
+        )
     return findings
 
 
@@ -682,6 +753,298 @@ def _check_status_date_misalignment(later: ScheduleData) -> List[ManipulationFin
 
 
 # --------------------------------------------------------------------------- #
+# Scope checks (comparative) — Fuse forensic category
+# --------------------------------------------------------------------------- #
+
+
+def _check_progress_reversals(
+    prior_tasks: Dict[int, TaskData],
+    later_tasks: Dict[int, TaskData],
+) -> List[ManipulationFinding]:
+    """Flag tasks whose percent_complete went down between updates.
+
+    Fuse reports progress reversals as a HIGH-severity forensic
+    finding: a task legitimately cannot "uncomplete" work unless the
+    prior update over-reported progress, actuals were reversed, or
+    the baseline was re-pointed. A small (<1 %) tolerance absorbs
+    float-formatting noise.
+    """
+    findings: List[ManipulationFinding] = []
+    for uid, later_task in later_tasks.items():
+        prior_task = prior_tasks.get(uid)
+        if prior_task is None:
+            continue
+        prior_pct = prior_task.percent_complete
+        later_pct = later_task.percent_complete
+        if prior_pct is None or later_pct is None:
+            continue
+        delta = later_pct - prior_pct
+        if delta < -PROGRESS_REVERSAL_TOLERANCE:
+            findings.append(
+                _finding(
+                    category="PROGRESS",
+                    pattern="progress_reversal",
+                    confidence=CONFIDENCE_HIGH,
+                    description=(
+                        f"Task percent-complete went from {prior_pct:.0f}% "
+                        f"down to {later_pct:.0f}% — a reversal of "
+                        f"{abs(delta):.0f} points between updates."
+                    ),
+                    task_uid=uid,
+                    task_name=later_task.name,
+                    evidence={
+                        "prior_percent_complete": round(prior_pct, 2),
+                        "later_percent_complete": round(later_pct, 2),
+                        "reversal_points": round(abs(delta), 2),
+                    },
+                )
+            )
+    return findings
+
+
+def _check_added_deleted_tasks(
+    comparison: ComparisonResults,
+) -> List[ManipulationFinding]:
+    """Emit LOW-severity informational findings for scope churn.
+
+    Fuse's forensic report always lists tasks added or deleted
+    between updates. They aren't automatically indicators of
+    manipulation — scope changes are often legitimate — but analysts
+    want to see them in the same place as everything else that moved.
+    """
+    findings: List[ManipulationFinding] = []
+    for uid in getattr(comparison, "added_task_uids", []) or []:
+        findings.append(
+            _finding(
+                category="SCOPE",
+                pattern="task_added",
+                confidence=CONFIDENCE_LOW,
+                description=(
+                    "Task was added to the later schedule and did not "
+                    "exist in the prior snapshot."
+                ),
+                task_uid=uid,
+                evidence={"change": "added"},
+            )
+        )
+    for uid in getattr(comparison, "deleted_task_uids", []) or []:
+        findings.append(
+            _finding(
+                category="SCOPE",
+                pattern="task_deleted",
+                confidence=CONFIDENCE_LOW,
+                description=(
+                    "Task existed in the prior schedule but is absent "
+                    "from the later snapshot."
+                ),
+                task_uid=uid,
+                evidence={"change": "deleted"},
+            )
+        )
+    return findings
+
+
+# --------------------------------------------------------------------------- #
+# Single-file static checks — run even without a prior snapshot
+# --------------------------------------------------------------------------- #
+
+
+def _is_detail_task(task: TaskData) -> bool:
+    """A detail task is non-summary. Milestones count as detail."""
+    return not task.summary
+
+
+def _check_single_file_hard_constraints(
+    later: ScheduleData,
+) -> List[ManipulationFinding]:
+    """Fuse DCMA S5 intent: hard constraints on non-milestone detail tasks.
+
+    Hard constraints (must-start/must-finish/start-no-later-than, etc.)
+    override CPM float logic and are a classic manipulation vector —
+    you can zero out float on a slipping path just by pinning the
+    downstream task with a hard date. Reported as MEDIUM so a single
+    constraint doesn't dominate the composite score.
+    """
+    findings: List[ManipulationFinding] = []
+    for task in later.tasks:
+        if not _is_detail_task(task):
+            continue
+        if task.milestone:
+            continue
+        ct = (task.constraint_type or "").upper().strip()
+        if not ct:
+            continue
+        if ct not in HARD_CONSTRAINT_TYPES:
+            continue
+        findings.append(
+            _finding(
+                category="FLOAT",
+                pattern="single_file_hard_constraint",
+                confidence=CONFIDENCE_MEDIUM,
+                description=(
+                    f"Task carries a hard constraint ({ct}) which overrides "
+                    "float calculations."
+                ),
+                task_uid=task.uid,
+                task_name=task.name,
+                evidence={"constraint_type": ct},
+            )
+        )
+    return findings
+
+
+def _check_single_file_negative_float(
+    later: ScheduleData,
+) -> List[ManipulationFinding]:
+    """Fuse DCMA S7 intent: tasks with negative total float.
+
+    Negative float means the task is already forecasted to miss its
+    driving constraint — a strong signal that either the baseline is
+    out of date or a hard constraint is masking a real slip. HIGH
+    severity because it's a data-integrity signal, not just style.
+    """
+    findings: List[ManipulationFinding] = []
+    for task in later.tasks:
+        if not _is_detail_task(task):
+            continue
+        tf = task.total_slack
+        if tf is None:
+            continue
+        if tf < -0.01:  # small tolerance for floating-point drift
+            findings.append(
+                _finding(
+                    category="FLOAT",
+                    pattern="single_file_negative_float",
+                    confidence=CONFIDENCE_HIGH,
+                    description=(
+                        f"Task has negative total float ({tf:.1f}d) — the "
+                        "schedule is forecasting a miss against its driving "
+                        "constraint."
+                    ),
+                    task_uid=task.uid,
+                    task_name=task.name,
+                    evidence={"total_slack_days": round(tf, 2)},
+                )
+            )
+    return findings
+
+
+def _check_single_file_completed_without_actuals(
+    later: ScheduleData,
+) -> List[ManipulationFinding]:
+    """100% complete but no actual_start or actual_finish recorded.
+
+    Fuse flags this as a data-integrity / progress-inflation red
+    flag: a task claiming full completion should carry actual dates,
+    otherwise the update is just statusing on paper.
+    """
+    findings: List[ManipulationFinding] = []
+    for task in later.tasks:
+        if not _is_detail_task(task):
+            continue
+        pct = task.percent_complete or 0.0
+        if pct < 100.0:
+            continue
+        if task.actual_start is not None and task.actual_finish is not None:
+            continue
+        missing: List[str] = []
+        if task.actual_start is None:
+            missing.append("actual_start")
+        if task.actual_finish is None:
+            missing.append("actual_finish")
+        findings.append(
+            _finding(
+                category="PROGRESS",
+                pattern="single_file_complete_without_actuals",
+                confidence=CONFIDENCE_HIGH,
+                description=(
+                    "Task reports 100% complete but is missing "
+                    f"{', '.join(missing)} — no contemporaneous record of "
+                    "the work actually finishing."
+                ),
+                task_uid=task.uid,
+                task_name=task.name,
+                evidence={
+                    "percent_complete": pct,
+                    "missing_fields": ",".join(missing),
+                },
+            )
+        )
+    return findings
+
+
+# --------------------------------------------------------------------------- #
+# Deduplication & scoring
+# --------------------------------------------------------------------------- #
+
+
+def _dedupe_for_scoring(findings: List[ManipulationFinding]) -> None:
+    """Mark the highest-weight finding per task_uid as the scorer.
+
+    Mutates ``findings`` in place: sets ``score_contribution`` to
+    True on exactly one finding per UID (the highest-weight one;
+    ties resolved by order of appearance) and False on the rest.
+    Findings with no ``task_uid`` (project-wide findings) are always
+    scoring contributors — they can never collide with UID-keyed
+    findings.
+    """
+    seen_by_uid: Dict[int, ManipulationFinding] = {}
+    for finding in findings:
+        if finding.task_uid is None:
+            finding.score_contribution = True
+            continue
+        uid = finding.task_uid
+        existing = seen_by_uid.get(uid)
+        if existing is None:
+            finding.score_contribution = True
+            seen_by_uid[uid] = finding
+            continue
+        # A previous finding for this UID already claimed the slot.
+        # Compare weights and keep the heavier one.
+        if CONFIDENCE_WEIGHTS[finding.confidence] > CONFIDENCE_WEIGHTS[existing.confidence]:
+            existing.score_contribution = False
+            finding.score_contribution = True
+            seen_by_uid[uid] = finding
+        else:
+            finding.score_contribution = False
+
+
+def _normalize_score(
+    findings: List[ManipulationFinding],
+    detail_task_count: int,
+) -> Dict[str, Any]:
+    """Compute the normalized composite from deduplicated findings.
+
+    Returns a dict with ``overall_score`` (float or None),
+    ``weighted_score`` (float), ``max_theoretical_score`` (float),
+    and ``deduplicated_count`` (int).
+    """
+    max_theoretical = float(detail_task_count) * CONFIDENCE_WEIGHTS[CONFIDENCE_HIGH]
+    if detail_task_count == 0 or max_theoretical <= 0:
+        return {
+            "overall_score": None,
+            "weighted_score": 0.0,
+            "max_theoretical_score": 0.0,
+            "deduplicated_count": 0,
+        }
+    weighted = 0.0
+    dedup_count = 0
+    for f in findings:
+        if not f.score_contribution:
+            continue
+        weighted += CONFIDENCE_WEIGHTS.get(f.confidence, 0.0)
+        dedup_count += 1
+    raw = (weighted / max_theoretical) * 100.0
+    clipped = max(0.0, min(100.0, raw))
+    return {
+        "overall_score": round(clipped, 1),
+        "weighted_score": round(weighted, 2),
+        "max_theoretical_score": round(max_theoretical, 2),
+        "deduplicated_count": dedup_count,
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Public API
 # --------------------------------------------------------------------------- #
 
@@ -693,67 +1056,66 @@ def detect_manipulations(
 ) -> ManipulationResults:
     """Run every manipulation check and return a scored result.
 
-    When ``comparison`` or ``prior`` is None, returns a
-    "not applicable" result with ``overall_score=None`` and no
-    findings. This is the correct behavior for single-file mode:
-    manipulation is a *differential* measurement, so with only one
-    snapshot there is literally nothing to detect.
+    * When ``comparison`` and ``prior`` are both supplied, every
+      comparative check runs AND the single-file static checks run.
+      The normalized composite score is computed.
+    * When ``comparison`` or ``prior`` is None (single-file mode),
+      only the single-file static checks run. Findings populate but
+      ``overall_score`` is set to None — the composite is a
+      differential metric and cannot be interpreted without a prior
+      snapshot. The UI renders "N/A — Comparative analysis required".
     """
-    if comparison is None or prior is None:
-        return ManipulationResults(
-            findings=[],
-            overall_score=None,
-            confidence_summary={
-                CONFIDENCE_HIGH: 0,
-                CONFIDENCE_MEDIUM: 0,
-                CONFIDENCE_LOW: 0,
-            },
-            findings_by_category={},
-            applicable=False,
-        )
-
-    prior_tasks = _task_map(prior)
     later_tasks = _task_map(later)
+    detail_task_count = sum(1 for t in later.tasks if _is_detail_task(t))
+    single_file_mode = comparison is None or prior is None
 
     findings: List[ManipulationFinding] = []
 
-    # Duration
-    findings.extend(_check_duration_reductions(comparison, prior_tasks, later_tasks))
-    findings.extend(_check_selective_compression(comparison, prior_tasks, later_tasks))
+    if not single_file_mode:
+        prior_tasks = _task_map(prior)  # type: ignore[arg-type]
 
-    # Logic
-    findings.extend(_check_predecessors_removed(comparison, later_tasks))
-    findings.extend(_check_relationship_type_changes(comparison, later_tasks))
-    findings.extend(_check_lag_changes(comparison, later_tasks))
+        # Duration
+        findings.extend(
+            _check_duration_reductions(comparison, prior_tasks, later_tasks)  # type: ignore[arg-type]
+        )
+        findings.extend(
+            _check_selective_compression(comparison, prior_tasks, later_tasks)  # type: ignore[arg-type]
+        )
+
+        # Logic
+        findings.extend(_check_predecessors_removed(comparison, later_tasks))  # type: ignore[arg-type]
+        findings.extend(_check_relationship_type_changes(comparison, later_tasks))  # type: ignore[arg-type]
+        findings.extend(_check_lag_changes(comparison, later_tasks))  # type: ignore[arg-type]
+
+        # Baseline
+        findings.extend(_check_baseline_changes(comparison, later_tasks))  # type: ignore[arg-type]
+        findings.extend(_check_selective_baseline_changes(comparison))  # type: ignore[arg-type]
+        findings.extend(_check_retroactive_baseline(comparison, later_tasks))  # type: ignore[arg-type]
+
+        # Float
+        findings.extend(_check_added_constraints(prior_tasks, later_tasks))
+        findings.extend(_check_unexplained_float_changes(comparison, later_tasks))  # type: ignore[arg-type]
+
+        # Progress (comparative)
+        findings.extend(_check_progress_vs_remaining(later))
+        findings.extend(_check_actual_start_zero_progress(later))
+        findings.extend(_check_status_date_misalignment(later))
+        findings.extend(_check_progress_reversals(prior_tasks, later_tasks))
+
+        # Scope (comparative)
+        findings.extend(_check_added_deleted_tasks(comparison))  # type: ignore[arg-type]
+
+    # Checks that fire in BOTH modes — Fuse forensic categories that
+    # don't need a prior snapshot.
     findings.extend(_check_out_of_sequence_progress(later))
+    findings.extend(_check_single_file_hard_constraints(later))
+    findings.extend(_check_single_file_negative_float(later))
+    findings.extend(_check_single_file_completed_without_actuals(later))
 
-    # Baseline
-    findings.extend(_check_baseline_changes(comparison, later_tasks))
-    findings.extend(_check_selective_baseline_changes(comparison))
-    findings.extend(_check_retroactive_baseline(comparison, later_tasks))
-
-    # Float
-    findings.extend(_check_added_constraints(prior_tasks, later_tasks))
-    findings.extend(_check_unexplained_float_changes(comparison, later_tasks))
-
-    # Progress
-    findings.extend(_check_progress_vs_remaining(later))
-    findings.extend(_check_actual_start_zero_progress(later))
-    findings.extend(_check_status_date_misalignment(later))
-
-    total_points = 0
-    for finding in findings:
-        if finding.confidence == "HIGH":
-            total_points += 10
-        elif finding.confidence == "MEDIUM":
-            total_points += 5
-        elif finding.confidence == "LOW":
-            total_points += 2
-    overall_score = min(100, total_points)
-    print(
-        f"MANIPULATION DEBUG: {len(findings)} findings, "
-        f"total_points={total_points}, score={overall_score}"
-    )
+    # Dedupe by UID so a single task can't trigger HIGH + MEDIUM + LOW
+    # and triple-count. All findings stay in the list for audit; only
+    # ``score_contribution`` flags get flipped.
+    _dedupe_for_scoring(findings)
 
     confidence_summary: Dict[str, int] = {
         CONFIDENCE_HIGH: 0,
@@ -762,12 +1124,26 @@ def detect_manipulations(
     }
     category_summary: Dict[str, int] = {}
     for f in findings:
-        confidence_summary[f.confidence] += 1
+        confidence_summary[f.confidence] = confidence_summary.get(f.confidence, 0) + 1
         category_summary[f.category] = category_summary.get(f.category, 0) + 1
+
+    score_block = _normalize_score(findings, detail_task_count)
+    overall_score: Optional[float] = score_block["overall_score"]
+
+    # Single-file mode: findings populate but the composite is N/A.
+    if single_file_mode:
+        overall_score = None
 
     return ManipulationResults(
         findings=findings,
-        overall_score=round(overall_score, 2),
+        overall_score=overall_score,
         confidence_summary=confidence_summary,
         findings_by_category=category_summary,
+        applicable=not single_file_mode,
+        change_count=len(findings),
+        deduplicated_count=int(score_block["deduplicated_count"]),
+        detail_task_count=detail_task_count,
+        max_theoretical_score=float(score_block["max_theoretical_score"]),
+        weighted_score=float(score_block["weighted_score"]),
+        single_file_mode=single_file_mode,
     )

@@ -676,10 +676,51 @@
   function initManipulationGauge(results) {
     const canvas = document.getElementById("manipulation-gauge");
     if (!canvas || !hasChart()) return;
-    const score = Number(results.manipulation.overall_score || 0);
+
+    const m = results.manipulation || {};
+    const rawScore = m.overall_score;
+    const isNull = rawScore === null || rawScore === undefined;
+    const score = isNull ? 0 : Number(rawScore);
     const remainder = Math.max(0, 100 - score);
-    const color =
-      score >= 40 ? "#ff5c6c" : score >= 20 ? "#f5b83d" : "#3dd68c";
+
+    // Fuse-inspired 4-band color scale.
+    // Null / single-file mode -> gray "N/A" gauge.
+    let color;
+    if (isNull) {
+      color = "rgba(255, 255, 255, 0.18)";
+    } else if (score <= 25) {
+      color = "#3dd68c"; // green
+    } else if (score <= 50) {
+      color = "#f5b83d"; // yellow
+    } else if (score <= 75) {
+      color = "#ff944d"; // orange
+    } else {
+      color = "#ff5c6c"; // red
+    }
+
+    // Subtitle: "X findings across Y tasks (Z deduplicated)"
+    const subtitleEl = document.getElementById("manipulation-gauge-subtitle");
+    if (subtitleEl) {
+      if (isNull) {
+        subtitleEl.textContent =
+          "N/A — Comparative analysis required. " +
+          (m.change_count || 0) + " single-file findings shown below.";
+      } else {
+        const findings = m.change_count || 0;
+        const tasks = m.detail_task_count || 0;
+        const dedup = m.deduplicated_count || 0;
+        subtitleEl.textContent =
+          findings + " findings across " + tasks + " tasks (" +
+          dedup + " deduplicated, scored " + score.toFixed(1) + "/100)";
+      }
+    }
+
+    // Replace the numeric label next to the gauge when the score is null.
+    const labelEl = document.getElementById("manipulation-gauge-label");
+    if (labelEl) {
+      labelEl.textContent = isNull ? "N/A" : (score.toFixed(1) + "/100");
+      labelEl.classList.toggle("gauge-null", isNull);
+    }
 
     new Chart(canvas.getContext("2d"), {
       type: "doughnut",
@@ -687,7 +728,7 @@
         labels: ["Score", "Remaining"],
         datasets: [
           {
-            data: [score, remainder],
+            data: isNull ? [1, 0] : [score, remainder],
             backgroundColor: [color, "rgba(255,255,255,0.06)"],
             borderWidth: 0,
           },

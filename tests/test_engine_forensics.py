@@ -28,6 +28,7 @@ from app.engine.earned_value import (
 from app.engine.float_analysis import analyze_float
 from app.engine.manipulation import (
     CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
     CONFIDENCE_MEDIUM,
     detect_manipulations,
 )
@@ -393,8 +394,10 @@ class TestManipulationLogic:
         assert len(lag_findings) == 1
         assert lag_findings[0].confidence == CONFIDENCE_MEDIUM
 
-    def test_out_of_sequence_progress_flagged(self):
+    def test_out_of_sequence_progress_non_critical_is_low(self):
         # Task 1 at 0%, Task 2 (FS pred=1) at 50% → out of sequence.
+        # Neither task is on the critical path, so Fuse would flag this
+        # as a routine progress issue (LOW), not a manipulation signal.
         tasks = [
             make_task(1, name="Excavation", percent_complete=0.0),
             make_task(
@@ -415,8 +418,33 @@ class TestManipulationLogic:
         )
         oos = [f for f in result.findings if f.pattern == "out_of_sequence_progress"]
         assert len(oos) == 1
-        assert oos[0].confidence == CONFIDENCE_HIGH
+        assert oos[0].confidence == CONFIDENCE_LOW
         assert oos[0].task_uid == 2
+
+    def test_out_of_sequence_progress_critical_is_medium(self):
+        # Same setup but task 2 is critical — bumps severity to MEDIUM.
+        tasks = [
+            make_task(1, name="Excavation", percent_complete=0.0),
+            make_task(
+                2,
+                name="Concrete",
+                percent_complete=50.0,
+                predecessors=[1],
+                critical=True,
+                total_slack=0.0,
+            ),
+        ]
+        rels = [Relationship(predecessor_uid=1, successor_uid=2, type="FS")]
+        later = ScheduleData(
+            project_info=ProjectInfo(), tasks=tasks, relationships=rels
+        )
+        prior = later.model_copy(deep=True)
+        result = detect_manipulations(
+            compare_schedules(prior, later), prior, later
+        )
+        oos = [f for f in result.findings if f.pattern == "out_of_sequence_progress"]
+        assert len(oos) == 1
+        assert oos[0].confidence == CONFIDENCE_MEDIUM
 
 
 class TestManipulationOverallScore:
@@ -435,6 +463,194 @@ class TestManipulationOverallScore:
         )
         assert result.overall_score == pytest.approx(0.0)
         assert result.findings == []
+        assert result.change_count == 0
+        assert result.deduplicated_count == 0
+        assert result.detail_task_count == 2
+        assert result.max_theoretical_score == pytest.approx(6.0)
+
+    def test_normalized_score_capped_at_100(self):
+        # A tiny schedule (2 detail tasks) with a single HIGH baseline
+        # change would raw-normalize to ~50%. Stack enough HIGH findings
+        # and the result must still clamp to 100 — never exceed.
+        prior = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[
+                make_task(1, baseline_finish=datetime(2026, 1, 10)),
+                make_task(2, baseline_finish=datetime(2026, 2, 10)),
+            ],
+        )
+        later = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[
+                make_task(1, baseline_finish=datetime(2027, 1, 10), total_slack=-5.0),
+                make_task(2, baseline_finish=datetime(2027, 2, 10), total_slack=-5.0),
+            ],
+        )
+        result = detect_manipulations(
+            compare_schedules(prior, later), prior, later
+        )
+        assert result.overall_score is not None
+        assert 0.0 <= result.overall_score <= 100.0
+
+    def test_dedup_prevents_triple_counting_one_task(self):
+        # A single task with a baseline change (HIGH), a constraint
+        # addition (MEDIUM), and an unexplained float change (HIGH)
+        # must dedupe down to ONE scoring contribution — the highest
+        # weight. All findings still appear in the list.
+        prior = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[
+                make_task(
+                    1,
+                    duration=10.0,
+                    baseline_finish=datetime(2026, 3, 1),
+                    total_slack=5.0,
+                    constraint_type=None,
+                ),
+                make_task(2, duration=5.0),
+            ],
+        )
+        later = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[
+                make_task(
+                    1,
+                    duration=10.0,
+                    baseline_finish=datetime(2026, 6, 1),
+                    total_slack=-10.0,
+                    constraint_type="MUST_FINISH_ON",
+                ),
+                make_task(2, duration=5.0),
+            ],
+        )
+        result = detect_manipulations(
+            compare_schedules(prior, later), prior, later
+        )
+        task1_findings = [f for f in result.findings if f.task_uid == 1]
+        assert len(task1_findings) >= 2  # multiple distinct findings exist
+        contributing = [f for f in task1_findings if f.score_contribution]
+        assert len(contributing) == 1
+        # The winning finding must be the highest-weight one.
+        assert contributing[0].confidence in (CONFIDENCE_HIGH, CONFIDENCE_MEDIUM)
+
+    def test_project_wide_findings_always_score(self):
+        # Selective baseline correction and selective compression
+        # don't carry a task_uid. They must always contribute even if
+        # a UID-scoped finding coincidentally wins its slot.
+        prior = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[
+                make_task(1, duration=10.0, critical=True),
+                make_task(2, duration=10.0, critical=True),
+            ],
+        )
+        later = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[
+                make_task(1, duration=4.0, critical=True),
+                make_task(2, duration=4.0, critical=True),
+            ],
+        )
+        result = detect_manipulations(
+            compare_schedules(prior, later), prior, later
+        )
+        project_wide = [f for f in result.findings if f.task_uid is None]
+        assert all(f.score_contribution for f in project_wide)
+
+
+class TestManipulationSingleFile:
+    """Single-file static checks (no prior snapshot required)."""
+
+    def test_single_file_mode_score_is_none(self):
+        later = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[make_task(1), make_task(2)],
+        )
+        result = detect_manipulations(comparison=None, prior=None, later=later)
+        assert result.overall_score is None
+        assert result.applicable is False
+        assert result.single_file_mode is True
+        assert result.detail_task_count == 2
+
+    def test_single_file_hard_constraint_is_medium(self):
+        later = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[
+                make_task(1, constraint_type="MUST_FINISH_ON"),
+                make_task(2),
+            ],
+        )
+        result = detect_manipulations(None, None, later)
+        hc = [
+            f
+            for f in result.findings
+            if f.pattern == "single_file_hard_constraint"
+        ]
+        assert len(hc) == 1
+        assert hc[0].confidence == CONFIDENCE_MEDIUM
+        assert hc[0].task_uid == 1
+
+    def test_single_file_negative_float_is_high(self):
+        later = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[
+                make_task(1, total_slack=-5.0),
+                make_task(2, total_slack=0.0),
+            ],
+        )
+        result = detect_manipulations(None, None, later)
+        nf = [
+            f
+            for f in result.findings
+            if f.pattern == "single_file_negative_float"
+        ]
+        assert len(nf) == 1
+        assert nf[0].confidence == CONFIDENCE_HIGH
+        assert nf[0].task_uid == 1
+
+    def test_single_file_completed_without_actuals_is_high(self):
+        later = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[
+                # 100% complete, no actuals recorded.
+                make_task(1, percent_complete=100.0),
+                # 100% complete with both actuals — clean, should NOT flag.
+                make_task(
+                    2,
+                    percent_complete=100.0,
+                    actual_start=datetime(2026, 1, 1),
+                    actual_finish=datetime(2026, 1, 10),
+                ),
+            ],
+        )
+        result = detect_manipulations(None, None, later)
+        cw = [
+            f
+            for f in result.findings
+            if f.pattern == "single_file_complete_without_actuals"
+        ]
+        assert len(cw) == 1
+        assert cw[0].confidence == CONFIDENCE_HIGH
+        assert cw[0].task_uid == 1
+
+
+class TestManipulationProgressReversal:
+    def test_progress_reversal_is_high(self):
+        prior = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[make_task(1, percent_complete=80.0)],
+        )
+        later = ScheduleData(
+            project_info=ProjectInfo(),
+            tasks=[make_task(1, percent_complete=40.0)],
+        )
+        result = detect_manipulations(
+            compare_schedules(prior, later), prior, later
+        )
+        rev = [f for f in result.findings if f.pattern == "progress_reversal"]
+        assert len(rev) == 1
+        assert rev[0].confidence == CONFIDENCE_HIGH
+        assert rev[0].evidence["reversal_points"] == pytest.approx(40.0)
 
 
 # --------------------------------------------------------------------------- #
