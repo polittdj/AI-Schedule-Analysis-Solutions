@@ -1,0 +1,46 @@
+name: CI
+
+# Runs every test in the suite on push to main and on every PR.
+# The MPP parser uses JPype1 + MPXJ which require a JVM, so the workflow
+# installs OpenJDK before pip-installing the Python dependencies.
+# This is a local-only forensic tool — no deploy job is defined here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up OpenJDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install pinned dependencies
+        run: pip install -r requirements.txt
+
+      - name: Show environment
+        run: |
+          python --version
+          java -version
+          pip list
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v --tb=short
