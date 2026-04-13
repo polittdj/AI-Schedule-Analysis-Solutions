@@ -26,13 +26,17 @@ from app.parser.schema import ScheduleData, TaskData
 
 
 # --------------------------------------------------------------------------- #
-# Thresholds (DCMA 14-point, standard industry values)
+# Thresholds — Acumen Fuse / DCMA 14-point standard values
 # --------------------------------------------------------------------------- #
+# Mirror the canonical Fuse defaults so this engine matches what an
+# Acumen Fuse user would see for the same schedule. The full rationale
+# for each value lives in app/knowledge_base/dcma_thresholds.json,
+# which is also the source the AI prompt builder cites in narratives.
 
 THRESHOLD_LOGIC_PCT = 5.0
 THRESHOLD_LEADS_PCT = 0.0
 THRESHOLD_LAGS_PCT = 5.0
-THRESHOLD_RELATION_TYPES_PCT = 5.0
+THRESHOLD_RELATION_TYPES_PCT = 10.0  # Fuse: non-FS ≤ 10 % (i.e. FS ≥ 90 %)
 THRESHOLD_HARD_CONSTRAINTS_PCT = 5.0
 THRESHOLD_HIGH_FLOAT_PCT = 5.0
 THRESHOLD_NEGATIVE_FLOAT_PCT = 0.0
@@ -40,8 +44,8 @@ THRESHOLD_HIGH_DURATION_PCT = 5.0
 THRESHOLD_INVALID_DATES_PCT = 0.0
 THRESHOLD_RESOURCES_PCT = 5.0
 THRESHOLD_MISSED_TASKS_PCT = 5.0
-THRESHOLD_CPLI = 1.0  # ≥1.0 passes
-THRESHOLD_BEI = 1.0  # ≥1.0 passes
+THRESHOLD_CPLI = 0.95  # Fuse: ≥0.95 passes (5 % float-position tolerance)
+THRESHOLD_BEI = 0.95   # Fuse: ≥0.95 passes (5 % execution-velocity tolerance)
 HIGH_FLOAT_DAYS = 44.0
 HIGH_DURATION_DAYS = 44.0
 HARD_CONSTRAINT_TYPES = {"MUST_START_ON", "MUST_FINISH_ON"}
