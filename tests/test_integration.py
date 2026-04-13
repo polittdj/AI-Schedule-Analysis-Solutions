@@ -177,6 +177,9 @@ def app_and_client(tmp_path, monkeypatch):
     cfg = load_config()
     app = create_app(cfg)
     app.config["TESTING"] = True
+    # Redirect feedback writes to the tmp dir so tests don't pollute
+    # the in-tree app/knowledge_base/feedback.jsonl file.
+    app.config["FEEDBACK_PATH"] = tmp_path / "feedback.jsonl"
     return app, app.test_client()
 
 
@@ -390,6 +393,92 @@ class TestSettingsPage:
         body = resp.data
         assert b"Ollama:" in body
         assert b"Claude API key:" in body
+
+
+# --------------------------------------------------------------------------- #
+# Feedback endpoint
+# --------------------------------------------------------------------------- #
+
+
+class TestFeedbackEndpoint:
+    """`/api/feedback` appends rated AI analyses to feedback.jsonl."""
+
+    def test_valid_post_appends_jsonl_line(self, app_and_client):
+        import json as _json
+
+        app, client = app_and_client
+        resp = client.post(
+            "/api/feedback",
+            json={
+                "rating": 5,
+                "comment": "Caught the SPI=0.71 callout perfectly.",
+                "analysis_hash": "abc123",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "ok"}
+
+        feedback_path = app.config["FEEDBACK_PATH"]
+        assert feedback_path.is_file()
+        lines = feedback_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 1
+        entry = _json.loads(lines[0])
+        assert entry["rating"] == 5
+        assert entry["comment"] == "Caught the SPI=0.71 callout perfectly."
+        assert entry["analysis_hash"] == "abc123"
+        assert "timestamp" in entry
+        # Timestamp must be ISO-8601 with explicit Z suffix so the
+        # prompt_builder's parser can read it back.
+        assert entry["timestamp"].endswith("Z")
+
+    def test_two_posts_append_two_lines(self, app_and_client):
+        app, client = app_and_client
+        client.post("/api/feedback", json={"rating": 4, "analysis_hash": "h1"})
+        client.post("/api/feedback", json={"rating": 5, "analysis_hash": "h2"})
+        feedback_path = app.config["FEEDBACK_PATH"]
+        lines = feedback_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 2
+
+    def test_missing_rating_returns_400(self, app_and_client):
+        app, client = app_and_client
+        resp = client.post("/api/feedback", json={"comment": "no rating"})
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["status"] == "error"
+        assert "integer" in body["message"]
+
+    def test_rating_out_of_range_returns_400(self, app_and_client):
+        app, client = app_and_client
+        resp = client.post("/api/feedback", json={"rating": 7})
+        assert resp.status_code == 400
+        assert "between 1 and 5" in resp.get_json()["message"]
+
+    def test_non_numeric_rating_returns_400(self, app_and_client):
+        app, client = app_and_client
+        resp = client.post("/api/feedback", json={"rating": "five"})
+        assert resp.status_code == 400
+
+    def test_creates_parent_directory(self, app_and_client, tmp_path):
+        app, client = app_and_client
+        nested = tmp_path / "deep" / "nested" / "feedback.jsonl"
+        app.config["FEEDBACK_PATH"] = nested
+        resp = client.post("/api/feedback", json={"rating": 4})
+        assert resp.status_code == 200
+        assert nested.is_file()
+
+    def test_long_comment_is_truncated(self, app_and_client):
+        import json as _json
+
+        app, client = app_and_client
+        long_comment = "x" * 5000
+        resp = client.post(
+            "/api/feedback",
+            json={"rating": 4, "comment": long_comment, "analysis_hash": "h"},
+        )
+        assert resp.status_code == 200
+        line = app.config["FEEDBACK_PATH"].read_text(encoding="utf-8").strip()
+        entry = _json.loads(line)
+        assert len(entry["comment"]) == 2000
 
 
 # --------------------------------------------------------------------------- #

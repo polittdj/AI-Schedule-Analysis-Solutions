@@ -146,6 +146,33 @@
           All forensic numbers are already computed — the AI only writes prose.
         </p>
       </div>
+      <div id="ai-feedback" class="ai-feedback"
+           data-analysis-id="{{ analysis_id or '' }}"
+           hidden>
+        <h4>How was this analysis?</h4>
+        <p class="muted">
+          Your rating is appended to <code>app/knowledge_base/feedback.jsonl</code>
+          and is used to seed the AI's "successful analysis patterns" reference
+          on future runs. Ratings of 4 or 5 stars within the last 30 days are
+          surfaced as exemplars in the next prompt.
+        </p>
+        <div class="star-rating" id="ai-feedback-stars" role="radiogroup" aria-label="Rate this analysis">
+          <button type="button" class="star" data-value="1" aria-label="1 star">★</button>
+          <button type="button" class="star" data-value="2" aria-label="2 stars">★</button>
+          <button type="button" class="star" data-value="3" aria-label="3 stars">★</button>
+          <button type="button" class="star" data-value="4" aria-label="4 stars">★</button>
+          <button type="button" class="star" data-value="5" aria-label="5 stars">★</button>
+        </div>
+        <label class="field">
+          <span>What could be better? (optional)</span>
+          <textarea id="ai-feedback-comment" rows="2"
+                    placeholder="e.g. Missed the SPI=0.71 callout; should have mentioned the milestone slip."></textarea>
+        </label>
+        <button id="ai-feedback-submit" type="button" class="btn btn-secondary">
+          Submit Feedback
+        </button>
+        <p id="ai-feedback-status" class="muted" aria-live="polite"></p>
+      </div>
       <details class="ai-sources">
         <summary>Data sources the AI will be given</summary>
         <ul>

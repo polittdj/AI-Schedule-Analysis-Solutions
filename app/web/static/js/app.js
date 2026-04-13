@@ -147,6 +147,7 @@
     }
 
     initAI();
+    initFeedback();
     initCriticalPathTable(results);
     initAllTasksTable(results);
 
@@ -181,6 +182,8 @@
       btn.classList.add("loading");
       btn.disabled = true;
       out.innerHTML = "";
+      hideFeedbackWidget();
+      let streamedAny = false;
 
       const formData = new FormData();
       formData.append(
@@ -219,9 +222,11 @@
                 if (msg.chunk) {
                   out.textContent += msg.chunk;
                   out.scrollTop = out.scrollHeight;
+                  streamedAny = true;
                 } else if (msg.error) {
                   out.textContent += `\n[ERROR] ${msg.error}`;
                 } else if (msg.done) {
+                  if (streamedAny) showFeedbackWidget();
                   return;
                 }
               } catch (e) {
@@ -230,11 +235,103 @@
             }
           }
         }
+        if (streamedAny) showFeedbackWidget();
       } catch (err) {
         out.textContent = `Network error: ${err.message}`;
       } finally {
         btn.classList.remove("loading");
         btn.disabled = false;
+      }
+    });
+  }
+
+  /* ------------------------------ Feedback -------------------------------- */
+
+  function showFeedbackWidget() {
+    const w = document.getElementById("ai-feedback");
+    if (w) w.hidden = false;
+  }
+
+  function hideFeedbackWidget() {
+    const w = document.getElementById("ai-feedback");
+    if (!w) return;
+    w.hidden = true;
+    // Reset state so the next analysis starts fresh.
+    const stars = w.querySelector("#ai-feedback-stars");
+    if (stars) {
+      stars.dataset.rating = "0";
+      stars.querySelectorAll(".star").forEach((s) => s.classList.remove("active"));
+    }
+    const status = document.getElementById("ai-feedback-status");
+    if (status) status.textContent = "";
+    const submit = document.getElementById("ai-feedback-submit");
+    if (submit) {
+      submit.disabled = false;
+      submit.textContent = "Submit Feedback";
+    }
+  }
+
+  function initFeedback() {
+    const widget = document.getElementById("ai-feedback");
+    if (!widget) return;
+    const starGroup = document.getElementById("ai-feedback-stars");
+    const submitBtn = document.getElementById("ai-feedback-submit");
+    const commentEl = document.getElementById("ai-feedback-comment");
+    const statusEl = document.getElementById("ai-feedback-status");
+    if (!starGroup || !submitBtn) return;
+
+    // Star clicks set the rating and visually highlight the chosen
+    // count by toggling an .active class on stars 1..N.
+    starGroup.querySelectorAll(".star").forEach((star) => {
+      star.addEventListener("click", () => {
+        const value = Number(star.dataset.value || 0);
+        starGroup.dataset.rating = String(value);
+        starGroup.querySelectorAll(".star").forEach((s) => {
+          const v = Number(s.dataset.value || 0);
+          s.classList.toggle("active", v <= value);
+        });
+        if (statusEl) statusEl.textContent = "";
+      });
+    });
+
+    submitBtn.addEventListener("click", async () => {
+      const rating = Number(starGroup.dataset.rating || 0);
+      if (!rating || rating < 1 || rating > 5) {
+        if (statusEl) statusEl.textContent = "Pick a star rating first.";
+        return;
+      }
+      const comment = (commentEl && commentEl.value) || "";
+      const analysisId = widget.dataset.analysisId || "";
+      // We use the analysis_id directly as analysis_hash — assumption #9.
+      const payload = {
+        rating: rating,
+        comment: comment,
+        analysis_hash: analysisId,
+      };
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting…";
+      if (statusEl) statusEl.textContent = "";
+      try {
+        const resp = await fetch("/api/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && data.status === "ok") {
+          submitBtn.textContent = "Submitted ✓";
+          if (statusEl) statusEl.textContent = "Thanks — your feedback was recorded.";
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Submit Feedback";
+          if (statusEl)
+            statusEl.textContent =
+              "Failed: " + (data.message || resp.statusText || "unknown error");
+        }
+      } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit Feedback";
+        if (statusEl) statusEl.textContent = "Network error: " + err.message;
       }
     });
   }

@@ -249,6 +249,14 @@ def create_app(config: Optional[Config] = None) -> Flask:
     app.config["MAX_FORM_PARTS"] = 2000
     app.config["APP_CONFIG"] = cfg
 
+    # Feedback log location. Defaults to the in-tree knowledge base
+    # directory; integration tests override this to a tmp_path so
+    # they don't pollute the actual repo file.
+    app.config.setdefault(
+        "FEEDBACK_PATH",
+        Path(__file__).resolve().parent / "knowledge_base" / "feedback.jsonl",
+    )
+
     # Loud, one-shot banner so the operator can see the effective
     # upload ceiling without opening devtools. Printed to stdout (not
     # Flask's logger) so it shows up even before the dev server comes
@@ -407,6 +415,7 @@ def create_app(config: Optional[Config] = None) -> Flask:
             results_json=json.dumps(template_ctx, default=str),
             has_comparison=results.get("comparison") is not None,
             has_trend=results.get("trend") is not None,
+            analysis_id=analysis_id,
         )
 
     @app.route("/ai-analyze", methods=["POST"])
@@ -469,6 +478,76 @@ def create_app(config: Optional[Config] = None) -> Flask:
             mimetype="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.route("/api/feedback", methods=["POST"])
+    def api_feedback():
+        """Append an operator rating to app/knowledge_base/feedback.jsonl.
+
+        Expected JSON payload:
+            { "rating": 1..5, "comment": "...", "analysis_hash": "..." }
+
+        ``analysis_hash`` is derived client-side from the active
+        session's ``analysis_id`` (the UUID of the pickled analysis
+        store) — see assumption #9 in the audit.
+
+        The endpoint creates the JSONL file on first write, so a
+        fresh clone (where feedback.jsonl is gitignored and absent)
+        works without any extra setup. Each successful write returns
+        ``{"status": "ok"}``; payload validation failures return
+        HTTP 400 with a short error message.
+        """
+        payload = request.get_json(silent=True) or {}
+        rating = payload.get("rating")
+        comment = payload.get("comment") or ""
+        analysis_hash = payload.get("analysis_hash") or ""
+
+        try:
+            rating_int = int(rating)
+        except (TypeError, ValueError):
+            return jsonify({
+                "status": "error",
+                "message": "rating must be an integer 1-5",
+            }), 400
+        if not 1 <= rating_int <= 5:
+            return jsonify({
+                "status": "error",
+                "message": "rating must be between 1 and 5",
+            }), 400
+
+        if not isinstance(comment, str):
+            comment = str(comment)
+        if not isinstance(analysis_hash, str):
+            analysis_hash = str(analysis_hash)
+
+        # Cap free-text fields so a malicious or buggy client can't
+        # pad the JSONL with megabytes of junk per request.
+        comment = comment.strip()[:2000]
+        analysis_hash = analysis_hash.strip()[:128]
+
+        entry = {
+            "rating": rating_int,
+            "comment": comment,
+            "analysis_hash": analysis_hash,
+            # ISO-8601 UTC with explicit 'Z' suffix — matches the
+            # parser in app/ai/prompt_builder.py:_load_recent_feedback.
+            "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+        # Read at request time so tests (and any future operator
+        # override) can swap the path without restarting the app.
+        feedback_path = Path(app.config["FEEDBACK_PATH"])
+        try:
+            feedback_path.parent.mkdir(parents=True, exist_ok=True)
+            with feedback_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError as exc:
+            app.logger.error("Feedback write failed: %s", exc)
+            return jsonify({
+                "status": "error",
+                "message": "could not append to feedback log",
+            }), 500
+
+        return jsonify({"status": "ok"})
 
     @app.route("/task-focus", methods=["GET", "POST"])
     def task_focus():
