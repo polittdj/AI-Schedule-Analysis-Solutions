@@ -17,3 +17,10 @@ build/
 # Runtime upload folder. The tool processes .mpp files that may
 # contain CUI-classified data — they must never be committed.
 uploads/
+
+# Runtime feedback log. Operator ratings on AI analyses land here;
+# they may contain operator names, project identifiers, or quoted
+# narrative excerpts that fall under the same CUI handling rule
+# as the source schedules. Do not commit. To version feedback
+# deliberately, copy entries to a sanitized location first.
+app/knowledge_base/feedback.jsonl

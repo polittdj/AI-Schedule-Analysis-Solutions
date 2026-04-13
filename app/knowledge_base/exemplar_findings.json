@@ -1,0 +1,42 @@
+[
+  {
+    "finding_type": "logic_removal",
+    "severity": "HIGH",
+    "context": "Task UID 152 lost its FS relationship to UID 147 between the November and December schedule updates, with no scope or methodology change recorded in the contemporaneous narrative.",
+    "narrative": "The removal of the finish-to-start relationship between [TASK_NAME] (UID [TASK_UID]) and its predecessor [PRED_NAME] (UID [PRED_UID]) between the November and December schedule updates eliminated [LAG_OR_DURATION] working days of logical constraint. This change directly prevented a projected slip of [SLIP_DAYS] working days to the [MILESTONE_NAME] milestone. The absence of any contemporaneous scope or methodology change justification in the monthly narrative report elevates this finding to a HIGH manipulation indicator. Schedule logic should only be removed to reflect a real-world change in execution sequence; absent such a change, removal is functionally a hidden compression of the as-planned critical path.",
+    "forensic_implication": "Logic removal without documented justification on a near-critical or critical path task is among the strongest indicators of intentional schedule manipulation in construction claims jurisprudence (see CDM Smith v. Tetra Tech, 2014, and the AACE International Recommended Practice 52R-06 guidance on forensic schedule analysis). When the removed logic is the binding constraint between two activities that subsequently slip in opposite directions, the inference of intent strengthens further.",
+    "confidence": "HIGH"
+  },
+  {
+    "finding_type": "duration_compression",
+    "severity": "HIGH",
+    "context": "Critical-path task UID 308 had its working duration reduced from 22 days to 9 days (a 59 % cut) between the prior and current update, with no corresponding crew, equipment, or methodology change in the schedule narrative.",
+    "narrative": "Critical-path task [TASK_NAME] (UID [TASK_UID]) was compressed from [PRIOR_DURATION] working days to [LATER_DURATION] working days between updates — a [REDUCTION_PCT]% reduction. The compression occurred within [WEEKS_TO_DEADLINE] weeks of the [DEADLINE_NAME] contractual milestone, which is the textbook timing for a deadline-driven schedule pull. No additional crews, shifts, or equipment were added to the schedule to support the reduced duration, and the Resource Loading tab still shows the same [RESOURCE_NAMES] assigned at [RESOURCE_UNITS] units. Crashing a task on paper without a corresponding resource increase is a classic forensic red flag because the on-the-ground execution rate cannot have changed.",
+    "forensic_implication": "Duration compression on a critical-path task within two updates of a binding deadline, without a corroborating resource or scope change, is recognized in AACE 29R-03 (Forensic Schedule Analysis) as a Method Implementation Protocol violation. In claims jurisprudence it typically supports a finding of constructive acceleration if the compression was directed by the owner, or of schedule manipulation if the contractor introduced it unilaterally. The next step is to cross-reference the as-built daily reports for [TASK_NAME] to see whether the actual work matches either the original or the compressed duration.",
+    "confidence": "HIGH"
+  },
+  {
+    "finding_type": "constraint_addition",
+    "severity": "MEDIUM",
+    "context": "Task UID 415 had a Must-Finish-On (MFO) constraint added to it in the December update, with the constraint date set exactly at the prior update's late-finish date.",
+    "narrative": "Task [TASK_NAME] (UID [TASK_UID]) gained a [CONSTRAINT_TYPE] hard constraint between updates, with the constraint date set to [CONSTRAINT_DATE]. Hard constraints override CPM float calculations: rather than letting the network compute the late-finish date from the downstream logic, the constraint pins the task's finish to a fixed calendar date. In this case, the prior update showed [TASK_NAME] with [PRIOR_TF] working days of total float, which the new constraint reduced to [LATER_TF] working days — a [TF_DELTA]-day artificial reduction. Adding a hard constraint on a slipping task is one of the simplest ways to mask a slip, because the resulting negative float on downstream tasks looks like an emergent network problem rather than a single edit.",
+    "forensic_implication": "Hard-constraint addition is reported by Acumen Fuse under DCMA S5 and is treated by most claims arbitrators as a notice item: the contractor (or owner, depending on origin) should explain why the constraint was needed. If the constraint was added without a written justification or change order, the manipulation inference is strong. The recommended next step is to compute the network with the constraint removed and compare the resulting late dates against the as-built actuals.",
+    "confidence": "MEDIUM"
+  },
+  {
+    "finding_type": "progress_inflation",
+    "severity": "HIGH",
+    "context": "A predecessor chain of three FS-linked tasks (UIDs 201 → 202 → 203) was reported at 80 %, 60 %, and 40 % complete respectively in the November update, with no actual_start or actual_finish dates recorded on UIDs 202 or 203.",
+    "narrative": "Progress reported on the [CHAIN_NAME] sequence appears to have been inflated without supporting actuals. [TASK_1_NAME] (UID [TASK_1_UID]) is reported at [TASK_1_PCT]% complete with an actual_start of [TASK_1_ACTUAL_START] but no actual_finish; its successor [TASK_2_NAME] (UID [TASK_2_UID]) is reported at [TASK_2_PCT]% complete with no actual_start at all, despite a finish-to-start relationship requiring its predecessor to be 100 % complete first. This pattern — progress reported on multiple tasks in a logical chain without corroborating actual dates — typically indicates that the schedule status was estimated against the prior CPM rather than against on-site reality. The DCMA S9 (Invalid Dates) check would also flag this configuration.",
+    "forensic_implication": "Progress inflation on a predecessor chain without corroborating actuals is one of the most common manipulation patterns in time-impact analysis disputes, and is explicitly called out in the AACE 52R-06 forensic methodology. The forensic implication is that the as-statused schedule cannot be relied upon as a baseline for time-impact analysis: a corrected as-built must be reconstructed from daily reports, weather logs, and inspection records. In a claims context, the contractor's own statusing becomes a credibility problem rather than evidence in their favor.",
+    "confidence": "HIGH"
+  },
+  {
+    "finding_type": "float_reduction",
+    "severity": "HIGH",
+    "context": "Task UID 519 dropped from 28 working days of total float in the October update to 2 working days in the November update, with no corresponding scope, duration, or logic change documented on the task itself.",
+    "narrative": "Total float on [TASK_NAME] (UID [TASK_UID]) collapsed from [PRIOR_TF] working days to [LATER_TF] working days between the [PRIOR_UPDATE] and [LATER_UPDATE] updates — a [TF_REDUCTION_PCT]% reduction in a single cycle. The task itself shows no scope, duration, or logic change; its predecessor and successor relationships are unchanged and its baseline_finish has not moved. A float reduction of this magnitude without a corresponding edit on the task in question implies that a change elsewhere in the network (typically a logic tightening or duration extension upstream) consumed the slack. The fact that the upstream change is not visible on the same task — and was therefore likely made several steps upstream and missed in the contractor's monthly narrative — warrants a network-wide trace from [TASK_NAME] back to the project start.",
+    "forensic_implication": "Unexplained float reductions greater than 50 % between updates without a documented scope change is recognized by Acumen Fuse and most government schedule reviewers as a forensic signal worth investigating. The implication is not necessarily manipulation — sometimes upstream slip legitimately consumes downstream float — but the absence of a contemporaneous explanation in the monthly report is the issue. Recommended next step: compute the predecessor chain back to the project start, identify every task whose duration or logic changed in the same update window, and present the chain as a single causal narrative.",
+    "confidence": "HIGH"
+  }
+]

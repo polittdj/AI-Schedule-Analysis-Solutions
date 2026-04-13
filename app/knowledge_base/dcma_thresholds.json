@@ -1,0 +1,118 @@
+{
+  "source": "Acumen Fuse / DCMA 14-Point Schedule Assessment standard thresholds",
+  "version": "Fuse-standard, as published in the Defense Contract Management Agency 14-Point Schedule Assessment guidance and reproduced in the Acumen Fuse Metrics Library default ruleset.",
+  "metrics": {
+    "S1_logic": {
+      "name": "Logic",
+      "description": "Detail tasks missing predecessors or successors. Project start and project finish milestones are exempt.",
+      "threshold": 5,
+      "unit": "percent",
+      "comparison": "less_than",
+      "rationale": "Each detail task should have at least one predecessor (except project start) and at least one successor (except project finish). Higher values indicate a poorly networked schedule that cannot reliably forecast slip."
+    },
+    "S2_leads": {
+      "name": "Leads (negative lag)",
+      "description": "Relationships with negative lag.",
+      "threshold": 0,
+      "unit": "percent",
+      "comparison": "equals",
+      "rationale": "Negative lag (a lead) implies a successor can start before its predecessor finishes, which contradicts the FS relationship semantics and is generally considered bad practice. DCMA tolerates none."
+    },
+    "S3_lags": {
+      "name": "Lags (positive lag)",
+      "description": "Relationships with positive lag.",
+      "threshold": 5,
+      "unit": "percent",
+      "comparison": "less_than",
+      "rationale": "Positive lags hide work — the gap should usually be modeled as an explicit task. DCMA tolerates up to 5% of relationships carrying lag before flagging."
+    },
+    "S4_relationship_types": {
+      "name": "Relationship Types",
+      "description": "Percentage of relationships that are Finish-to-Start (FS).",
+      "threshold": 90,
+      "unit": "percent",
+      "comparison": "greater_than_or_equal",
+      "rationale": "Non-FS relationships (SS, FF, SF) are harder to interpret in a time-impact analysis and can mask sequencing issues. DCMA requires at least 90% of relationships to be FS."
+    },
+    "S5_hard_constraints": {
+      "name": "Hard Constraints",
+      "description": "Detail tasks carrying a hard constraint (Must-Start-On, Must-Finish-On, Start-No-Later-Than, Finish-No-Later-Than, etc.).",
+      "threshold": 5,
+      "unit": "percent",
+      "comparison": "less_than",
+      "rationale": "Hard constraints override CPM float calculations and are a classic vector for manipulation. DCMA tolerates up to 5% of detail tasks carrying constraints; anything more flags."
+    },
+    "S6_high_float": {
+      "name": "High Float",
+      "description": "Incomplete detail tasks with total float greater than 44 working days (approximately two months).",
+      "threshold": 5,
+      "unit": "percent",
+      "comparison": "less_than",
+      "rationale": "Excessive float indicates either missing logic, an inflated baseline, or unresourced parallel work. DCMA tolerates up to 5% of incomplete tasks above the 44-day ceiling."
+    },
+    "S7_negative_float": {
+      "name": "Negative Float",
+      "description": "Detail tasks with negative total float.",
+      "threshold": 0,
+      "unit": "percent",
+      "comparison": "equals",
+      "rationale": "Negative float means the schedule is forecasting a miss against its driving constraint. DCMA tolerates none — the schedule should always be feasible against its constraints, even if the constraint date later changes."
+    },
+    "S8_high_duration": {
+      "name": "High Duration",
+      "description": "Incomplete detail tasks with working duration greater than 44 working days (approximately two months).",
+      "threshold": 5,
+      "unit": "percent",
+      "comparison": "less_than",
+      "rationale": "Long-duration tasks aggregate too much work and obscure progress reporting. The 44-day ceiling forces the planner to break long activities into reportable chunks."
+    },
+    "S9_invalid_dates": {
+      "name": "Invalid Dates",
+      "description": "Tasks whose actual_start or actual_finish date falls after the schedule status date, or whose forecast finish falls before the status date.",
+      "threshold": 0,
+      "unit": "percent",
+      "comparison": "equals",
+      "rationale": "Actuals after the status date are temporally impossible; forecasts before the status date suggest the schedule was not properly updated. DCMA tolerates none."
+    },
+    "S10_resources": {
+      "name": "Resources",
+      "description": "Incomplete detail tasks without any resource assignments (labor, equipment, or material).",
+      "threshold": 5,
+      "unit": "percent",
+      "comparison": "less_than",
+      "rationale": "Unresourced tasks cannot drive earned-value or cost-impact analysis. DCMA tolerates up to 5% of incomplete tasks lacking resources."
+    },
+    "S11_missed_tasks": {
+      "name": "Missed Tasks",
+      "description": "Tasks whose baseline finish date is on or before the status date but which are not yet 100% complete.",
+      "threshold": 5,
+      "unit": "percent",
+      "comparison": "less_than",
+      "rationale": "Tasks that should have finished but did not are direct evidence of slip. DCMA tolerates up to 5% of detail tasks missing their baseline finish before the schedule starts to accumulate as-built variance flags."
+    },
+    "S12_critical_path_test": {
+      "name": "Critical Path Test",
+      "description": "Adding a long delay (typically 600 days) to a critical-path task should extend the project finish by exactly that amount. If it does not, the critical path is broken or constraint-pinned.",
+      "threshold": true,
+      "unit": "boolean",
+      "comparison": "equals",
+      "rationale": "A working CPM network propagates change end-to-end. A failed CPT indicates open-ended successors, broken logic, or hard constraints that prevent the network from responding to delay."
+    },
+    "S13_critical_path_length_index": {
+      "name": "Critical Path Length Index (CPLI)",
+      "description": "Ratio of (critical path length + total float) to critical path length. Values >= 1.0 mean the schedule has float; <1.0 means the schedule has lost float against the contractual end date.",
+      "threshold": 0.95,
+      "unit": "ratio",
+      "comparison": "greater_than_or_equal",
+      "rationale": "Fuse-standard threshold is 0.95 — i.e. the schedule is allowed to be at most 5% behind on its float position before flagging. A CPLI below 0.95 indicates compression risk."
+    },
+    "S14_baseline_execution_index": {
+      "name": "Baseline Execution Index (BEI)",
+      "description": "Ratio of completed-and-on-time tasks to tasks that should have been completed by the status date.",
+      "threshold": 0.95,
+      "unit": "ratio",
+      "comparison": "greater_than_or_equal",
+      "rationale": "Fuse-standard threshold is 0.95 — i.e. the project is allowed to slip at most 5% of its planned completion velocity before flagging. A BEI below 0.95 is the leading indicator of cumulative slip."
+    }
+  }
+}
