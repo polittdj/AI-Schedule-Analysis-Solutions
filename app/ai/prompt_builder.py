@@ -9,9 +9,11 @@ Design constraints
 ------------------
 * **Hard token budget** (default 6000 tokens ≈ 24000 characters) so
   the narrative has room to breathe inside Ollama's 8K context.
-* **RAG placeholders** (`[CONTEXT_START]` / `[CONTEXT_END]`) are always
-  inserted so a later phase can drop knowledge-base snippets in
-  without rewriting the builder.
+* **Knowledge base injection** — exemplar findings, recent high-rated
+  feedback, and DCMA threshold breach context are pulled from
+  ``app/knowledge_base/`` on the first call (cached for the process
+  lifetime) and slotted between SYSTEM_INTRO and the data sections.
+  Missing files are tolerated silently — the prompt still builds.
 * **Each section is optional** — the builder renders only what the
   caller provides, so the same function is used for single-schedule
   DCMA reports, comparison reports, or full-blown forensic reports.
@@ -20,6 +22,9 @@ Design constraints
 """
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Approximation: 1 token ≈ 4 characters of English text. This is close
@@ -33,7 +38,15 @@ TOP_SLIP_COUNT = 10
 TOP_DURATION_CHANGES = 10
 TOP_MANIPULATION_FINDINGS = 20
 
-# RAG injection hooks
+# Knowledge base injection limits
+MAX_INJECTED_EXEMPLARS = 3
+MAX_INJECTED_FEEDBACK = 2
+MAX_INJECTED_BREACHES = 8
+FEEDBACK_LOOKBACK_DAYS = 30
+FEEDBACK_MIN_RATING = 4
+
+# RAG injection hooks (kept as constants for backward compat with any
+# tests that grep for them).
 CONTEXT_START_TAG = "[CONTEXT_START]"
 CONTEXT_END_TAG = "[CONTEXT_END]"
 
@@ -44,6 +57,224 @@ SYSTEM_INTRO = (
     "do not recompute them. Your job is to turn the metrics into a clear, "
     "professional narrative for a construction-claim audience."
 )
+
+
+# --------------------------------------------------------------------------- #
+# Knowledge base — module-level cache, lazy-loaded on first build_prompt call
+# --------------------------------------------------------------------------- #
+
+# Resolve relative to this file so the loader works regardless of cwd.
+_KB_DIR = Path(__file__).resolve().parent.parent / "knowledge_base"
+_EXEMPLARS_PATH = _KB_DIR / "exemplar_findings.json"
+_THRESHOLDS_PATH = _KB_DIR / "dcma_thresholds.json"
+_FEEDBACK_PATH = _KB_DIR / "feedback.jsonl"
+
+# Sentinel: True once we've attempted to load the static files. We never
+# raise on missing files — the prompt builder must work in environments
+# without a populated knowledge base.
+_KB_LOADED: bool = False
+_EXEMPLARS: List[Dict[str, Any]] = []
+_THRESHOLDS: Dict[str, Any] = {}
+
+# Map manipulation finding patterns → exemplar finding_type. Used to
+# select the most relevant exemplars for the current analysis.
+_PATTERN_TO_EXEMPLAR_TYPE: Dict[str, str] = {
+    # Duration
+    "critical_duration_reduction": "duration_compression",
+    "selective_critical_compression": "duration_compression",
+    # Logic
+    "predecessors_removed": "logic_removal",
+    "fs_type_downgrade": "logic_removal",
+    "lag_change": "logic_removal",
+    # Constraint / float
+    "constraint_added": "constraint_addition",
+    "single_file_hard_constraint": "constraint_addition",
+    "unexplained_float_change": "float_reduction",
+    "single_file_negative_float": "float_reduction",
+    # Progress
+    "out_of_sequence_progress": "progress_inflation",
+    "percent_vs_remaining_mismatch": "progress_inflation",
+    "actual_start_zero_progress": "progress_inflation",
+    "single_file_complete_without_actuals": "progress_inflation",
+    "progress_reversal": "progress_inflation",
+}
+
+
+def _load_knowledge_base() -> None:
+    """Read exemplar_findings.json and dcma_thresholds.json once.
+
+    Tolerates every flavor of failure (missing file, malformed JSON,
+    permission error) by falling back to empty defaults — the prompt
+    builder is never allowed to crash a forensic analysis just
+    because the knowledge base is missing.
+    """
+    global _KB_LOADED, _EXEMPLARS, _THRESHOLDS
+    if _KB_LOADED:
+        return
+    _KB_LOADED = True
+    try:
+        if _EXEMPLARS_PATH.is_file():
+            with _EXEMPLARS_PATH.open("r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, list):
+                _EXEMPLARS = [d for d in data if isinstance(d, dict)]
+    except (OSError, json.JSONDecodeError):
+        _EXEMPLARS = []
+    try:
+        if _THRESHOLDS_PATH.is_file():
+            with _THRESHOLDS_PATH.open("r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict):
+                _THRESHOLDS = data
+    except (OSError, json.JSONDecodeError):
+        _THRESHOLDS = {}
+
+
+def _load_recent_feedback() -> List[Dict[str, Any]]:
+    """Read up to MAX_INJECTED_FEEDBACK high-rated, recent feedback entries.
+
+    Filters: rating >= 4 and timestamp within the last 30 days.
+    Returns most recent first, capped at MAX_INJECTED_FEEDBACK.
+    Missing file or malformed lines are silently skipped — the
+    feedback log is operator-managed and may not exist on a fresh
+    install.
+    """
+    if not _FEEDBACK_PATH.is_file():
+        return []
+    cutoff = datetime.now(timezone.utc) - timedelta(days=FEEDBACK_LOOKBACK_DAYS)
+    entries: List[Dict[str, Any]] = []
+    try:
+        with _FEEDBACK_PATH.open("r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                rating = entry.get("rating")
+                if not isinstance(rating, (int, float)) or rating < FEEDBACK_MIN_RATING:
+                    continue
+                ts_raw = entry.get("timestamp")
+                if not isinstance(ts_raw, str):
+                    continue
+                try:
+                    ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if ts < cutoff:
+                    continue
+                entries.append(entry)
+    except OSError:
+        return []
+    # Most recent first.
+    entries.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
+    return entries[:MAX_INJECTED_FEEDBACK]
+
+
+def _select_matching_exemplars(
+    manipulation: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Pick up to MAX_INJECTED_EXEMPLARS exemplars matching current findings.
+
+    The map :data:`_PATTERN_TO_EXEMPLAR_TYPE` translates manipulation
+    pattern keys to exemplar ``finding_type`` slugs. We collect the
+    distinct types in priority order (HIGH-confidence findings first,
+    then MEDIUM, then LOW) and emit the first N matching exemplars,
+    one per type, so the AI sees a *variety* of relevant examples
+    rather than three of the same.
+    """
+    if not _EXEMPLARS or not manipulation:
+        return []
+    findings = manipulation.get("findings") or []
+    if not isinstance(findings, list):
+        return []
+
+    # Order finding types by the highest-confidence finding observed.
+    weight_order = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+    type_priority: Dict[str, int] = {}
+    for f in findings:
+        if not isinstance(f, dict):
+            continue
+        ex_type = _PATTERN_TO_EXEMPLAR_TYPE.get(f.get("pattern", ""))
+        if ex_type is None:
+            continue
+        weight = weight_order.get(f.get("confidence", ""), 0)
+        if weight > type_priority.get(ex_type, 0):
+            type_priority[ex_type] = weight
+
+    if not type_priority:
+        return []
+
+    ordered_types = sorted(
+        type_priority.keys(), key=lambda t: type_priority[t], reverse=True
+    )
+    by_type: Dict[str, Dict[str, Any]] = {
+        e.get("finding_type", ""): e for e in _EXEMPLARS if isinstance(e, dict)
+    }
+    picked: List[Dict[str, Any]] = []
+    for t in ordered_types:
+        if t in by_type and len(picked) < MAX_INJECTED_EXEMPLARS:
+            picked.append(by_type[t])
+    return picked
+
+
+def _select_dcma_breaches(
+    dcma: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Build threshold-breach context for failed DCMA metrics.
+
+    Each entry pairs the failed metric (from the analysis) with its
+    canonical threshold + rationale (from the knowledge base) so the
+    AI can cite the standard alongside the observed value.
+    """
+    if not dcma or not _THRESHOLDS:
+        return []
+    metrics = dcma.get("metrics")
+    if not isinstance(metrics, list):
+        return []
+    threshold_by_name = {}
+    for key, defn in _THRESHOLDS.get("metrics", {}).items():
+        if isinstance(defn, dict):
+            name = defn.get("name", "").strip().lower()
+            threshold_by_name[name] = (key, defn)
+
+    breaches: List[Dict[str, Any]] = []
+    for m in metrics:
+        if not isinstance(m, dict):
+            continue
+        if m.get("passed") is True:
+            continue
+        m_name = (m.get("name") or "").strip().lower()
+        # Try exact name match, then fuzzy contains.
+        match = threshold_by_name.get(m_name)
+        if match is None:
+            for n, val in threshold_by_name.items():
+                if n and (n in m_name or m_name in n):
+                    match = val
+                    break
+        if match is None:
+            continue
+        kb_key, kb_defn = match
+        breaches.append(
+            {
+                "kb_key": kb_key,
+                "metric_name": m.get("name"),
+                "observed_value": m.get("value"),
+                "observed_unit": m.get("unit"),
+                "threshold": kb_defn.get("threshold"),
+                "comparison": kb_defn.get("comparison"),
+                "rationale": kb_defn.get("rationale"),
+            }
+        )
+        if len(breaches) >= MAX_INJECTED_BREACHES:
+            break
+    return breaches
 
 
 # --------------------------------------------------------------------------- #
@@ -470,6 +701,105 @@ def _build_task_name_lookup(engine_results: Dict[str, Any]) -> Dict[int, str]:
 # --------------------------------------------------------------------------- #
 
 
+def _section_knowledge_base_context(
+    manipulation: Optional[Dict[str, Any]],
+    dcma: Optional[Dict[str, Any]],
+) -> Optional[str]:
+    """Render the REFERENCE EXAMPLES / SUCCESSFUL ANALYSIS PATTERNS /
+    DCMA BREACH CONTEXT block.
+
+    Returns ``None`` when nothing applies — the prompt builder will
+    drop the section entirely instead of emitting empty headers.
+    """
+    _load_knowledge_base()
+
+    exemplars = _select_matching_exemplars(manipulation)
+    feedback = _load_recent_feedback()
+    breaches = _select_dcma_breaches(dcma)
+
+    if not exemplars and not feedback and not breaches:
+        return None
+
+    blocks: List[str] = [CONTEXT_START_TAG]
+
+    if exemplars:
+        blocks.append("## REFERENCE EXAMPLES")
+        blocks.append(
+            "The following are canonical forensic-finding write-ups for "
+            "the manipulation patterns present in this analysis. Use them "
+            "to calibrate tone, depth, and citation style — do NOT copy "
+            "the placeholder tokens like [TASK_NAME] verbatim; substitute "
+            "the actual task identifiers from the data sections below."
+        )
+        for ex in exemplars:
+            blocks.append(
+                f"### EXAMPLE — {ex.get('finding_type', '?')} "
+                f"(severity {ex.get('severity', '?')}, "
+                f"confidence {ex.get('confidence', '?')})"
+            )
+            ctx = ex.get("context")
+            if ctx:
+                blocks.append(f"Context: {ctx}")
+            narrative = ex.get("narrative")
+            if narrative:
+                blocks.append(f"Narrative: {narrative}")
+            implication = ex.get("forensic_implication")
+            if implication:
+                blocks.append(f"Forensic implication: {implication}")
+
+    if feedback:
+        blocks.append("## SUCCESSFUL ANALYSIS PATTERNS")
+        blocks.append(
+            "Recent operator feedback rated 4 stars or higher in the "
+            "last 30 days. These are previously generated narratives "
+            "an operator marked as forensically defensible — calibrate "
+            "your output toward this style."
+        )
+        for fb in feedback:
+            ts = fb.get("timestamp", "?")
+            rating = fb.get("rating", "?")
+            comment = (fb.get("comment") or "").strip()
+            excerpt = (fb.get("analysis_excerpt") or "").strip()
+            blocks.append(f"### FEEDBACK ({ts}, {rating}/5)")
+            if excerpt:
+                blocks.append(f"Excerpt: {excerpt}")
+            if comment:
+                blocks.append(f"Operator comment: {comment}")
+
+    if breaches:
+        blocks.append("## DCMA BREACH CONTEXT")
+        blocks.append(
+            "These are the failed DCMA 14-Point metrics in the current "
+            "analysis, paired with the canonical Fuse-standard threshold "
+            "and the forensic rationale for each. Cite the threshold "
+            "value and rationale when discussing the corresponding "
+            "metric in your narrative."
+        )
+        for br in breaches:
+            metric = br.get("metric_name", "?")
+            value = br.get("observed_value")
+            unit = br.get("observed_unit") or ""
+            threshold = br.get("threshold")
+            comparison = br.get("comparison", "")
+            rationale = br.get("rationale", "")
+            value_str = (
+                f"{value}{unit}" if value is not None else "(no value)"
+            )
+            blocks.append(
+                f"- **{metric}** observed = {value_str}; "
+                f"threshold {comparison} {threshold}. "
+                f"Rationale: {rationale}"
+            )
+
+    blocks.append(CONTEXT_END_TAG)
+    return "\n\n".join(blocks)
+
+
+# --------------------------------------------------------------------------- #
+# Public API
+# --------------------------------------------------------------------------- #
+
+
 def build_prompt(
     engine_results: Dict[str, Any],
     user_request: Optional[str] = None,
@@ -499,13 +829,17 @@ def build_prompt(
     trend = _to_dict(engine_results.get("trend"))
     task_name_lookup = _build_task_name_lookup(engine_results)
 
-    parts: List[str] = [
-        SYSTEM_INTRO,
-        "",
-        CONTEXT_START_TAG,
-        "(reserved for knowledge-base RAG snippets — do not remove)",
-        CONTEXT_END_TAG,
-    ]
+    parts: List[str] = [SYSTEM_INTRO]
+
+    kb_block = _section_knowledge_base_context(manipulation, dcma)
+    if kb_block:
+        parts.append(kb_block)
+    else:
+        # Keep the bracketing tags so any downstream tooling that
+        # greps for them still finds a (deliberately empty) RAG slot.
+        parts.append(
+            f"{CONTEXT_START_TAG}\n(no knowledge-base context applied)\n{CONTEXT_END_TAG}"
+        )
 
     if comparison:
         parts.append(_section_project_overview(comparison))
