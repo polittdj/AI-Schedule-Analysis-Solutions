@@ -4,7 +4,7 @@ Environment-variable driven so the same codebase runs in three
 deployment contexts:
 
 * **Dev workstation (default):** local Ollama, no cloud, uploads in
-  ``./uploads``, 50 MB max file size.
+  ``./uploads``, 500 MB max file size.
 * **Production local mode:** Ollama on a secured workstation; operator
   may override the model name, timeout, or sanitize flag.
 * **Ad-hoc cloud mode:** only used for explicitly unclassified
@@ -30,7 +30,7 @@ DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "schedule-analyst"
 DEFAULT_OLLAMA_TIMEOUT = 120
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
-DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+DEFAULT_MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
 DEFAULT_MAX_PROMPT_TOKENS = 6000
 DEFAULT_SECRET_KEY = "dev-key-change-in-production"  # intentionally insecure
 
