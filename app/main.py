@@ -424,7 +424,11 @@ def create_app(config: Optional[Config] = None) -> Flask:
         backend_name = request.form.get("backend") or cfg.AI_MODE
         if backend_name == "cloud":
             backend = ClaudeClient(
-                api_key=cfg.ANTHROPIC_API_KEY, model=cfg.ANTHROPIC_MODEL
+                api_key=cfg.ANTHROPIC_API_KEY,
+                model=cfg.ANTHROPIC_MODEL,
+                max_tokens=cfg.ANTHROPIC_MAX_TOKENS,
+                thinking_enabled=cfg.ANTHROPIC_THINKING,
+                thinking_budget=cfg.ANTHROPIC_THINKING_BUDGET,
             )
         else:
             backend = OllamaClient(

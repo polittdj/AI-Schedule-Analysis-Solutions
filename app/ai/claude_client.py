@@ -13,6 +13,16 @@ helper enforces this at the application layer.
 The cloud payload is the *prompt* built from deterministic engine
 output — never the raw MPP file or raw task metadata — but operators
 should still opt in consciously per project.
+
+Extended thinking
+-----------------
+Claude 4.x Opus/Sonnet support "extended thinking" — the model
+generates private reasoning tokens before producing its final answer.
+The thinking tokens are billed but never shown to the user; only the
+final text blocks are returned. This defaults **on** for forensic
+analysis because it materially improves the quality of multi-step
+delay-cause narratives. Set ``ANTHROPIC_THINKING=false`` to disable,
+or tune the budget via ``ANTHROPIC_THINKING_BUDGET``.
 """
 from __future__ import annotations
 
@@ -22,8 +32,10 @@ from typing import Any, Dict, Iterator, Optional
 from app.ai.base import AIBackend
 from app.ai.prompt_builder import build_prompt
 
-DEFAULT_MODEL = "claude-sonnet-4-20250514"
-DEFAULT_MAX_TOKENS = 4096
+DEFAULT_MODEL = "claude-opus-4-6"
+DEFAULT_MAX_TOKENS = 16384
+DEFAULT_THINKING_ENABLED = True
+DEFAULT_THINKING_BUDGET = 10000
 
 CLOUD_WARNING = (
     "Cloud AI mode transmits the pre-computed forensic prompt to "
@@ -43,10 +55,14 @@ class ClaudeClient(AIBackend):
         api_key: Optional[str] = None,
         model: str = DEFAULT_MODEL,
         max_tokens: int = DEFAULT_MAX_TOKENS,
+        thinking_enabled: bool = DEFAULT_THINKING_ENABLED,
+        thinking_budget: int = DEFAULT_THINKING_BUDGET,
     ) -> None:
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.model = model
         self.max_tokens = max_tokens
+        self.thinking_enabled = thinking_enabled
+        self.thinking_budget = thinking_budget
         self._client = None  # lazy
 
     # ------------------------------------------------------------------ #
@@ -88,6 +104,34 @@ class ClaudeClient(AIBackend):
         self._client = Anthropic(api_key=self.api_key)
         return self._client
 
+    def _build_request_kwargs(self, prompt: str) -> Dict[str, Any]:
+        """Compose the kwargs for ``messages.create`` / ``messages.stream``.
+
+        When extended thinking is enabled, the Anthropic API requires:
+          * ``max_tokens`` strictly greater than ``budget_tokens``
+          * temperature must be left at its default (1.0); we don't
+            set it explicitly
+          * ``top_p`` / ``top_k`` must not be set
+        """
+        kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if self.thinking_enabled and self.thinking_budget > 0:
+            if self.thinking_budget >= self.max_tokens:
+                raise RuntimeError(
+                    f"ANTHROPIC_THINKING_BUDGET ({self.thinking_budget}) "
+                    f"must be less than ANTHROPIC_MAX_TOKENS "
+                    f"({self.max_tokens}). Lower the budget or raise the "
+                    f"max-tokens ceiling."
+                )
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": self.thinking_budget,
+            }
+        return kwargs
+
     # ------------------------------------------------------------------ #
     # Analysis
     # ------------------------------------------------------------------ #
@@ -97,12 +141,11 @@ class ClaudeClient(AIBackend):
     ) -> str:
         prompt = build_prompt(engine_results, request)
         client = self._get_client()
-        message = client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        # `message.content` is a list of content blocks; concatenate text blocks.
+        message = client.messages.create(**self._build_request_kwargs(prompt))
+        # `message.content` is a list of content blocks. Thinking blocks
+        # (`type == "thinking"`) have a `.thinking` attribute but no
+        # `.text` — we skip them so the user never sees the private
+        # reasoning. Only final text blocks are concatenated.
         parts = []
         for block in message.content:
             text = getattr(block, "text", None)
@@ -115,11 +158,10 @@ class ClaudeClient(AIBackend):
     ) -> Iterator[str]:
         prompt = build_prompt(engine_results, request)
         client = self._get_client()
-        with client.messages.stream(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            messages=[{"role": "user", "content": prompt}],
-        ) as stream:
+        with client.messages.stream(**self._build_request_kwargs(prompt)) as stream:
+            # `text_stream` yields only text from text blocks, so
+            # thinking tokens are transparently skipped even when
+            # extended thinking is enabled.
             for text in stream.text_stream:
                 if text:
                     yield text

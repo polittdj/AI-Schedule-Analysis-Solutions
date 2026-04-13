@@ -209,7 +209,10 @@ Everything is driven by environment variables. The `Config` class in `app/config
 | `OLLAMA_MODEL` | `schedule-analyst` | Model name served by Ollama |
 | `OLLAMA_TIMEOUT` | `120` | Seconds to wait for an Ollama response |
 | `ANTHROPIC_API_KEY` | *(unset)* | Required for cloud mode |
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | Claude model ID |
+| `ANTHROPIC_MODEL` | `claude-opus-4-6` | Claude model ID (Opus 4.6 is the default) |
+| `ANTHROPIC_MAX_TOKENS` | `16384` | Hard ceiling on a single Claude response (must exceed `ANTHROPIC_THINKING_BUDGET`) |
+| `ANTHROPIC_THINKING` | `true` | Enable Claude extended thinking — private chain-of-thought reasoning before the final narrative |
+| `ANTHROPIC_THINKING_BUDGET` | `10000` | Token budget for extended thinking (counted separately from output tokens) |
 | `SANITIZE_DATA` | `false` | Replace task/resource/project names with `Task A`-style labels before any AI call |
 | `UPLOAD_FOLDER` | `./uploads` | Where uploads and analysis artifacts are stored |
 | `MAX_FILE_SIZE` | `524288000` (500 MB) | Upload size cap |

@@ -29,7 +29,10 @@ DEFAULT_AI_MODE = "local"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "schedule-analyst"
 DEFAULT_OLLAMA_TIMEOUT = 120
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-6"
+DEFAULT_ANTHROPIC_MAX_TOKENS = 16384
+DEFAULT_ANTHROPIC_THINKING = True
+DEFAULT_ANTHROPIC_THINKING_BUDGET = 10000
 DEFAULT_MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
 DEFAULT_MAX_PROMPT_TOKENS = 6000
 DEFAULT_SECRET_KEY = "dev-key-change-in-production"  # intentionally insecure
@@ -62,6 +65,22 @@ class Config:
         self.ANTHROPIC_API_KEY: str | None = os.environ.get("ANTHROPIC_API_KEY")
         self.ANTHROPIC_MODEL: str = os.environ.get(
             "ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL
+        )
+        self.ANTHROPIC_MAX_TOKENS: int = int(
+            os.environ.get(
+                "ANTHROPIC_MAX_TOKENS", str(DEFAULT_ANTHROPIC_MAX_TOKENS)
+            )
+        )
+        self.ANTHROPIC_THINKING: bool = _parse_bool(
+            os.environ.get(
+                "ANTHROPIC_THINKING", "true" if DEFAULT_ANTHROPIC_THINKING else "false"
+            )
+        )
+        self.ANTHROPIC_THINKING_BUDGET: int = int(
+            os.environ.get(
+                "ANTHROPIC_THINKING_BUDGET",
+                str(DEFAULT_ANTHROPIC_THINKING_BUDGET),
+            )
         )
 
         # Data handling
@@ -114,6 +133,9 @@ class Config:
             "ollama_timeout": self.OLLAMA_TIMEOUT,
             "anthropic_api_key_set": masked,
             "anthropic_model": self.ANTHROPIC_MODEL,
+            "anthropic_max_tokens": self.ANTHROPIC_MAX_TOKENS,
+            "anthropic_thinking": self.ANTHROPIC_THINKING,
+            "anthropic_thinking_budget": self.ANTHROPIC_THINKING_BUDGET,
             "sanitize_data": self.SANITIZE_DATA,
             "upload_folder": str(self.UPLOAD_FOLDER),
             "max_file_size": self.MAX_FILE_SIZE,
