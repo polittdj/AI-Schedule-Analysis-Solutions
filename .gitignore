@@ -13,3 +13,7 @@ dist/
 build/
 .env
 .DS_Store
+
+# Runtime upload folder. The tool processes .mpp files that may
+# contain CUI-classified data — they must never be committed.
+uploads/
