@@ -7,23 +7,14 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
   {# -------------------------------------------------------------------- #}
-  {# Chart.js & Tabulator.js                                              #}
-  {#                                                                      #}
-  {# For air-gapped environments: download the real library bundles to   #}
-  {#   app/web/static/lib/chart.min.js                                    #}
-  {#   app/web/static/lib/tabulator.min.js                                #}
-  {#   app/web/static/lib/tabulator.min.css                               #}
-  {# and remove the CDN <script> tags below. The placeholders in          #}
-  {# static/lib/ load first and are intentionally empty; the CDN tag      #}
-  {# below is the working fallback.                                       #}
+  {# Chart.js & Tabulator.js — vendored locally for air-gapped operation. #}
+  {# Real UMD bundles live in app/web/static/lib/. No CDN fallback.       #}
+  {# To refresh, see scripts/vendor_libs.md (or re-download from          #}
+  {# Chart.js v4.4.0 / Tabulator v5.5.2 releases).                        #}
   {# -------------------------------------------------------------------- #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabulator.min.css') }}">
   <script src="{{ url_for('static', filename='lib/chart.min.js') }}"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
-          crossorigin="anonymous"></script>
-  <link rel="stylesheet"
-        href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator.min.css">
   <script src="{{ url_for('static', filename='lib/tabulator.min.js') }}"></script>
-  <script src="https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js"></script>
 </head>
 <body>
   <div class="app-shell">
