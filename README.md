@@ -212,7 +212,7 @@ Everything is driven by environment variables. The `Config` class in `app/config
 | `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | Claude model ID |
 | `SANITIZE_DATA` | `false` | Replace task/resource/project names with `Task A`-style labels before any AI call |
 | `UPLOAD_FOLDER` | `./uploads` | Where uploads and analysis artifacts are stored |
-| `MAX_FILE_SIZE` | `52428800` (50 MB) | Upload size cap |
+| `MAX_FILE_SIZE` | `524288000` (500 MB) | Upload size cap |
 | `SECRET_KEY` | insecure dev key | Flask session signing key — **set to a real secret in production** |
 | `MAX_PROMPT_TOKENS` | `6000` | Hard ceiling on the AI prompt size (fits in 8K Ollama context) |
 
