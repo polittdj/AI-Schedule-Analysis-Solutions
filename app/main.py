@@ -236,6 +236,16 @@ def create_app(config: Optional[Config] = None) -> Flask:
     )
     app.config["SECRET_KEY"] = cfg.SECRET_KEY
     app.config["MAX_CONTENT_LENGTH"] = cfg.MAX_FILE_SIZE
+    # Werkzeug 3.1 introduced per-request caps on form parsing that are
+    # much tighter than MAX_CONTENT_LENGTH (500 KB for in-memory form
+    # fields, 1000 parts for multipart requests). Files are streamed to
+    # disk and therefore don't count against MAX_FORM_MEMORY_SIZE, but
+    # a multi-file trend upload with 10 files and several text fields
+    # can still brush against the part-count cap. Raise both explicitly
+    # so every Werkzeug-level limit tracks MAX_CONTENT_LENGTH and the
+    # caller gets one consistent error message when they overrun.
+    app.config["MAX_FORM_MEMORY_SIZE"] = cfg.MAX_FILE_SIZE
+    app.config["MAX_FORM_PARTS"] = 2000
     app.config["APP_CONFIG"] = cfg
 
     cfg.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
