@@ -24,3 +24,54 @@ uploads/
 # as the source schedules. Do not commit. To version feedback
 # deliberately, copy entries to a sanitized location first.
 app/knowledge_base/feedback.jsonl
+
+
+# ============================================================
+# CUI DATA PROTECTION — EXTENDED RULES (appended)
+# ============================================================
+# Block schedule source files anywhere in repo by extension.
+# Existing uploads/ rule above catches the runtime upload folder;
+# this catches the same file types in any location an agent
+# or developer might create outside of uploads/.
+*.mpp
+*.mpt
+*.xer
+*.xml
+*.xls
+*.xlsx
+
+# Additional runtime data folders that multi-agent workflows
+# or testing may create. Agents sometimes spawn ad-hoc
+# directories; these are pre-blocked so CUI cannot leak in.
+/test_schedules/
+/sample_data/
+/client_data/
+/cui_data/
+/exports/
+/output/
+/reports/
+
+# Secrets and credentials beyond .env
+*.key
+*.pem
+config.local.*
+secrets.*
+.env.local
+.env.*.local
+
+# Ollama model files — large, local-only, never belong in Git
+/models/
+*.gguf
+*.bin
+
+# IDE and OS junk
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+desktop.ini
+
+# Claude Code multi-agent worktrees and team directories
+/.claude/teams/
+/worktrees/
