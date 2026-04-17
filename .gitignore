@@ -75,3 +75,11 @@ desktop.ini
 # Claude Code multi-agent worktrees and team directories
 /.claude/teams/
 /worktrees/
+
+# Source reference documents in docs/sources/ are NOT CUI
+!docs/sources/
+!docs/sources/**
+!docs/sources/*.xlsx
+!docs/sources/*.pdf
+!docs/sources/*.docx
+!docs/sources/*.md
