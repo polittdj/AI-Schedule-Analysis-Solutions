@@ -358,8 +358,8 @@ def read_mpp_via_com(filepath: str) -> dict:
 This skill covers *reading* `.mpp` files. The following belong to other skills or later phases and must not be built into the parser:
 
 - **CPM math** (forward/backward pass, float calculation, critical-path trace) — see the `driving-slack-and-paths` skill and Lessons Learned §11.1–11.2.
-- **Diff engine** (cross-version task/field deltas, added/deleted detection) — Lessons Learned §11.3 and the project build plan's Phase 5.
-- **Report generation** (Word, Excel, PDF narrative) — Lessons Learned §11.8 and the project build plan's Phase 8.
+- **Diff engine** (cross-version task/field deltas, added/deleted detection) — Lessons Learned §4 Phase 3 (`diff_engine.py`). Handled by a future diff-engine module, not this skill.
+- **Report generation** (Word, Excel, PDF narrative) — Lessons Learned §4 Phase 4 (Excel/Word/narrative exporters). Handled by a future reporting module, not this skill.
 - **Earned Value Management** (SPI, CEI, BEI, SPI(t)) — Lessons Learned §§11.4–11.6; EVM is deferred to a later phase and is not a parser concern.
 - **AI narrative generation** — the `cui-compliance-constraints` skill and Lessons Learned §8 govern Ollama/Claude routing. The parser never calls an AI backend.
 - **Manipulation-pattern detection** — the `forensic-manipulation-patterns` skill.
