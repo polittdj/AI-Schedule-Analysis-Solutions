@@ -74,8 +74,8 @@ Each subsection gives the formula, threshold, rationale, and forensic interpreta
 
 - **Formula.** Count of tasks carrying a hard constraint, divided by Total Tasks.
 - **Threshold.** ≤5% [RW p.8].
-- **Definition delta.** The 09NOV09 revision narrows "hard" to exactly four constraint types: Must-Finish-On (MFO), Must-Start-On (MSO), Start-No-Later-Than (SNLT), and Finish-No-Later-Than (FNLT) [RW p.8]. Earlier revisions also counted As-Late-As-Possible and several soft constraints, which produced false-positive spikes. Ron Winter 2011 documents the 09NOV09 list; Edwards 2016 cites the same four-constraint list; this skill defaults to the four-constraint 09NOV09 definition because it is the most recent protocol revision.
-- **Forensic read.** Hard constraints override CPM float and are the single most common manipulation vector — §4.5 drives most constraint-abuse findings downstream in `forensic-manipulation-patterns`.
+- **Definition delta.** The 09NOV09 revision narrows "hard" to exactly four constraint types: Must-Finish-On (MFO), Must-Start-On (MSO), Start-No-Later-Than (SNLT), and Finish-No-Later-Than (FNLT) [RW p.8]. Earlier revisions also counted As-Late-As-Possible and several soft constraints, which produced false-positive spikes. Both [RW p.8] and [ED] cite the 09NOV09 four-constraint list; this skill follows that definition.
+- **Forensic read.** Hard constraints override CPM float and are the single most common manipulation vector — §4.5 drives most constraint-abuse findings downstream in `forensic-manipulation-patterns (planned — future skill)`.
 
 ### 4.6 Check 6 — High Float
 
@@ -126,7 +126,6 @@ Each subsection gives the formula, threshold, rationale, and forensic interpreta
 - **Formula.** Select a task on the critical path, add a delay (canonical value: 600 working days) to its remaining duration, re-run CPM, and compare the new project finish to the original. If the project finish moves by the full delay amount, the network passed; if it moves by less (or not at all), the network failed [RW p.14].
 - **Threshold.** Boolean pass/fail — no percentage.
 - **Rationale.** A well-connected network must propagate delay end-to-end. Failure indicates open-ended successors, broken logic, or hard constraints that pin the finish.
-- **Implementation note.** The engine rebuilds the schedule via `TaskData.model_copy(update={...})` + `ScheduleData.model_copy(update={...})` rather than mutating the original (per `CLAUDE.md` Key Decision #5).
 - **Forensic read.** A CPT failure is rarely the whole story — always trace the test task's driving path (`driving-slack-and-paths §5`) to identify where propagation stopped.
 
 ### 4.13 Check 13 — Critical Path Length Index (CPLI)
@@ -190,7 +189,7 @@ Mapping and deltas for the Deltek DECM metric set and Acumen 8 Schedule Health r
 - **CPT** → not a standard DECM row; Acumen's Logic Check covers integrity but not the 600-day propagation test — run through this tool's engine [DMG].
 - **CPLI, BEI** → DECM rows match DCMA ≥0.95 floor; DECM BEI denominator matches the §4.14 cumulative-hit definition [DECM].
 
-Custom Acumen 14-Point rulesets must follow [DMG] formula-syntax conventions; deeper Acumen content lives in `acumen-reference`.
+Custom Acumen 14-Point rulesets must follow [DMG] formula-syntax conventions; deeper Acumen content lives in `acumen-reference (planned — future skill)`.
 
 ## 8. NASA overlay
 
