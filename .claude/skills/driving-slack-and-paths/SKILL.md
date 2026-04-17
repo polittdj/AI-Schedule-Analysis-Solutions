@@ -66,7 +66,7 @@ Per Lessons Learned §11 #1 (Critical Path Trace), the forensic engine's critica
 - **Validate against MS Project's own Critical flag** — if the forensic engine disagrees with MS Project's critical-path marking, the parser or CPM math is wrong and must be fixed before proceeding (Lessons Learned §11 #1).
 - Emit an **ordered list of critical-path tasks with float values** (Lessons Learned §11 #1).
 
-A task is on the critical path when its Total Slack ≤ 0 in Microsoft Project convention (or when its Driving Slack to the project finish Focus Point = 0, which is the SSI-preferred test per slide 12).
+A task is on the critical path when its Total Slack ≤ MSP's configured critical-slack threshold (default 0, user-configurable via Tools → Options → Calculation → "Tasks are critical if slack is less than or equal to N days") — i.e., whatever TS value causes MSP's own Critical flag to fire for that task per §3's MSP-validation requirement — or when its Driving Slack to the project finish Focus Point = 0, which is the SSI-preferred test per slide 12.
 
 **Multiple critical paths.** When two or more independent logic chains both terminate at the project finish with zero slack, the engine reports each chain separately as "Critical Path A," "Critical Path B," etc. No path is dropped; the analyst needs to see every zero-slack route. Per SSI slide 12, using Driving Slack to the project finish Focus Point is the most accurate way to distinguish genuine critical paths from near-critical tasks that merely happen to share a TS = 0 reading due to deadline coincidence.
 
@@ -123,7 +123,7 @@ The forensic engine's CPM implementation produces a driving-path output only if 
 
 When a but-for analysis compares a Period A baseline schedule to a Period B current schedule to isolate the impact of a specific change (added delay, removed logic link, inserted constraint, etc.), the engine uses **Period A slack values exclusively** for the driving-impact test. Period B slack values already reflect the change under investigation and are therefore circular — a task that became a driver *because* of the Period B change will report zero slack in Period B, which proves nothing about what the schedule would have done absent the change.
 
-- **Finish-date delta is the authoritative slip metric.** For each matched UniqueID, the Period A finish date minus the Period B finish date (in calendar days per the repo-level convention that date slips are reported in calendar days) is the primary but-for output.
+- **Finish-date delta is the authoritative slip metric.** For each matched UniqueID, the Period B finish date minus the Period A finish date (later − prior, in calendar days per the repo-level convention that date slips are reported in calendar days) is the primary but-for output. Positive = the task's finish slipped later; negative = the task's finish pulled earlier. Sign convention aligns with CLAUDE.md decision #3 and the archived comparator implementation at `archive/prior-build-2026-04-16/app/engine/comparator.py:113`.
 - **Logic-removal driving impact checked against Period A start dates.** When the but-for analysis removes a logic link to test its contribution, the engine re-runs CPM with the link removed and compares the resulting start dates against Period A start dates, not against the Period B start dates that already include the link.
 - **DS-to-Focus-Point recomputed both with and without the change.** The delta in Driving Slack (SSI slide 5–6 definition) to the nominated Focus Point is the contribution attributable to the change.
 
