@@ -52,7 +52,7 @@ Rolling-wave content beyond the near-term window must still provide enough defin
 
 ## 5. Schedule basis and documentation
 
-The Schedule Basis of Estimate (BoE) is the structured dossier documenting ground rules, assumptions, and drivers used in developing the IMS, plus assessment and analysis findings, reporting artifacts, and primary source data [SMH §5.4 p.73; definition per NPR 7120.5]. The BoE enables IMS development, provides the medium for assessing schedule reliability, guides evolution, and enables dialogue between the P/p and Independent Assessment teams [SMH §5.4 pp.73–74].
+The Schedule Basis of Estimate (BoE) is the structured dossier documenting ground rules, assumptions, and drivers used in developing the IMS, plus assessment and analysis findings, reporting artifacts, and primary source data [SMH §5.4 p.73]. The BoE enables IMS development, provides the medium for assessing schedule reliability, guides evolution, and enables dialogue between the P/p and Independent Assessment teams [SMH §5.4 pp.73–74].
 
 BoE content must include, at minimum, basis rationale for each IMS element, primary data sources, and an explicit trace from rationale to source [SMH §5.4 p.74]. It must house current and past IMS versions so prior-cycle comparators can be reproduced. It must document calendar conventions, working-time rules, duration-estimate assumptions, procurement/test-facility/partner-driven logical constraints, and margin-allocation methodology [SMH §5.5.11 pp.120–124; §5.5.9.2 p.107]. BoE maturity is staged against the P/p life cycle: Preliminary at SRR/SDR, Baseline at PDR/CDR, Updates thereafter [SMH §5.4.1 p.74].
 
@@ -60,7 +60,7 @@ BoE content must include, at minimum, basis rationale for each IMS element, prim
 
 ## 6. Schedule health and quality — NASA overlay on DCMA 14-Point
 
-SMH references the DCMA 14-Point Assessment as a recommended schedule-health check [SMH §6.2.2 pp.161–169; §6.2.2.1.2 *Procedure 2. Health Check* pp.168–174]. NASA endorses the protocol without overriding its thresholds; where SMH cites DCMA numerics, it restates them, and NASA-specific rules are additive. DCMA mechanics, formulas, denominators, and protocol-version handling are in `dcma-14-point-assessment §2–§5` — not restated here.
+SMH references the DCMA 14-Point Assessment as a recommended schedule-health check [SMH §6.2.2 pp.161–169; §6.2.2.1.2 *Procedure 2. Health Check* pp.168–174]. NASA endorses the protocol without overriding its thresholds; where SMH cites DCMA numerics, it restates them, and NASA-specific rules are additive. DCMA mechanics, formulas, denominators, and protocol-version handling are in `dcma-14-point-assessment §2, §3, §4` — not restated here.
 
 NASA-specific overlay rules the engine must apply:
 
@@ -77,7 +77,7 @@ Schedule Analysis under SMH denotes the process of performing a Schedule Risk An
 
 SRA inputs [SMH §6.3.1 p.190; §6.3.2 pp.191–193]: an IMS or Analysis Schedule; task duration uncertainties as probability distributions; a current, complete discrete risk list with clarity on mitigation planning and funding; EVM reports where EVM is run. Outputs include probability distributions over completion dates, stochastic critical/driving path analysis, risk sensitivity and prioritisation, schedule confidence levels, and margin sufficiency analysis [SMH §6.3.2 pp.192–193].
 
-When to run [SMH §6.3 pp.190–191]: at pre-planned initiating events (major reviews, monthly/quarterly routine reviews), on special request during schedule-impacting events, and semi-annually (or more) for multi-mission campaigns. An Integrated Cost and Schedule Risk Analysis (ICSRA) / JCL is **required** at KDP I / KDP C prior to baseline and at rebaselines for tightly coupled programs, single-project programs, and projects with estimated Life-Cycle Cost (LCC) > $250M; for single-project programs and projects with LCC ≥ $1B, also required at KDP B, CDR, and KDP D [SMH §5.5.11.2 pp.121–122; AA JCL Memo 24 May 2019].
+When to run [SMH §6.3 pp.190–191]: at pre-planned initiating events (major reviews, monthly/quarterly routine reviews), on special request during schedule-impacting events, and semi-annually (or more) for multi-mission campaigns. An Integrated Cost and Schedule Risk Analysis (ICSRA) / JCL is **required** at KDP I / KDP C prior to baseline and at rebaselines for tightly coupled programs, single-project programs, and projects with estimated Life-Cycle Cost (LCC) > $250M; for single-project programs and projects with LCC ≥ $1B, also required at KDP B, CDR, and KDP D [SMH §5.5.11.2 pp.121–122].
 
 **Scope covered here:** SRA purpose, inputs, outputs, and when to run. Forensic relevance: the SRA confidence-level timeline (P10/P50/P90 across cycles) is a superior leading indicator to any deterministic metric — a P50 that slides right monotonically is the SMH-style fingerprint of a programme that is not recovering.
 
@@ -105,7 +105,7 @@ SMH draws a sharp distinction between replan and rebaseline — the single most 
 
 - **IMS field extraction, null handling, status-date extraction** — see `mpp-parsing-com-automation §3`.
 - **Driving slack vs. total slack; relationship slack; driving-path traces; secondary/tertiary paths; Period A slack rule** — see `driving-slack-and-paths §2.3, §3`.
-- **DCMA 14-Point formulas, thresholds, Deltek DECM / Acumen 8 mapping, NASA overlay** — see `dcma-14-point-assessment §2–§5, §7, §8`.
+- **DCMA 14-Point formulas, thresholds, Deltek DECM / Acumen 8 mapping, NASA overlay** — see `dcma-14-point-assessment §2, §3, §4, §7, §8`.
 - **Data locality; CUI gate** — see `cui-compliance-constraints`. Schedule data is CUI and never leaves the host.
 - **Governance lifecycle (KDP/SRR/PDR/CDR/SIR/ORR/MRR/FRR/DR/DRR), PMC, Decision Authority, DM, ABC, MA, NPR 7120.5 phases** — see `nasa-program-project-governance (planned — future skill)`.
 - **Manipulation-pattern signatures (rolling-wave mis-tagging, status overrides, constraint abuse, duration compression)** — see `forensic-manipulation-patterns (planned — future skill)`.
@@ -141,10 +141,10 @@ SMH draws a sharp distinction between replan and rebaseline — the single most 
 | §6 | High-Float denominator exclusion (cross-ref) | [SMH §5.5.11 pp.118–119]; `dcma-14-point-assessment §8` |
 | §6 | NASA key indicators | [SMH §6.2.2.1.2 p.170] |
 | §7 | SRA definition, inputs, outputs; NPR 7120.5 / NPD 1000.5 support | [SMH §6.3 pp.190–193] |
-| §7 | ICSRA/JCL required points by P/p class and LCC | [SMH §5.5.11.2 pp.121–122; AA JCL Memo 24 May 2019] |
+| §7 | ICSRA/JCL required points by P/p class and LCC | [SMH §5.5.11.2 pp.121–122] |
 | §8 | Status-date convention; incomplete tasks updated; Remaining Duration primary | [SMH §7.3.2 pp.285–288] |
 | §8 | Invalid Actual/Forecast Dates | [SMH §6.2.2.1.2 p.170] |
 | §9 | Replan definition, internal vs. external | [SMH §7.3.4.5 pp.330–331] |
 | §9 | Rebaseline definition, SRB validation, DM, baseline preservation | [SMH §7.3.4.6 p.331; §7.3.4.7 pp.331–332] |
 | §9 | Rebaselining as RIDM-framed reset | [NPR8K §1.2.4.5 p.477; §2.4 p.997] |
-| §10 | Cross-skill cross-refs | `mpp-parsing-com-automation §3`; `driving-slack-and-paths §2.3, §3`; `dcma-14-point-assessment §2–§5, §7, §8`; `cui-compliance-constraints`; `nasa-program-project-governance (planned)`; `forensic-manipulation-patterns (planned)`; `acumen-reference (planned)` |
+| §10 | Cross-skill cross-refs | `mpp-parsing-com-automation §3`; `driving-slack-and-paths §2.3, §3`; `dcma-14-point-assessment §2, §3, §4, §7, §8`; `cui-compliance-constraints`; `nasa-program-project-governance (planned)`; `forensic-manipulation-patterns (planned)`; `acumen-reference (planned)` |
