@@ -241,7 +241,9 @@ app.FileClose(Save=0)   # pjDoNotSave == 0; never write back
 
 **Rule (Lessons Learned Appendix D §10):** "Date format handling. COM returns dates as `datetime` objects via `win32com`, but the format depends on the Windows locale settings. Always normalize to ISO format immediately."
 
-**Rationale:** `win32com` surfaces COM `VARIANT DATE` values as Python `datetime` instances, but string coercion (for example `str(task.Start)` or `task.Start.strftime("%x")`) formats using the Windows regional settings — `MM/DD/YYYY` on en-US, `DD/MM/YYYY` on en-GB, `YYYY/MM/DD` on ja-JP. Any downstream string parsing (CSV export, JSON serialization, log lines, comparison between versions generated on different machines) silently misinterprets the month and day. Normalize to ISO 8601 (`YYYY-MM-DDTHH:MM:SS`) at the parser boundary and keep every internal value as a tz-naive `datetime` until presentation.
+**Rationale:** `win32com` surfaces COM `VARIANT DATE` values as Python `datetime` instances, but string coercion (for example `str(task.Start)` or `task.Start.strftime("%x")`) formats using the Windows regional settings — `MM/DD/YYYY` on en-US, `DD/MM/YYYY` on en-GB, `YYYY/MM/DD` on ja-JP. Any downstream string parsing (CSV export, JSON serialization, log lines, comparison between versions generated on different machines) silently misinterprets the month and day. Normalize to ISO 8601 (`YYYY-MM-DDTHH:MM:SS`) at the parser boundary.
+
+**M3 amendment (AM1, 2026-04-18):** The Milestone 3 COM adapter attaches UTC at the parser boundary; models carry tz-aware datetimes thereafter. This supersedes the prior "keep every internal value as a tz-naive `datetime` until presentation" guidance — the Pydantic model's G1 validator requires tz-aware values, and the adapter in `app/parsers/com_parser.py` calls `coerce_datetime_to_utc` on every date field before constructing a `Task`/`Schedule`/`Calendar` instance. Gotcha 6 (status-date sentinels) still normalizes to `None`.
 
 **Code pattern:**
 ```python
