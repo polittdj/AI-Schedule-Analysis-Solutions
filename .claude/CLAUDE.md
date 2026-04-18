@@ -1,55 +1,97 @@
-PROJECT: Schedule Forensics Local Tool
-DESCRIPTION: Local web application for forensic CPM schedule analysis of Microsoft Project (.mpp) files. Parses MPP files locally via Java/MPXJ, runs deterministic forensic analysis (DCMA 14-point, manipulation detection, critical path, delay analysis), and generates AI-powered narrative reports via dual-mode AI backend (Ollama for CUI-rated data, Claude API for unclassified).
+# Phase 1 Build Context — AI Schedule Analysis Solutions
 
-TECH STACK:
-- MPP Parser: Java (OpenJDK) + JPype1 + MPXJ (org.mpxj.reader.UniversalProjectReader)
-- Backend: Python 3.12+, Flask, Pydantic
-- Frontend: HTML/CSS/JS, Chart.js, Tabulator.js (all local, no CDN)
-- AI Local: Ollama (schedule-analyst custom model on localhost:11434)
-- AI Cloud: Anthropic Python SDK (for unclassified projects only)
-- Export: python-docx, openpyxl, reportlab
-- Future RAG: ChromaDB + sentence-transformers (bolt-on, no refactor needed)
+## 1. Project Identity
 
-CONVENTIONS:
-- Type hints on all Python functions
-- Pydantic models for all data schemas
-- Flask blueprints for route organization
-- All AI interaction through app/ai/base.py abstract interface
-- NEVER send raw MPP data to any cloud service
-- All times displayed in ET (Eastern Time)
-- Test files in tests/fixtures/ must NEVER contain CUI data
-- Use the MPXJ API: org.mpxj (not net.sf.mpxj), getPredecessorTask()/getSuccessorTask() for relations
+- Repo: `polittdj/AI-Schedule-Analysis-Solutions`
+- Brand: ScheduleForensics LLC
+- Local path convention: `C:\Tool\AI-Schedule-Analysis-Solutions`
+- Workstation: HP ZBook Fury 16 G11, Windows 11 Enterprise, no local
+  admin rights; portable Python/Java/Ollama runtime tree synchronized
+  via OneDrive (CUI working directory held outside OneDrive per
+  `cui-compliance-constraints §7`).
+- Data sensitivity: CUI by default. All schedule data stays local;
+  schedule files and pickled analyses never commit to git
+  (`cui-compliance-constraints §§2a, 2c`).
 
-CRITICAL ARCHITECTURE RULE: The forensic engine (app/engine/) does 90% of the analysis with deterministic code. The AI layer only generates narrative text from pre-computed metrics. This ensures CUI data can be fully analyzed without any AI involvement if needed.
+## 2. Phase Identification
 
-CURRENT PHASE: Complete — All Phases Built (Phases 0–6)
+- Currently executing: **Phase 1** (tool build).
+- Milestones: M1–M14 per `docs/BUILD-PLAN.md §5`.
+- Deferred phases: **Phase 2** (multi-version trend analysis, RAG
+  upgrade, custom Modelfile iteration) and **Phase 3** (full Earned
+  Value Analysis). Explicit scope per BUILD-PLAN §§1.4, 1.5.
 
-KEY DECISIONS (captured during the build):
+## 3. Branch Naming Convention
 
-1. Pydantic v2 (not v1). The installed `pydantic` is 2.12; all schema models use `ConfigDict(extra="forbid")` and `model_dump(mode="json")` for JSON serialization. Anything that needs a dict representation of a Pydantic model must use `model_dump`, never `.dict()` (which is deprecated).
+- Milestone build sessions: `claude/milestone-N-{scope}-YYYY-MM-DD`.
+- Cleanup / audit / other session types:
+  `claude/session-NN-{scope}-YYYY-MM-DD`.
+- Override the harness if it proposes a different branch name.
 
-2. JPype lazy-start. `app.parser.mpp_reader._ensure_jvm()` only starts the JVM on the first `parse_mpp()` call, never at import time. This keeps `python -m app.main` booting in under a second on machines without Java configured. The lazy import `from app.parser.mpp_reader import parse_mpp` is done *inside* the `/analyze` route handler for the same reason.
+## 4. One-Session-Per-Milestone Rule
 
-3. Working days vs. calendar days. Every duration and float value in the parser/engine is expressed in **working days** (the parser normalizes via `duration_to_days`). Date slips in the comparator are reported in **calendar days** because that's what practitioners expect when reading "the project slipped 5 days."
+- Each milestone is scoped for a single Claude Code session.
+- Milestones flagged in BUILD-PLAN §5 as potentially multi-session
+  (M11 manipulation engine, M13 UI) may decompose into `a` / `b`
+  sub-sessions at build time if the first session under-runs.
+- A milestone that exceeds two sessions is a decomposition candidate
+  at plan-review time.
 
-4. Disk-backed analysis store. Flask's cookie-based session has a 4 KB cap that cannot hold a full `ScheduleData` tree. Analysis results are pickled to `UPLOAD_FOLDER/analysis_<uuid>.pkl` and only the UUID lives in the session. A multi-worker deployment would swap this for Redis.
+## 5. Canonical Specifications
 
-5. DCMA Critical Path Test uses `model_copy`. Metric #12 (CPT) needs to rebuild the schedule with +1 day on a critical task and re-run CPM. We use `TaskData.model_copy(update={"duration": ...})` + `ScheduleData.model_copy(update={"tasks": ...})` — no mutation of the original.
+- Authoritative Phase 1 spec: `docs/BUILD-PLAN.md`. Read in full
+  before writing code in any milestone.
+- Tagged-source dictionary: `docs/sources/README.md`.
+- Domain knowledge base: `.claude/skills/` (see §6).
 
-6. `DataSanitizer` is one-shot per analysis run. The UID → label mapping is instance state, not global. The Flask route instantiates a new sanitizer per `/ai-analyze` call, sanitizes before the backend call, then `desanitize_text`s each streaming chunk on the way out. (Per-chunk desanitization may miss labels that straddle chunk boundaries; a future phase can buffer before emitting.)
+## 6. Domain Knowledge Base (`.claude/skills/`)
 
-7. CUI gate lives in `Config.is_cui_safe_mode()`. The web layer is responsible for refusing to construct a `ClaudeClient` for CUI-rated projects. The AI client classes themselves don't know about classification levels — they just honor `is_available()`.
+Eight authoritative skill directories; each milestone reads the
+skills it references before coding:
 
-8. Export modules return `bytes`, not `BytesIO`. Keeps the web layer thin (it wraps bytes in `io.BytesIO` for `send_file`) and makes the exporters trivially testable without any stream plumbing.
+- `cui-compliance-constraints`
+- `mpp-parsing-com-automation`
+- `driving-slack-and-paths`
+- `dcma-14-point-assessment`
+- `nasa-schedule-management`
+- `nasa-program-project-governance`
+- `forensic-manipulation-patterns`
+- `acumen-reference`
 
-9. CDN + local fallback for Chart.js / Tabulator.js. `base.html` loads the local placeholder first, then the CDN as a working fallback. Air-gapped deployments should download the real UMD bundles to `app/web/static/lib/` and strip the CDN `<script>` tags — the procedure is documented at the top of each placeholder file.
+Skills are read-only reference material in Phase 1 — milestones do
+not modify them.
 
-10. Cycle handling is lenient. `cpm.compute_cpm` reports stuck UIDs in `CPMResults.cycles_detected` but still produces best-effort numbers for the non-cyclic subgraph. A broken schedule is still a forensic target — we don't crash on it.
+## 7. Known Bugs and Environmental Constraints
 
-11. `ws.freeze_panes = "A2"` not `ws["A2"]`. openpyxl materializes a phantom blank row if you dereference a cell before it exists. Assign the coordinate string directly.
+- COM automation parser (Milestone 3) requires MS Project installed
+  on the host. Parser fails fast if the COM interface is absent; no
+  CI runner exercises it.
+- Java and Node.js PATH must be set manually per session when
+  operating from the portable-runtime tree on OneDrive/Desktop.
+- HP ZBook corporate IT agents (SentinelOne EDR, SCCM/CcmExec,
+  Intune, BigFix, Splunk forwarders, Nessus) consume workstation
+  resources and cannot be modified. The tool coexists with them per
+  `cui-compliance-constraints §6`; it does not evade them.
+- Auto-merge is disabled at the repo level (confirmed by user
+  settings check). Every Claude Code PR opens as **DRAFT**.
+- Three impulse-merge incidents are recorded (Sessions 2, 6,
+  17/18). Operational mitigation: do **not** open the PR tab in a
+  browser before pasting the audit verdict into build-chat.
+- Stream-idle timeouts have been observed on long Write tool calls.
+  Documents exceeding ~3,000 words are written via the chunked
+  bash-heredoc append pattern (the same pattern used to author
+  `docs/BUILD-PLAN.md`).
+- Session resumption risk: the Claude Code harness occasionally
+  resumes a stale session. If audit reports surface with the wrong
+  branch or skill name, kill the session and restart.
 
-12. AI narrative HTML-escape before reportlab. `Paragraph` parses a subset of HTML (`<b>`, `<i>`, `<font>`), so operator-supplied text must have `&`, `<`, `>` escaped or the PDF builder raises a parse error. Only the narrative is escaped; machine-generated table content is trusted.
+## 8. Communication Style
 
-13. The `mpxj` pip package exposes `mpxj.mpxj_dir` pointing at bundled JARs. We use JPype1 directly (not `mpxj.startJVM()`) to match the architecture requirement that JPype1 is the bridge, and to keep classpath control explicit.
-
-14. Test fixtures never touch the JVM. Integration tests monkey-patch `app.parser.mpp_reader.parse_mpp` to return synthetic `ScheduleData` so the full web-layer pipeline can be exercised in under a second without Java, without MPP fixtures, and without JVM startup overhead.
+- **Build-chat scope** (between Papicito and Claude): technical,
+  terse, one action per message, with a plain-language explanation
+  preceding each command and both success and failure signatures
+  shown when running commands.
+- **Tool-to-user voice** (web UI copy, DOCX / PDF / XLSX export
+  narrative, error messages surfaced to the analyst): neutral,
+  professional, specification-grade. Codified in Milestone 13 (UI)
+  and the export modules.
