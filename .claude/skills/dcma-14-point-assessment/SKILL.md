@@ -75,7 +75,7 @@ Each subsection gives the formula, threshold, rationale, and forensic interpreta
 - **Formula.** Count of tasks carrying a hard constraint, divided by Total Tasks.
 - **Threshold.** ≤5% [RW p.8].
 - **Definition delta.** The 09NOV09 revision narrows "hard" to exactly four constraint types: Must-Finish-On (MFO), Must-Start-On (MSO), Start-No-Later-Than (SNLT), and Finish-No-Later-Than (FNLT) [RW p.8]. Earlier revisions also counted As-Late-As-Possible and several soft constraints, which produced false-positive spikes. Both [RW p.8] and [ED] cite the 09NOV09 four-constraint list; this skill follows that definition.
-- **Forensic read.** Hard constraints override CPM float and are the single most common manipulation vector — §4.5 drives most constraint-abuse findings downstream in `forensic-manipulation-patterns (planned — future skill)`.
+- **Forensic read.** Hard constraints override CPM float and are the single most common manipulation vector — §4.5 drives most constraint-abuse findings downstream in `forensic-manipulation-patterns`.
 
 ### 4.6 Check 6 — High Float
 
@@ -189,7 +189,7 @@ Mapping and deltas for the Deltek DECM metric set and Acumen 8 Schedule Health r
 - **CPT** → not a standard DECM row; Acumen's Logic Check covers integrity but not the 600-day propagation test — run through this tool's engine [DMG].
 - **CPLI, BEI** → DECM rows match DCMA ≥0.95 floor; DECM BEI denominator matches the §4.14 cumulative-hit definition [DECM].
 
-Custom Acumen 14-Point rulesets must follow [DMG] formula-syntax conventions; deeper Acumen content lives in `acumen-reference (planned — future skill)`.
+Custom Acumen 14-Point rulesets must follow [DMG] formula-syntax conventions; deeper Acumen content lives in `acumen-reference`.
 
 ## 8. NASA overlay
 

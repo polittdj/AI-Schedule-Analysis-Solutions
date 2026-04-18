@@ -6,7 +6,7 @@ license: Proprietary — polittdj / AI-Schedule-Analysis-Solutions
 
 # MPP Parsing and COM Automation
 
-Authoritative reference for reading native Microsoft Project `.mpp` files. All rules are sourced to `docs/sources/Schedule_Forensics_Lessons_Learned.md` ("Lessons Learned"); rules not present there are marked `(inferred — not sourced)`.
+Authoritative reference for reading native Microsoft Project `.mpp` files. All rules are sourced to `docs/sources/Schedule_Forensics_Lessons_Learned.md` ("Lessons Learned"); rules not present there are marked `(inferred — not sourced)` and are tagged for Session 19 or post-Phase-B review to upgrade the citation when a primary source is located.
 
 ## 1. Overview — COM Automation Is the Primary Parser
 
@@ -295,7 +295,7 @@ Lessons Learned §5 details the mechanics:
 - `Task.Name` is **not** a reliable identifier — names can be changed, and duplicate names are common.
 - Reinforced by Lessons Learned §13 commandment 3: "Thou shalt match tasks by UniqueID and nothing else."
 
-**The Predecessors-column trap *(inferred — not sourced)*:** The visible "Predecessors" column in the MS Project Gantt view displays predecessor *Task IDs*, not *UniqueIDs*. Pulling that string as a cross-version key silently re-keys every relationship when a row is inserted or deleted. §5 establishes the underlying principle (Task ID is useless for matching); the specific column-display claim is a working hypothesis until validated. The safe, sourced path is to iterate `task.TaskDependencies` and read `dep.From.UniqueID` / `task.UniqueID` directly (§2 Option A example; Appendix B "Relationship Fields").
+**The Predecessors-column trap *(inferred — not sourced)*:** The visible "Predecessors" column in the MS Project Gantt view displays predecessor *Task IDs*, not *UniqueIDs*. Pulling that string as a cross-version key silently re-keys every relationship when a row is inserted or deleted. §5 establishes the underlying principle (Task ID is useless for matching); the specific column-display claim is a working hypothesis until validated, and is tagged for Session 19 or post-Phase-B review to upgrade to a sourced citation. The safe, sourced path is to iterate `task.TaskDependencies` and read `dep.From.UniqueID` / `task.UniqueID` directly (§2 Option A example; Appendix B "Relationship Fields").
 
 **Code pattern (relationships keyed by UniqueID, sourced to Lessons Learned §2 Option A):**
 ```python
@@ -390,9 +390,9 @@ Every rule in this skill cites Lessons Learned. The table below maps each sectio
 | §4 Validate against MS Project UI | §3 item 4 (authoritative); §4 Phase 1 validation step; §10 item 3 validation harness; §12 Tier 2 |
 | §4 No analysis before parser validated | §3 item 1; §13 commandment 2 |
 | §5 UniqueID non-negotiable | §5; §13 commandment 3 |
-| §5 Predecessors column trap | *(inferred — not sourced)*; underlying Task-ID-is-useless principle from §5 |
+| §5 Predecessors column trap | *(inferred — not sourced)*; underlying Task-ID-is-useless principle from §5; tagged for Session 19 or post-Phase-B review |
 | §5 COM relationship-type enum 0=FF 1=FS 2=SF 3=SS | Appendix B "COM Automation Type Mappings" |
 | §6 try/finally lifecycle | §2 Option A example; Appendix D §§1, 2, 7, 8, 9; Appendix D §3 (serial) |
 | §7 Out-of-scope cross-references | §11 Analysis Module Specifications; §8 Local AI integration; §9 Security |
 
-**Citation discipline:** Every rule above is anchored to a numbered section, appendix, or commandment in Lessons Learned except the single item in §5 explicitly marked *(inferred — not sourced)*. Any future edit that introduces a new rule must either add a citation to the table or mark the rule `(inferred — not sourced)`. Uncited, unmarked rules must be removed.
+**Citation discipline:** Every rule above is anchored to a numbered section, appendix, or commandment in Lessons Learned except the single item in §5 explicitly marked *(inferred — not sourced)* and tagged for Session 19 or post-Phase-B review. Any future edit that introduces a new rule must either add a citation to the table or mark the rule `(inferred — not sourced)` with a matching scope-defer. Uncited, unmarked rules must be removed.
