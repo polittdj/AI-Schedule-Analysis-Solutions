@@ -12,7 +12,7 @@ Authoritative reference for applying NASA Schedule Management Handbook (SMH, Rev
 
 This skill codifies NASA's published expectations for schedule management so the forensic engine can (a) detect deviations from those expectations, and (b) phrase its narrative in the agency's own vocabulary. It covers the IMS as NASA defines it, schedule margin as a PM-owned reserve distinct from total float, rolling-wave planning, the Schedule Basis of Estimate (BoE), schedule health from the NASA angle, Schedule Risk Assessment (SRA), status-date discipline, and the replan-versus-rebaseline decision path.
 
-It does **not** cover the programmatic lifecycle (KDP/SRR/PDR/CDR definitions, PMC structure, NPR 7120.5 phase gates) — see `nasa-program-project-governance (planned — future skill)`. It does not restate DCMA 14-Point formulas or thresholds — see `dcma-14-point-assessment §4, §8`. It does not restate driving-slack vs. total-slack mechanics — see `driving-slack-and-paths §2.3`. It does not cover `.mpp` field extraction — see `mpp-parsing-com-automation §3`. EVA is deferred to Phase 3.
+It does **not** cover the programmatic lifecycle (KDP/SRR/PDR/CDR definitions, PMC structure, NPR 7120.5 phase gates) — see `nasa-program-project-governance`. It does not restate DCMA 14-Point formulas or thresholds — see `dcma-14-point-assessment §4, §8`. It does not restate driving-slack vs. total-slack mechanics — see `driving-slack-and-paths §2.3`. It does not cover `.mpp` field extraction — see `mpp-parsing-com-automation §3`. EVA is deferred to Phase 3.
 
 Forensic framing: SMH describes NASA's *expected* schedule-management behaviours. A schedule that deviates from SMH is evidence of process drift, not automatically of manipulation. Many deviations (thin BoE, sparse rolling-wave decomposition, missing margin) are driven by funding, staffing, or contract structure. The narrative should cite the SMH expectation, characterise the deviation, and leave intent to the human investigator.
 
@@ -48,7 +48,7 @@ Rolling-wave content beyond the near-term window must still provide enough defin
 
 **Interaction with DCMA §4.8 (High Duration):** the 09NOV09 revision provides a rolling-wave exemption. Mechanics in `dcma-14-point-assessment §4.8, §8` — not restated here.
 
-**Forensic read:** rolling-wave mis-tagging is a manipulation pattern. Known-detail work is flagged as a rolling-wave placeholder to evade High-Duration (via the exemption) or to park unresolved scope where no baseline can yet fail. Fingerprints: a near-term activity coded rolling-wave across multiple status cycles despite the 6–12-month window, or a far-term placeholder whose scope is clearly decomposed in the contract but undecomposed in the IMS. Cross-ref `forensic-manipulation-patterns (planned — future skill)`.
+**Forensic read:** rolling-wave mis-tagging is a manipulation pattern. Known-detail work is flagged as a rolling-wave placeholder to evade High-Duration (via the exemption) or to park unresolved scope where no baseline can yet fail. Fingerprints: a near-term activity coded rolling-wave across multiple status cycles despite the 6–12-month window, or a far-term placeholder whose scope is clearly decomposed in the contract but undecomposed in the IMS. Cross-ref `forensic-manipulation-patterns`.
 
 ## 5. Schedule basis and documentation
 
@@ -65,7 +65,7 @@ SMH references the DCMA 14-Point Assessment as a recommended schedule-health che
 NASA-specific overlay rules the engine must apply:
 
 - **High Float denominator exclusion.** Tagged schedule-margin tasks are excluded from §4.6's denominator. Rationale in §3; mechanics in `dcma-14-point-assessment §8`.
-- **Governance-milestone constraint triage.** NASA governance milestones (KDP, SRR/MDR/SDR, PDR, CDR, SIR, ORR, MRR/FRR, DR, DRR) legitimately drive MSO and FNLT constraints on IMS tasks tied to review dates [SMH §2.1; governance detail in `nasa-program-project-governance (planned)`]. Elevated §4.5 Hard-Constraint rates therefore require governance triage before any manipulation inference. Cross-ref `dcma-14-point-assessment §8`.
+- **Governance-milestone constraint triage.** NASA governance milestones (KDP, SRR/MDR/SDR, PDR, CDR, SIR, ORR, MRR/FRR, DR, DRR) legitimately drive MSO and FNLT constraints on IMS tasks tied to review dates [SMH §2.1; governance detail in `nasa-program-project-governance`]. Elevated §4.5 Hard-Constraint rates therefore require governance triage before any manipulation inference. Cross-ref `dcma-14-point-assessment §8`.
 - **Rolling-wave exemption interaction.** DCMA §4.8's rolling-wave exemption is endorsed by NASA usage (§4), but the engine must cross-check that exempted tasks are actually in the far-term window [SMH §5.5.7.3 p.95].
 - **No known numeric conflicts.** DCMA numerics default.
 
@@ -99,7 +99,7 @@ SMH draws a sharp distinction between replan and rebaseline — the single most 
 
 **Rebaseline [SMH §7.3.4.7 pp.331–332; cross-ref [NPR8K] rebaseline-as-RIDM-outcome].** A rebaseline is a special case of replanning that requires changing the external commitment (ABC) in addition to the internal commitment (MA). It occurs when the existing baseline is no longer achievable and measuring performance against it is of little practical value. Triggers: sustained poor performance, external budget cuts, launch priority changes, or direction under the NASA Authorization Act of 2005 §103. Rebaselines are independently validated by the SRB or independent-assessment team and are recorded with an updated Decision Memorandum (DM); the original schedule baseline is preserved for traceability [SMH §7.3.4.6 p.331; §7.3.4.7 p.332].
 
-**Forensic read.** Serial replans without a rebaseline trigger are the SMH-style fingerprint of governance drift. Diagnostic pattern: a programme that consumes margin, misses baseline dates on control milestones, shows CPLI < 0.95 and BEI < 0.95 across multiple status cycles, yet continues internal replans without a rebaseline decision or a formal retain-with-risk decision is operating outside SMH expectations. The narrative should state SMH-defined rebaseline triggers, compare to observed programme state across comparator cycles, and identify whether the governance chain (PM, Decision Authority, PMC) appears engaged. PMC composition, KDP-tied rebaseline approvals, and NPR 7120.5 decision thresholds live in `nasa-program-project-governance (planned — future skill)`.
+**Forensic read.** Serial replans without a rebaseline trigger are the SMH-style fingerprint of governance drift. Diagnostic pattern: a programme that consumes margin, misses baseline dates on control milestones, shows CPLI < 0.95 and BEI < 0.95 across multiple status cycles, yet continues internal replans without a rebaseline decision or a formal retain-with-risk decision is operating outside SMH expectations. The narrative should state SMH-defined rebaseline triggers, compare to observed programme state across comparator cycles, and identify whether the governance chain (PM, Decision Authority, PMC) appears engaged. PMC composition, KDP-tied rebaseline approvals, and NPR 7120.5 decision thresholds live in `nasa-program-project-governance`.
 
 ## 10. Cross-skill dependencies
 
@@ -107,9 +107,9 @@ SMH draws a sharp distinction between replan and rebaseline — the single most 
 - **Driving slack vs. total slack; relationship slack; driving-path traces; secondary/tertiary paths; Period A slack rule** — see `driving-slack-and-paths §2.3, §3`.
 - **DCMA 14-Point formulas, thresholds, Deltek DECM / Acumen 8 mapping, NASA overlay** — see `dcma-14-point-assessment §2, §3, §4, §7, §8`.
 - **Data locality; CUI gate** — see `cui-compliance-constraints`. Schedule data is CUI and never leaves the host.
-- **Governance lifecycle (KDP/SRR/PDR/CDR/SIR/ORR/MRR/FRR/DR/DRR), PMC, Decision Authority, DM, ABC, MA, NPR 7120.5 phases** — see `nasa-program-project-governance (planned — future skill)`.
-- **Manipulation-pattern signatures (rolling-wave mis-tagging, status overrides, constraint abuse, duration compression)** — see `forensic-manipulation-patterns (planned — future skill)`.
-- **Deltek Acumen 8 Fuse metric overlay** — see `acumen-reference (planned — future skill)`.
+- **Governance lifecycle (KDP/SRR/PDR/CDR/SIR/ORR/MRR/FRR/DR/DRR), PMC, Decision Authority, DM, ABC, MA, NPR 7120.5 phases** — see `nasa-program-project-governance`.
+- **Manipulation-pattern signatures (rolling-wave mis-tagging, status overrides, constraint abuse, duration compression)** — see `forensic-manipulation-patterns`.
+- **Deltek Acumen 8 Fuse metric overlay** — see `acumen-reference`.
 
 ## 11. Inferred content + scope-defers (single-table summary)
 
@@ -147,4 +147,4 @@ SMH draws a sharp distinction between replan and rebaseline — the single most 
 | §9 | Replan definition, internal vs. external | [SMH §7.3.4.5 pp.330–331] |
 | §9 | Rebaseline definition, SRB validation, DM, baseline preservation | [SMH §7.3.4.6 p.331; §7.3.4.7 pp.331–332] |
 | §9 | Rebaselining as RIDM-framed reset | [NPR8K §1.2.4.5 p.477; §2.4 p.997] |
-| §10 | Cross-skill cross-refs | `mpp-parsing-com-automation §3`; `driving-slack-and-paths §2.3, §3`; `dcma-14-point-assessment §2, §3, §4, §7, §8`; `cui-compliance-constraints`; `nasa-program-project-governance (planned)`; `forensic-manipulation-patterns (planned)`; `acumen-reference (planned)` |
+| §10 | Cross-skill cross-refs | `mpp-parsing-com-automation §3`; `driving-slack-and-paths §2.3, §3`; `dcma-14-point-assessment §2, §3, §4, §7, §8`; `cui-compliance-constraints`; `nasa-program-project-governance`; `forensic-manipulation-patterns`; `acumen-reference` |
