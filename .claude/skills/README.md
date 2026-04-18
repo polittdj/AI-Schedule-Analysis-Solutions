@@ -51,21 +51,25 @@ for its scope.
 All 8 skills are populated and merged on `main`. Phase B is complete.
 The build sequence across Phase B was:
 
-| Session | Skill                                   | PR  |
-| ------- | --------------------------------------- | --- |
-| 11      | `nasa-schedule-management`              | #10 |
-| 12      | `driving-slack-and-paths`               | #11 |
-| 13      | `nasa-program-project-governance`       | #13 |
-| 14      | `mpp-parsing-com-automation`            | #14 |
-| 15      | `dcma-14-point-assessment`              | #15 |
-| 16      | `acumen-reference`                      | #16 |
-| 17      | `forensic-manipulation-patterns`        | #17 |
-| 18      | `cui-compliance-constraints`            | #18 |
+| Session | Skill                                   | PR(s)       |
+| ------- | --------------------------------------- | ----------- |
+| 2       | `cui-compliance-constraints`            | #10         |
+| 4       | `mpp-parsing-com-automation`            | #11         |
+| 6       | `driving-slack-and-paths`               | #12, #13    |
+| 8       | `dcma-14-point-assessment`              | #14         |
+| 10      | `nasa-schedule-management`              | #15         |
+| 12      | `nasa-program-project-governance`       | #16         |
+| 14      | `forensic-manipulation-patterns`        | #17         |
+| 16      | `acumen-reference`                      | #18         |
+| 18b     | (cross-skill cleanup sweep)             | #19         |
 
-Session counts: 18 sessions total across Phase B, 8 skills merged via
-PRs #10, #11, #13, #14, #15, #16, #17, #18. Session 18a ran the
-cross-skill audit; Session 18b applies the audit's cleanup backlog;
-Session 19 produces the master build plan at `docs/BUILD-PLAN.md`.
+Cadence: WRITE sessions populate the 8 skills on the even-numbered slots
+(2, 4, 6, 8, 10, 12, 14, 16); odd-numbered sessions between are audit /
+review sessions. Session 6 produced two PRs because the initial
+populate (#12) had follow-up Codex findings landed in #13. Session 18a
+ran the cross-skill audit; Session 18b applied the audit's cleanup
+backlog (PR #19). Session 19 produces the master build plan at
+`docs/BUILD-PLAN.md`.
 
 ## Conventions
 

@@ -34,10 +34,9 @@ gated by enterprise DLP controls, but this skill does not rely on those
 controls — the tool is responsible for not attempting egress in the first
 place.
 
-[Cite: [LL] §1 "Operating Environment." For the NASA cybersecurity-policy
-authority underpinning this posture, see nasa-program-project-governance
-§2 (two-authority governance) for the authoritative citation — this skill
-points rather than quotes.]
+[Cite: [LL] §1 "Operating Environment." NASA cybersecurity-policy
+authority (e.g., NPR 2810.1) is scope-deferred to post-Phase-B review —
+topic not yet carried in cross-skill sources.]
 
 ## 2. Eight Non-Negotiable CUI Rules
 
@@ -65,10 +64,10 @@ Anthropic client. Chart.js and Tabulator.js load from
 `app/web/static/lib/` with a CDN fallback that an air-gapped deployment
 strips at install time.
 
-[Cite: [LL] §9.1 "No schedule data egress"; [LL] §13 Commandment 8. For
-the underlying NASA cybersecurity-policy citation, see
-nasa-program-project-governance §2 — this skill defers the quotation to
-that skill and points here.]
+[Cite: [LL] §9.1 "No schedule data egress"; [LL] §13 Commandment 8. The
+underlying NASA cybersecurity-policy citation (e.g., NPR 2810.1) is
+scope-deferred to post-Phase-B review — topic not yet carried in
+cross-skill sources.]
 
 ### 2b. Default to Ollama schedule-analyst; Claude API is explicit opt-in
 
@@ -88,9 +87,8 @@ active. `app/ai/base.py` defines the abstract interface; concrete clients
 honor `is_available()` but do not themselves inspect classification.
 
 [Cite: [LL] §9.5 "No silent cloud fallback"; [PRNS] dual-mode-AI scope
-brief. For the System Security Plan authority underpinning this rule,
-see nasa-program-project-governance §3 — this skill does not inline-quote
-the source.]
+brief. System Security Plan authority is scope-deferred to post-Phase-B
+review — topic not yet carried in cross-skill sources.]
 
 ### 2c. No schedule file or derivative is ever committed to git
 
@@ -109,10 +107,9 @@ directory. Developers are expected to run `git status` before every commit.
 A future pre-commit hook can assert these patterns programmatically;
 absent that, the rule is enforced by reviewer discipline.
 
-[Cite: [LL] §9.4 "Git hygiene"; [LL] §10.4 "Test fixture boundary." For
-the NASA records-retention authority that backstops this rule, see
-nasa-program-project-governance §6 for the authoritative citation — this
-skill points rather than inlines the source.]
+[Cite: [LL] §9.4 "Git hygiene"; [LL] §10.4 "Test fixture boundary."
+NASA records-retention authority is scope-deferred to post-Phase-B
+review — topic not yet carried in cross-skill sources.]
 
 ### 2d. No schedule content to stdout, stderr, or log files
 
@@ -446,10 +443,11 @@ NASA-governance documents (NPR 8000.4C, NID 7120.148, GPR 7120.7B,
 SMH, NPR 2810.1) and to Deltek Acumen documentation:
 
 - nasa-program-project-governance — holds the authoritative NASA
-  cybersecurity, records-retention, and System Security Plan citations.
-  This skill defers those quotations to nasa-program-project-governance
-  rather than inlining them, in keeping with the per-skill
-  source-approval matrix.
+  programmatic-governance citations (NPR 8000.4C, NID 7120.148, GPR
+  7120.7B, SMH overlap). NASA cybersecurity, records-retention, and
+  System Security Plan authorities (e.g., NPR 2810.1) are scope-deferred
+  to post-Phase-B review — these topics are not yet carried in
+  cross-skill sources.
 
 - nasa-schedule-management — holds SMH IMS-integrity framing consulted
   where CUI handling intersects schedule-health expectations (Section 8).
