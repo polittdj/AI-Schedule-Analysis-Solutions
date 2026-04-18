@@ -6,7 +6,7 @@ license: Proprietary — polittdj / AI-Schedule-Analysis-Solutions
 
 # Forensic Manipulation Patterns
 
-Detection protocol and interpretation of forensic schedule-manipulation signatures across two or more versions of a Microsoft Project IMS. Every substantive rule cites an approved source: [SSI] Arnold/SSI NASA Driving Slack, [LL] Schedule Forensics Lessons Learned, [SMH] NASA Schedule Management Handbook (2024 update), [DECM] Deltek DECM Metrics (Jan 2022), [DMG] Deltek Acumen 8.8 Metric Developers Guide, [RW] Ron Winter 2011, and [ED] Edwards 2016. Rules not directly sourced are labelled `(inferred — not sourced)` with a Session-18 scope-defer note in §13.
+Detection protocol and interpretation of forensic schedule-manipulation signatures across two or more versions of a Microsoft Project IMS. Every substantive rule cites an approved source: [SSI] Arnold/SSI NASA Driving Slack, [LL] Schedule Forensics Lessons Learned, [SMH] NASA Schedule Management Handbook (2024 update), [DECM] Deltek DECM Metrics (Jan 2022), [DMG] Deltek Acumen 8.8 Metric Developers Guide, [RW] Ron Winter 2011, and [ED] Edwards 2016. Rules not directly sourced are labelled `(inferred — not sourced)` with a Session-18 scope-defer note in §14.
 
 ## 1. Purpose and scope
 
@@ -31,7 +31,7 @@ The following are **not** manipulation and must be excluded before any finding i
 
 ### 3.1 UniqueID matching is the sole cross-version key
 
-The match key is `UniqueID` — nothing else [LL §5; §13 commandment #3]. The `ID` (row-number) field shifts on insertion/deletion/reorder. Name-based matching silently fails on renames. UniqueID extraction lives in `mpp-parsing-com-automation §3.4, §5`.
+The match key is `UniqueID` — nothing else [LL §5; §13 commandment #3]. The `ID` (row-number) field shifts on insertion/deletion/reorder. Name-based matching silently fails on renames. UniqueID extraction lives in `mpp-parsing-com-automation §5`.
 
 ### 3.2 Status-date windowing (legitimate-progress filter)
 
@@ -175,7 +175,7 @@ Three consecutive revisions show monotonically worsening CPLI [RW p.15], BEI [RW
 
 ## 11. Deltek DECM / Acumen cross-reference
 
-The Deltek EVMS-DECM catalog (V5.0, Jan 2022) supplies complementary EVMS-layer probes cited in §§4–10: `06A204b` (dangling), `06A205a` (lags), `06A209a` (constraints), `06A211a` (high float), `06A212a` (out-of-sequence), `06A504a/b` (actuals changed), `06A506b/c` (forecast validity; riding status date), `23A301a` (SV analysis vs. CP/near-CP/driving), `29I401a` (baseline masking variances), `31A101a` and `32A101a/b` (authorized baseline traceability). [DMG p.1] frames metrics as "formulas and tripwires"; [DMG p.12] defines the four-formula schema; [DMG p.37] lists special fields `IsOutOfSequence`, `Number of Lags`, `Number of Leads`, and FF/FS/SF/SS counts. Full Acumen Fuse mapping in `acumen-reference (planned — future skill)`.
+The Deltek EVMS-DECM catalog (V5.0, Jan 2022) supplies complementary EVMS-layer probes cited in §§4–10: `06A204b` (dangling), `06A205a` (lags), `06A209a` (constraints), `06A211a` (high float), `06A212a` (out-of-sequence), `06A504a/b` (actuals changed), `06A506b/c` (forecast validity; riding status date), `23A301a` (SV analysis vs. CP/near-CP/driving), `29I401a` (baseline masking variances), `31A101a` and `32A101a/b` (authorized baseline traceability). [DMG p.1] frames metrics as "formulas and tripwires"; [DMG p.12] defines the four-formula schema; [DMG p.37] lists special fields `IsOutOfSequence`, `Number of Lags`, `Number of Leads`, and FF/FS/SF/SS counts. Full Acumen Fuse mapping in `acumen-reference`.
 
 ## 12. Cross-skill dependencies
 
@@ -184,7 +184,7 @@ The Deltek EVMS-DECM catalog (V5.0, Jan 2022) supplies complementary EVMS-layer 
 - **Field extraction fidelity (actual/forecast/remaining-duration, status-date extraction, constraint-type enum, relationship-type enum)** — `mpp-parsing-com-automation §3`.
 - **NASA IMS quality/integrity baseline, replan-vs-rebaseline governance, status-date discipline** — `nasa-schedule-management §2, §6, §8, §9`.
 - **Data locality during manipulation analysis; CUI gate** — `cui-compliance-constraints`.
-- **Deltek Acumen Fuse metric cross-reference** — `acumen-reference (planned — future skill)`.
+- **Deltek Acumen Fuse metric cross-reference** — `acumen-reference`.
 
 ## 13. What this skill does NOT cover
 
@@ -226,4 +226,4 @@ The Deltek EVMS-DECM catalog (V5.0, Jan 2022) supplies complementary EVMS-layer 
 | Free Slack to nearest successor | [SSI slide 10] |
 | EVMS-DECM manipulation probes — actuals changed (06A504a/b); forecast riding status date (06A506c); baseline masking variances (29I401a); dangling logic (06A204b); lags (06A205a); constraints limited (06A209a); high-float rationale (06A211a); out-of-sequence (06A212a); SV analysis to CP/near-CP/driving (23A301a); forecast validity (06A506b); authorized baseline change (31A101a; 32A101a/b) | [DECM sheet *Deltek EVMS-DECM Metrics V5.0*] |
 | Acumen four-formula schema; tripwires; special fields | [DMG p.1; p.12; p.37] |
-| Cross-skill cross-refs | `dcma-14-point-assessment §4`; `driving-slack-and-paths §2, §3, §5, §6, §9`; `mpp-parsing-com-automation §3, §3.4, §3.6, §5`; `nasa-schedule-management §2, §6, §8, §9`; `cui-compliance-constraints`; `acumen-reference (planned)` |
+| Cross-skill cross-refs | `dcma-14-point-assessment §4`; `driving-slack-and-paths §2, §3, §5, §6, §9`; `mpp-parsing-com-automation §3, §3.6, §5`; `nasa-schedule-management §2, §6, §8, §9`; `cui-compliance-constraints`; `acumen-reference` |
