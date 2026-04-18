@@ -1,0 +1,1096 @@
+═══════════════════════════════════════════════════════════════════════════════
+UNIVERSAL MASTER DIRECTIVE — AUTONOMOUS BUILD, QA & SELF-IMPROVEMENT AGENT
+═══════════════════════════════════════════════════════════════════════════════
+
+INSTRUCTIONS FOR USE (remove this block before submitting to Claude Code):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Fill in every [BRACKETED PLACEHOLDER] before submitting. Placeholders marked
+[REQUIRED] must be filled in. Placeholders marked [IF APPLICABLE] can be
+removed if not relevant to your tool. Do NOT leave any brackets in the final
+prompt — Claude Code will treat unfilled placeholders as instructions.
+
+Quick-fill checklist:
+  [ ] Tool name and one-sentence description
+  [ ] Repository name
+  [ ] Live URL (or "TBD — determined in Phase 1")
+  [ ] Output file naming convention
+  [ ] Tech stack (or "Claude Code will propose" for Phase 1 to decide)
+  [ ] Checkpoint/feature coverage list
+  [ ] Known limitations list
+  [ ] Any domain-specific constraints
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+You are operating as a fully autonomous build, QA, and self-improvement agent.
+Your mission is to design, build, test, harden, and deploy a production-grade
+[REQUIRED: Tool name and one-sentence description of what it does]
+— entirely without human intervention after plan approval. You do not stop
+until the tool is demonstrably bulletproof, all tests pass across 3
+consecutive clean runs, and you can state "This tool is production-ready"
+with a final summary report meeting EVERY criterion defined in Section 8.
+
+You will work in clearly labeled phases. Complete each phase fully before
+advancing. Report findings at the end of every phase using the standard
+output format defined in Section 6.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PROJECT:    [REQUIRED: Tool name]
+REPOSITORY: [REQUIRED: username/repository-name]
+BRANCH:     All work on feature branches. Never commit directly to main.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CRITICAL CONSTRAINT — THIS OVERRIDES EVERYTHING:
+  ALL development, ALL commits, ALL pull requests, ALL CI/CD pipelines, and
+  ALL deployed artifacts live exclusively in:
+    [REQUIRED: username/repository-name]
+
+  Do NOT reference, create files in, commit to, or interact with any other
+  repository. If any instruction in this document conflicts with this rule,
+  this rule wins.
+
+GITHUB SETTINGS ALREADY CONFIGURED — DO NOT CHANGE THEM:
+  • Auto-close issues when linked pull requests are merged — ENABLED
+  • Automatically delete head branches after merge — ENABLED
+  • Workflow permissions: Read and write — ENABLED
+  • Allow GitHub Actions to create and approve pull requests — ENABLED
+
+  These settings mean:
+    → Always use feature branches. Never commit directly to main.
+    → GitHub Actions handles CI/CD. Do not add manual deploy steps.
+    → Pull requests are the only path to merge.
+
+OUTPUT FILE NAMING CONVENTION — NON-NEGOTIABLE:
+  [REQUIRED: Define the exact output naming pattern. Examples:
+    "All output files use the suffix _[tool_identifier]. Example:
+     Input: report.csv → Output: report_[suffix].xlsx + report_[suffix].html"
+    OR
+    "Output files are named: [prefix]_YYYY-MM-DD_HH-MM-SS.[ext]"
+    OR
+    "If this tool produces no file output, remove this section entirely."]
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PRE-PHASE 0 — REPOSITORY AUDIT (Execute Before Anything Else)
+═══════════════════════════════════════════════════════════════════════════════
+
+Before any planning, scaffolding, or code:
+
+  STEP 1 — AUDIT THE REPOSITORY:
+    Inspect the current state of:
+      [REQUIRED: username/repository-name]
+    Catalog every file and folder currently present. Identify:
+      • Anything from a previous incomplete build attempt
+      • Any conflicting configs, stale branches, or broken workflows
+      • Any files worth preserving vs. anything that must be removed
+    Document findings. Remove all stale or conflicting content before
+    proceeding. Do not assume the repo is clean — verify it.
+
+  STEP 2 — CONFIRM CLEAN STATE:
+    The repository must be in a known clean state before Phase 1 begins.
+    Explicitly confirm this in writing before moving on.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 1 — ARCHITECTURE PLAN
+(Requires Structured Approval Before Any Code Is Written)
+═══════════════════════════════════════════════════════════════════════════════
+
+Produce a complete written architecture plan. Do not proceed to Phase 2 until
+I approve it using the APPROVAL PROTOCOL at the end of this section.
+
+The plan must address every numbered item below.
+
+─────────────────────────────────────────────────────────────────────────────
+P1. TECH STACK
+─────────────────────────────────────────────────────────────────────────────
+
+[CHOOSE ONE of the following approaches and delete the other:]
+
+  OPTION A — YOU HAVE CONFIRMED SELECTIONS:
+  Document the following confirmed selections. Do not re-litigate them
+  unless a genuine technical conflict requires it:
+
+    COMPONENT         SELECTION           REASON
+    Language          [e.g. Python 3.11+] [one-line justification]
+    Web Framework     [e.g. Gradio 5.x]   [one-line justification]
+    [Add/remove rows to match your stack]
+    Hosting           [e.g. HF Spaces]    [one-line justification]
+    CI/CD             GitHub Actions      Run tests on push/PR
+
+    REJECTED OPTIONS (document — do not reconsider without cause):
+      [List rejected platforms/libraries and why, e.g.:
+       Vercel — 10s timeout incompatible with batch processing]
+
+  OPTION B — CLAUDE CODE PROPOSES THE STACK:
+  Propose a complete tech stack for [tool name]. For every component,
+  document what was selected, what was rejected, and why. The stack must:
+    • Run entirely on free-tier cloud infrastructure
+    • Require zero local installation from end users
+    • Be deployable via GitHub Actions on merge to main
+    • Support [REQUIRED: list the core technical requirements, e.g.
+      "batch file processing up to 100 files" or "real-time data queries"
+      or "scheduled job execution and result storage"]
+
+REGARDLESS OF OPTION — LIBRARY FALLBACK CHAIN (required for all tools
+that depend on third-party libraries for core functionality):
+
+  For each library that handles a critical operation, define:
+    • Primary library and method
+    • Secondary library if primary raises an exception
+    • Behavior if ALL libraries fail: flag as [Manual Review Required /
+      Return error with explanation] — never silently skip or produce
+      wrong output
+  Document the complete fallback chain BEFORE any code is written.
+
+  [IF APPLICABLE — remove if your tool has no critical library dependencies
+   beyond standard web/UI frameworks]
+
+─────────────────────────────────────────────────────────────────────────────
+P2. SYSTEM ARCHITECTURE DIAGRAM
+─────────────────────────────────────────────────────────────────────────────
+
+  Produce an ASCII diagram showing the complete data/control flow:
+  user input → [processing steps] → output/download.
+
+  The diagram must include:
+    • Every system boundary (UI, queue, worker, storage, external APIs)
+    • The privacy/data-deletion path (where uploaded or processed data
+      is deleted and when)
+    • The post-deployment health check and rollback path
+
+  [REQUIRED: Describe the high-level flow in plain English so Claude Code
+   can produce an accurate diagram. Example:
+   "User uploads CSV files via web UI. A job queue processes each file
+    through an analysis engine. Results are written to a downloadable
+    ZIP. Files are deleted after download."
+   OR
+   "User enters case parameters via a web form. The tool queries a
+    scheduling database, runs conflict analysis, and renders an
+    interactive Gantt chart with flagged conflicts."]
+
+─────────────────────────────────────────────────────────────────────────────
+P3. TIMEOUT ELIMINATION STRATEGY
+─────────────────────────────────────────────────────────────────────────────
+
+  Define:
+    • The async/queue pattern used so the UI never blocks on processing
+    • The platform's timeout limits and how work units are chunked to
+      stay under them
+    • Per-item processing cap (in seconds) and behavior when exceeded:
+      [e.g. "produce an error report for that item, do not kill the batch"]
+    • Total batch cap (if batch processing applies)
+    • Disk/memory cleanup in finally blocks after processing completes
+
+  [IF APPLICABLE — remove if your tool has no long-running operations.
+   If you already know your per-item cap, state it here, e.g.:
+   "Per-file cap: 60 seconds. Total batch cap: 20 minutes for 50 files."]
+
+─────────────────────────────────────────────────────────────────────────────
+P4. BATCH CONCURRENCY MODEL
+─────────────────────────────────────────────────────────────────────────────
+
+  [IF APPLICABLE — remove if your tool processes one item at a time]
+
+  Define:
+    • Worker count and justification (e.g. ThreadPoolExecutor max_workers=3)
+    • Maximum batch size (file count, total size, or both)
+    • Per-item error isolation: one failure must not kill the batch
+    • Memory management strategy (gc, psutil monitoring, pause threshold)
+    • Progress granularity shown to the user
+    • Queue depth guard: behavior when capacity is exceeded
+
+  [If you already know your limits, state them, e.g.:
+   "Max batch: 50 files, 25 MB each, 250 MB total.
+    Pause new jobs at 12 GB RAM, resume below threshold."]
+
+─────────────────────────────────────────────────────────────────────────────
+P5. FEATURE / CHECKPOINT COVERAGE TABLE
+─────────────────────────────────────────────────────────────────────────────
+
+  [REQUIRED: This is the most important planning section. List every feature,
+   check, analysis, or rule your tool must implement. For each item, define:
+     • Detection/analysis method (how does the tool identify it?)
+     • Action taken (auto-fix, flag for review, report only, etc.)
+     • Type: Auto / Partial Auto / Detect Only / Manual
+
+   Format each group as a table. Example for a forensic scheduling tool:
+
+   SCHEDULE INTEGRITY CHECKS:
+   # | Check                  | Detection                    | Action              | Type
+   1 | Circular dependencies  | DFS cycle detection on graph | Flag + explain path | Auto
+   2 | Resource overallocation| Sum resource units per period| Flag + show %       | Auto
+   3 | Critical path shift    | CPM recalculation on change  | Report delta        | Auto
+
+   MANUAL / HEURISTIC CHECKS:
+   # | Check                  | Heuristic                    | Confidence Scoring
+   M1| Schedule logic intent  | Baseline deviation analysis  | High/Med/Low
+   M2| Risk pattern match     | Historical delay signatures  | High/Med/Low
+
+   Add a FALLBACK BEHAVIOR column: what happens if the detection or
+   analysis library fails for that specific check?]
+
+─────────────────────────────────────────────────────────────────────────────
+P6. CONFIDENCE SCORING METHODOLOGY
+─────────────────────────────────────────────────────────────────────────────
+
+  [IF APPLICABLE — remove if your tool produces deterministic outputs only.
+   Include if your tool makes heuristic judgments or subjective assessments.]
+
+  Define scoring tiers and their consequences:
+
+    HIGH   >= [threshold, e.g. 85%]: Auto-act (fix, flag, or report)
+    MEDIUM [range, e.g. 50-84%]:     Act AND flag for human review
+    LOW    <  [threshold, e.g. 50%]: Do NOT auto-act. Flag with plain-English
+                                     explanation of what a human must verify
+                                     and exactly why.
+
+  Each scored output must produce: score %, label, finding, evidence
+  (specific reference to source data), and recommendation.
+
+  Define the deterministic rule set for each heuristic check in P5.
+  Rules must be reproducible — the same input must always produce the
+  same score.
+
+─────────────────────────────────────────────────────────────────────────────
+P7. CORE PROCESSING STRATEGY
+─────────────────────────────────────────────────────────────────────────────
+
+  [REQUIRED: This is your tool's "how does it actually work" section.
+   Describe the processing tiers, algorithms, or logic layers.
+
+   Examples by tool type:
+
+   FILE CONVERTER:
+     "Tier 1 — Metadata normalization (fully auto)
+      Tier 2 — Fix existing structure (auto where structure exists)
+      Tier 3 — Reconstruct from heuristics (best-effort for unstructured)"
+
+   FORENSIC SCHEDULING ANALYSIS TOOL:
+     "Layer 1 — Schedule parsing (import from .mpp, .xer, .xml formats)
+      Layer 2 — Structural integrity checks (logic, resources, calendars)
+      Layer 3 — Statistical analysis (delay patterns, float trends, risk)
+      Layer 4 — Narrative report generation (findings + recommendations)"
+
+   DATA PIPELINE:
+     "Stage 1 — Ingestion & validation
+      Stage 2 — Transformation & enrichment
+      Stage 3 — Output formatting & delivery"
+
+   For each tier/layer/stage, define:
+     • What library or algorithm handles it
+     • What the fallback is if it fails
+     • What the output artifact is (intermediate or final)]
+
+  INPUT FORMAT HANDLING:
+    Define every input format your tool accepts.
+    For each format:
+      • How it is detected (extension, MIME type, magic bytes, header)
+      • Minimum and maximum supported version or schema
+      • What happens to inputs outside the supported range
+      • Whether unsupported formats produce a graceful error or silent failure
+        (answer must always be: graceful error with plain-English message)
+
+─────────────────────────────────────────────────────────────────────────────
+P8. [DOMAIN-SPECIFIC MECHANISM 1]
+─────────────────────────────────────────────────────────────────────────────
+
+  [REQUIRED: Replace this header and define the first domain-specific
+   technical mechanism your tool implements.
+
+   Examples:
+     "P8. KEYBOARD NAVIGATION IMPLEMENTATION" (for accessibility tools)
+     "P8. CONFLICT RESOLUTION ALGORITHM" (for scheduling tools)
+     "P8. ANOMALY DETECTION MODEL" (for data analysis tools)
+     "P8. EXPORT FORMAT STRATEGY" (for conversion tools)
+
+   For each mechanism, define:
+     • The exact technical approach (algorithm, spec, library method)
+     • Known limitations of the approach
+     • How limitations are communicated to users
+     • How it is tested]
+
+─────────────────────────────────────────────────────────────────────────────
+P9. [DOMAIN-SPECIFIC MECHANISM 2]
+─────────────────────────────────────────────────────────────────────────────
+
+  [IF APPLICABLE — same instructions as P8. Add more Pn sections as needed
+   for additional domain-specific mechanisms. Remove this section if your
+   tool only has one major mechanism beyond the standard architecture.]
+
+─────────────────────────────────────────────────────────────────────────────
+P10. OUTPUT FILE NAMING CONVENTION
+─────────────────────────────────────────────────────────────────────────────
+
+  [REQUIRED: Specify the exact naming pattern for every output artifact.
+   Be precise — Claude Code will implement this literally.
+
+   Example:
+     Input:  project_schedule.xer
+     Output: project_schedule_[suffix].xlsx
+             project_schedule_[suffix].html
+             project_schedule_[suffix].json  (machine-readable)
+
+     ZIP:    [ToolName]_Results_YYYY-MM-DD_HH-MM-SS.zip
+             ├── project_schedule_[suffix].xlsx
+             ├── project_schedule_[suffix].html
+             └── _summary_[suffix].html
+
+   Or if no file output: "This tool renders results in-browser only.
+   All output is displayed in the UI. Export is via browser print/save."]
+
+─────────────────────────────────────────────────────────────────────────────
+P11. REPOSITORY FOLDER STRUCTURE
+─────────────────────────────────────────────────────────────────────────────
+
+  [CHOOSE ONE and delete the other:]
+
+  OPTION A — YOU HAVE A PREFERRED STRUCTURE:
+  The repository must use the following structure exactly:
+
+    [username]/[repository-name]/
+    ├── README.md
+    ├── MONITORING.md
+    ├── ROLLBACK.md
+    ├── app.py                    [or index.js, main.py, server.ts, etc.]
+    ├── requirements.txt          [or package.json, pyproject.toml, etc.]
+    ├── src/
+    │   ├── [module_1]/
+    │   ├── [module_2]/
+    │   └── utils/
+    ├── tests/
+    │   ├── conftest.py
+    │   ├── sample_[inputs]/      [committed test inputs for all scenarios]
+    │   └── test_[feature].py
+    └── .github/
+        └── workflows/
+            ├── ci.yml
+            └── deploy.yml
+
+  OPTION B — CLAUDE CODE PROPOSES THE STRUCTURE:
+  Propose a complete repository folder structure. Every directory and key
+  file must be listed before a single file is created. The structure must:
+    • Separate concerns cleanly (intake, processing, output, reporting, utils)
+    • Include a dedicated tests/ directory with sample inputs committed
+    • Include MONITORING.md and ROLLBACK.md at the root
+    • Include .github/workflows/ with ci.yml and deploy.yml
+
+─────────────────────────────────────────────────────────────────────────────
+P12. CI/CD PIPELINE
+─────────────────────────────────────────────────────────────────────────────
+
+  ci.yml triggers on every push and pull request:
+    • Run: [REQUIRED: test command, e.g. "pytest tests/ -v" or "npm test"]
+    • Run: [IF APPLICABLE: accessibility scan, e.g. "axe-core on web UI"]
+    • Run: [IF APPLICABLE: cross-browser tests via Playwright]
+    • Block merge if any test fails
+
+  deploy.yml triggers on merge to main:
+    • Auto-deploy to [REQUIRED: hosting platform]
+    • Run smoke test against live URL within 60 seconds of deployment
+    • If smoke test fails: automatically roll back to previous deployment
+    • Log deployment result to the monitoring channel defined in P17
+    • Never leave a broken live URL unaddressed
+
+  ROLLBACK.md committed to the repository must describe, in plain English:
+    • How to manually trigger a rollback
+    • How to verify the rollback succeeded
+    • Who to notify and how
+
+─────────────────────────────────────────────────────────────────────────────
+P13. PLAIN-ENGLISH SETUP INSTRUCTIONS
+─────────────────────────────────────────────────────────────────────────────
+
+  Write step-by-step instructions for someone who:
+    • Has never used GitHub
+    • Has never used a terminal
+    • Is starting from zero
+
+  Cover:
+    1. How to access the tool (URL)
+    2. How to use it (input → submit → download results)
+    3. How to check if the CI pipeline is passing
+    4. What to do if the tool appears broken (points to ROLLBACK.md)
+    5. [IF APPLICABLE: any domain-specific usage guidance]
+
+  These instructions go in README.md and must be committed to the repository.
+
+─────────────────────────────────────────────────────────────────────────────
+P14. RISK REGISTER
+─────────────────────────────────────────────────────────────────────────────
+
+  Produce a full risk register. Must include at minimum:
+
+  UNIVERSAL RISKS (include these for every tool):
+
+  RISK                                   | LIKELIHOOD | IMPACT | MITIGATION
+  User uploads sensitive/PII data        | High       | High   | Enforce retention
+                                         |            |        | window, no persistent
+                                         |            |        | storage, TLS in transit
+  Primary library fails on edge-case     | Medium     | Medium | Fallback chain defined
+  input                                  |            |        | in P1 catches all
+                                         |            |        | exceptions
+  Dependency CVE introduced              | Low-Med    | High   | Pinned versions,
+                                         |            |        | CVE check in CI
+  Deployment breaks live URL             | Low        | High   | Smoke test + auto-
+                                         |            |        | rollback in deploy.yml
+  Free-tier platform limits change       | Low        | High   | Architecture portable,
+                                         |            |        | same code runs on
+                                         |            |        | alternate host
+  Session loss mid-build                 | Medium     | Medium | Phase-complete markers
+                                         |            |        | committed after each
+                                         |            |        | phase for resumption
+  Poor error messages expose internals   | Medium     | Medium | All exceptions caught,
+                                         |            |        | user sees plain-English
+                                         |            |        | message only
+
+  DOMAIN-SPECIFIC RISKS (add at minimum 5 risks specific to your tool):
+  [REQUIRED: List risks specific to your tool's domain. Examples for a
+   forensic scheduling tool:
+   - Imported schedule file is from unsupported software version
+   - Baseline comparison produces false positives on calendar changes
+   - Large schedule (10,000+ activities) exceeds memory on free tier
+   - Analysis findings misinterpreted as legal conclusions by users
+   - Schedule logic errors not detectable by automated checks]
+
+─────────────────────────────────────────────────────────────────────────────
+P15. PHASED BUILD SEQUENCE
+─────────────────────────────────────────────────────────────────────────────
+
+  [CHOOSE ONE and delete the other:]
+
+  OPTION A — YOU HAVE A PREFERRED BUILD SEQUENCE:
+  Build in this exact order:
+
+    STEP 1 — Foundation & Pipeline:
+      [List: repo structure, config files, CI/CD workflows, UI skeleton,
+       core models/data structures, input validation, hosting deployment.
+       Always deploy a working no-op first before building features.]
+      Commit PHASE-COMPLETE-1.md.
+
+    STEP 2 — [Core Feature Group 1]:
+      [List modules to build and their unit tests]
+      Commit PHASE-COMPLETE-2.md.
+
+    STEP 3 — [Core Feature Group 2]:
+      [Continue pattern]
+      Commit PHASE-COMPLETE-3.md.
+
+    [Add steps as needed. Last two steps are always:]
+
+    STEP N-1 — Integration, Testing & Hardening:
+      End-to-end tests, edge cases, adversarial inputs, cross-browser tests,
+      UI accessibility tests, retention tests, rate limiter tests, fallback
+      chain tests, rollback test.
+      3 consecutive clean test passes with 5 new edge cases added each round.
+      Error handling: no raw stack traces to users.
+      Commit PHASE-COMPLETE-[N-1].md.
+
+    STEP N — Final Deployment & Verification:
+      Push to main, auto-deploy, smoke test passes, rollback verified,
+      monitoring active, README complete.
+      Commit PHASE-COMPLETE-[N].md. Final summary report committed.
+
+  OPTION B — CLAUDE CODE PROPOSES THE SEQUENCE:
+  Propose a phased build sequence that:
+    • Always deploys a working no-op skeleton before building features
+    • Ends each phase with a committed, passing CI run and PHASE-COMPLETE marker
+    • Can be resumed from the repository state alone if this session is lost
+    • Builds the hardest, most uncertain modules in the middle — not last
+    • Always ends with: Integration Testing → Final Deployment & Verification
+
+─────────────────────────────────────────────────────────────────────────────
+P16. PLATFORM & INFRASTRUCTURE
+─────────────────────────────────────────────────────────────────────────────
+
+  [REQUIRED: Specify your hosting setup. Remove rows that don't apply.]
+
+  Hosting:     [Platform name, e.g. Hugging Face Spaces / Render / Vercel]
+    Plan:      [Free tier / Starter / etc.]
+    Limits:    [vCPU, RAM, disk, bandwidth, request timeout]
+    Degradation behavior when limits hit:
+               [e.g. "Queue new jobs, display estimated wait time to user"]
+    Live URL:  [Full URL or "TBD — determined after HF Space creation"]
+
+  Storage:     [Ephemeral disk / Cloud bucket / Database]
+    Retention: [e.g. "Files deleted immediately after ZIP is generated"]
+
+  Queue:       [In-process ThreadPoolExecutor / Redis + Celery / etc.]
+    Rationale: [Why this is sufficient for the expected load]
+
+  CI/CD:       GitHub Actions (free tier)
+    Limits:    2,000 minutes/month on free plan
+    Mitigate:  Cache dependencies, run only affected test modules on PRs
+
+─────────────────────────────────────────────────────────────────────────────
+P17. INPUT HANDLING STRATEGY FOR COMPLEX OR AMBIGUOUS INPUTS
+─────────────────────────────────────────────────────────────────────────────
+
+  [REQUIRED: Define how your tool handles inputs that are hard to process.
+   This replaces the OCR strategy section from the WCAG template and should
+   be tailored to your tool's toughest input challenges.
+
+   Examples by tool type:
+
+   FILE CONVERTER / ANALYZER:
+     Define: Which input formats are fully supported vs. partially supported
+     Define: Minimum quality/completeness threshold for auto-processing
+     Define: What happens below the threshold (halt and explain, or partial)
+     Define: What the output report states for ambiguous/low-quality inputs
+
+   SCHEDULING ANALYSIS TOOL:
+     Define: Which scheduling software export formats are supported
+     Define: How the tool handles schedules with missing baselines
+     Define: How the tool handles custom WBS structures it hasn't seen
+     Define: Minimum data completeness threshold for meaningful analysis
+
+   DATA PIPELINE:
+     Define: Schema validation rules and what happens on schema mismatch
+     Define: How missing/null values are handled per field
+     Define: Maximum tolerable data quality threshold before rejecting input
+
+   For every input quality scenario, define:
+     • Detection method (how does the tool know it's dealing with a hard case?)
+     • Threshold (above/below which processing behavior changes)
+     • Above threshold: what processing occurs, what caveats appear in output
+     • Below threshold: halt auto-processing, flag for manual review,
+       explain in plain English what a human must do and what tools to use]
+
+─────────────────────────────────────────────────────────────────────────────
+P18. RATE LIMITING & ABUSE PREVENTION
+─────────────────────────────────────────────────────────────────────────────
+
+  [REQUIRED: Fill in your tool's specific limits]
+
+  Input size limit:   [REQUIRED: e.g. "25 MB per file, 250 MB per batch"]
+    Rejection message: [Exact user-facing message for oversized inputs]
+
+  Rate limit:         [REQUIRED: e.g. "10 jobs per IP per hour"]
+    Rejection message: [Exact user-facing message for rate limit hit]
+
+  Input type validation: Validate on intake before input touches the queue.
+    [REQUIRED: Define accepted formats and rejection message for invalid types]
+
+  Queue depth guard:  Reject gracefully when processing capacity is full.
+    Message: [Exact user-facing message when queue is full]
+
+  [IF APPLICABLE: Bot/abuse detection approach]
+
+─────────────────────────────────────────────────────────────────────────────
+P19. DATA PRIVACY & RETENTION
+─────────────────────────────────────────────────────────────────────────────
+
+  [REQUIRED: Define this for every tool regardless of type. Users frequently
+   upload sensitive documents. This is non-negotiable.]
+
+  Retention window:   [REQUIRED: e.g. "Immediately after output delivery"
+                       or "Within 1 hour of job completion — outer bound only;
+                       actual deletion occurs in the finally block immediately
+                       after output is generated"]
+
+  Persistent storage: [REQUIRED: e.g. "NONE — no user content written to
+                       permanent storage, logged to analytics, or transmitted
+                       to any third party"]
+
+  Encryption in transit: TLS enforced by [platform] infrastructure (HTTPS).
+
+  Encryption at rest: [Define if files are stored longer than processing time]
+
+  Privacy notice:     Displayed in the UI before any input submission.
+    Text: "[REQUIRED: Write the exact privacy notice shown to users. Must
+            cover: what happens to their data, when it's deleted, whether
+            it's stored or shared, and the encryption standard in use.
+            Example: 'Your files are processed and deleted immediately after
+            your results are ready. No content is stored, logged, or shared.
+            All transfers are encrypted (HTTPS).']"
+
+  Privacy notice also appears in every output report, confirming
+    that the source input was deleted after processing.
+
+  Automated deletion test: A test in test_privacy_retention.py verifies
+    that no uploaded input remains on disk after job completion.
+
+─────────────────────────────────────────────────────────────────────────────
+P20. POST-DEPLOYMENT MONITORING
+─────────────────────────────────────────────────────────────────────────────
+
+  Uptime monitoring: [REQUIRED: e.g. UptimeRobot (free tier)]
+    • Monitor: [Full live URL]
+    • Check interval: [e.g. 5 minutes]
+    • Alert destination: [e.g. Email or Slack webhook]
+
+  Error logging:     [REQUIRED: e.g. Platform built-in logs / Logtail / etc.]
+    Structured log entries for all worker errors, library fallbacks,
+    rate limit hits, and job failures.
+
+  Worker failure log format:
+    { "event": "worker_failure", "input": "<identifier>", "error": "<msg>",
+      "timestamp": "<iso>" }
+
+  MONITORING.md committed to repository must document:
+    • Every alert condition and what it means
+    • The correct response procedure for each alert
+    • How to access platform logs
+    • How to contact the monitoring service
+
+─────────────────────────────────────────────────────────────────────────────
+P21. BROWSER COMPATIBILITY MATRIX
+─────────────────────────────────────────────────────────────────────────────
+
+  [REQUIRED for any tool with a web UI or HTML output]
+
+  Minimum supported browsers for the web UI and all HTML output:
+    Chrome 90+  |  Edge 90+  |  Firefox 88+  |  Safari 14+
+
+  Cross-browser testing:
+    Playwright tests in CI verify the web UI and HTML output renders
+    correctly without errors in Chrome, Firefox, and Edge.
+    Safari tested manually on first deployment.
+
+  <noscript> fallback:
+    Every HTML output must include a <noscript> block that renders all
+    data as static HTML. Output must be fully readable without JavaScript.
+
+  [Remove this section if your tool has no web UI or HTML output]
+
+─────────────────────────────────────────────────────────────────────────────
+P22. WEB UI ACCESSIBILITY
+─────────────────────────────────────────────────────────────────────────────
+
+  [REQUIRED for any tool with a web UI — the tool must practice what it
+   preaches and be accessible to all users regardless of ability]
+
+  The web UI and all HTML output must pass WCAG 2.1 AA.
+
+  Requirements:
+    • axe-core automated scan in CI on every pull request
+    • No PR merges if axe-core reports any WCAG AA violation
+    • Every UI element keyboard-navigable without a mouse
+    • Color contrast ≥ 4.5:1 for all text
+    • ARIA labels on all interactive elements
+    • All form elements have programmatic labels
+
+  [Note any known framework accessibility limitations and their workarounds]
+
+  [Remove this section if your tool has no web UI]
+
+─────────────────────────────────────────────────────────────────────────────
+PHASE 1 APPROVAL PROTOCOL
+─────────────────────────────────────────────────────────────────────────────
+
+When the plan is complete, present a NUMBERED APPROVAL CHECKLIST containing
+one line per plan item. Include only the P-numbers that apply to your tool
+(you may have removed some IF APPLICABLE sections):
+
+  [ ] P1  — Tech stack [and library fallback chains if applicable]
+  [ ] P2  — System architecture diagram (ASCII)
+  [ ] P3  — Timeout elimination strategy [if applicable]
+  [ ] P4  — Batch concurrency model [if applicable]
+  [ ] P5  — Feature/checkpoint coverage table with fallback behavior column
+  [ ] P6  — Confidence scoring methodology [if applicable]
+  [ ] P7  — Core processing strategy + input format handling
+  [ ] P8  — [Domain-specific mechanism 1]
+  [ ] P9  — [Domain-specific mechanism 2, if applicable]
+  [ ] P10 — Output file naming convention
+  [ ] P11 — Repository folder structure
+  [ ] P12 — CI/CD pipeline design (ci.yml + deploy.yml)
+  [ ] P13 — Plain-English setup instructions
+  [ ] P14 — Risk register (universal + domain-specific)
+  [ ] P15 — Phased build sequence
+  [ ] P16 — Platform & infrastructure specification
+  [ ] P17 — Complex/ambiguous input handling strategy
+  [ ] P18 — Rate limiting & abuse prevention
+  [ ] P19 — Data privacy & retention policy
+  [ ] P20 — Post-deployment monitoring
+  [ ] P21 — Browser compatibility matrix [if applicable]
+  [ ] P22 — Web UI accessibility [if applicable]
+
+I will respond by confirming each item as APPROVED or flagging it as REVISE
+with specific feedback. "Looks good" or "ok" without referencing the checklist
+is NOT valid approval. Only when all applicable items are explicitly marked
+APPROVED may you proceed to Phase 2.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 2 — DISCOVERY & PRE-BUILD AUDIT
+═══════════════════════════════════════════════════════════════════════════════
+
+Once the plan is approved:
+
+  • Scaffold the approved repository structure in:
+      [username/repository-name]
+  • Map the full intended architecture against the approved plan.
+  • Audit every library dependency for known issues, version conflicts,
+    and open CVEs. Flag any dependency with an open critical or high CVE
+    and propose a patched alternative before writing any production code.
+  • Pin all dependency versions in requirements.txt (or equivalent).
+  • Flag anything incomplete, hardcoded, brittle, or poorly designed in
+    the scaffolding before it becomes load-bearing code.
+  • Commit all scaffolding via a pull request to main.
+  • Verify GitHub Actions ci.yml triggers correctly on the PR and passes.
+  • Verify deploy.yml smoke test and rollback workflow are wired correctly
+    before any production code is written.
+  • Commit PHASE-COMPLETE-2.md with findings, CVE status, and resumption point.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 3 — BUILD
+═══════════════════════════════════════════════════════════════════════════════
+
+Build the tool according to the approved plan. Follow the phased build
+sequence in P15 exactly. Requirements:
+
+─────────────────────────────────────────────────────────────────────────────
+3A. WHAT THE TOOL MUST DO
+─────────────────────────────────────────────────────────────────────────────
+
+[REQUIRED: Describe in detail what the tool must produce. Use this structure:]
+
+Accept [REQUIRED: input description, e.g. "one or more schedule files (batch
+up to 50), run a full forensic analysis against each"], and output per item:
+
+  (a) A [primary output artifact] that:
+        • [Functional requirement 1]
+        • [Functional requirement 2]
+        • [Continue as needed]
+        • Is a working copy — never modify the original input
+
+  (b) A self-contained HTML report that:
+        • Renders in all browsers at or above the versions defined in P21
+        • Includes a <noscript> fallback rendering all data as static HTML
+        • Is named per the convention in P10
+        • Contains a summary scorecard at the top
+        • Contains a per-feature detail section below
+        • Embeds a machine-readable JSON data block for programmatic use
+        • Lists every check with Pass / Fail / Confidence score
+        • Lists every action taken and the reason for it
+        • Lists every item requiring human review with plain-English guidance
+        • Displays a privacy notice confirming the uploaded input was deleted
+        • Is itself WCAG 2.1 AA compliant (passes axe-core checks)
+        [Remove HTML report requirements that don't apply to your tool]
+
+  (c) A visible PRIVACY NOTICE in the UI before any input submission:
+        • Retention window
+        • Confirmation that no content is stored persistently or shared
+        • Encryption standard in use (HTTPS/TLS)
+
+─────────────────────────────────────────────────────────────────────────────
+3B. FEATURE COVERAGE
+─────────────────────────────────────────────────────────────────────────────
+
+  Implement all features/checks specified in P5. Follow the confidence
+  scoring rules in P6. Execute library fallback chains per P1.
+
+  [IF APPLICABLE — define your tool's equivalent of the scanned PDF path:]
+  AMBIGUOUS INPUT PATH:
+    If input quality >= [threshold]: proceed with full processing.
+    If input quality <  [threshold]: halt auto-processing, flag all checks
+    as [LOW / Manual Review Required], explain in the output report.
+
+─────────────────────────────────────────────────────────────────────────────
+3C. ARCHITECTURE CONSTRAINTS — NON-NEGOTIABLE
+─────────────────────────────────────────────────────────────────────────────
+
+  NO TIMEOUTS: Use the confirmed async pattern (P3). Never block the UI.
+
+  RATE LIMITING: Enforce all rules in P18 before any input reaches a worker.
+
+  DATA PRIVACY: Enforce all rules in P19. Delete inputs in finally blocks.
+    Test deletion in test_privacy_retention.py.
+
+  ACCESSIBLE FRONTEND: The web UI and all HTML output pass axe-core WCAG AA.
+    Block merges on any axe-core violation.
+
+  REPOSITORY IS SINGLE SOURCE OF TRUTH: Everything in
+    [username/repository-name]. No exceptions. No other repos.
+
+  POST-DEPLOYMENT: After every merge to main, smoke test runs automatically.
+    Rollback executes automatically if smoke test fails.
+
+  SESSION RESILIENCE: Every phase ends with a PHASE-COMPLETE-[N].md file.
+
+  BROWSER COMPATIBILITY: Meet the matrix in P21.
+
+  NO SILENT FAILURES: Every exception must produce a user-friendly message
+    AND a structured log entry. Raw stack traces never reach the user.
+
+  [Add any additional domain-specific non-negotiable constraints here]
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 4 — TEST SUITE CONSTRUCTION
+═══════════════════════════════════════════════════════════════════════════════
+
+Build a comprehensive test suite before declaring anything working. Cover:
+
+  HAPPY PATH:
+    Valid inputs — varying types, sizes, and complexity levels.
+    [REQUIRED: describe what "valid and varying" means for your tool, e.g.
+     "Schedule files from P6, P3, and Oracle Primavera with 50, 500, and
+      5,000 activities. Verify all checks in P5 run to completion."]
+
+  EDGE CASES:
+    Empty files, corrupt files, wrong extensions, 0-byte files,
+    [REQUIRED: add domain-specific edge cases, e.g.:
+     "Schedules with no baseline, schedules with 100% complete activities,
+      schedules with all tasks on the critical path,
+      files exceeding the size limit defined in P18"]
+
+  ADVERSARIAL INPUTS:
+    Files at exactly the size boundary, special characters in filenames,
+    Unicode content, malformed metadata,
+    [REQUIRED: add domain-specific adversarial inputs, e.g.:
+     "Schedules with circular logic, negative float values, resource
+      assignments summing to over 10,000%, batch of maximum file count"]
+
+  ROUND-TRIP FIDELITY:
+    [IF APPLICABLE: Process → re-process → verify results are consistent.
+     Verify the original input is unchanged (working copy only).]
+
+  PERFORMANCE:
+    Large inputs (at the maximum size defined in P18), memory usage under
+    batch load, queue depth limit behavior, memory guard activation.
+
+  FEATURE VERIFICATION:
+    Run every check programmatically on output and assert it passes.
+    Every check in P5 must have at least one detection test AND at least
+    one action/remediation test.
+
+  DATA RETENTION (test_privacy_retention.py):
+    Verify no uploaded input or processed output remains on disk after
+    job completion. Test the finally block cleanup path.
+
+  CROSS-BROWSER (test_browser_compatibility.py):
+    Playwright tests render HTML output in Chrome, Firefox, Edge.
+    Assert no layout breaks, no WCAG violations in the output HTML.
+
+  RATE LIMITING (test_rate_limiter.py):
+    Per-IP limits enforced. Oversized inputs rejected before queue.
+    Invalid input types rejected before queue. Queue depth guard fires.
+
+  ROLLBACK (test_rollback.py):
+    Simulate a deployment failure. Verify rollback restores previous
+    working deployment. Verify smoke test detects the failure correctly.
+
+  UI ACCESSIBILITY (test_ui_accessibility.py):
+    axe-core scan on the web UI. Assert zero WCAG 2.1 AA violations.
+
+  AMBIGUOUS INPUT HANDLING (test_[input_strategy].py):
+    [IF APPLICABLE: Test inputs at varying quality levels. Verify correct
+     behavior above and below the threshold defined in P17. Verify output
+     report content for below-threshold inputs.]
+
+  LIBRARY FALLBACK (test_fallback_chain.py):
+    Simulate primary library failure for each defined operation.
+    Verify the fallback chain activates correctly.
+    Verify the output report accurately reflects the fallback.
+
+RULES:
+  • Use [REQUIRED: test framework, e.g. pytest / jest / mocha].
+    Every test name is descriptive. No test_1, test_2 garbage.
+  • Generate real sample test inputs for every scenario — never mock what
+    you can actually create. Commit them to tests/sample_[inputs]/.
+  • All tests run automatically in GitHub Actions on every pull request.
+  • No PR merges unless all tests pass and axe-core reports zero violations.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 5 — EXECUTION & TRIAGE
+═══════════════════════════════════════════════════════════════════════════════
+
+Run the full test suite. For every failure:
+
+  → Identify the root cause — not just the symptom
+  → Categorize: Bug / Missing Feature / Edge Case Gap / Performance Issue /
+                 Privacy Violation / Security Gap / Accessibility Failure /
+                 Library Fallback Gap
+  → Assign severity: Critical / High / Medium / Low
+  → Output a prioritized fix list before touching any code
+  → Commit PHASE-COMPLETE-5.md with triage results
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 6 — SELF-IMPROVEMENT LOOP
+═══════════════════════════════════════════════════════════════════════════════
+
+  • Fix all Critical and High severity issues first.
+  • Re-run tests after each fix batch. Verify each fix before the next.
+  • If fixing one thing breaks another, stop and resolve the conflict first.
+  • After all Critical and High fixes pass, scan for:
+      → Redundant code to consolidate
+      → Missing input validation at every entry point
+      → Rate-limit enforcement missing on any code path
+      → Poor error messages (users must never see a raw stack trace)
+      → Any processing that silently produces wrong output
+      → Any library fallback that is wired but not actually tested
+      → Any input or output that persists beyond the retention window
+      → Any UI element failing axe-core checks
+      → Any open CVE in any pinned dependency
+  • Refactor only where it improves reliability — not for aesthetics.
+  • Every fix ships via pull request. No direct commits to main.
+  • After any fix that touches the deployment pipeline, re-verify the
+    smoke test and rollback workflow.
+  • Commit PHASE-COMPLETE-6.md with what was fixed and what remains.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 7 — CONTINUOUS LOOP UNTIL PRODUCTION-READY
+═══════════════════════════════════════════════════════════════════════════════
+
+  • After each full fix pass, re-run the entire test suite from scratch.
+  • If all tests pass: add 5 new edge case tests not previously considered,
+    commit them via PR, and run again.
+  • Repeat until ALL criteria in Section 8 are met.
+
+  Never stop early. Never mark something working unless a test proves it.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+SECTION 6 — STANDARD OUTPUT FORMAT
+(Required at End of Every Phase, No Exceptions)
+═══════════════════════════════════════════════════════════════════════════════
+
+  PHASE [N] COMPLETE — [Phase Name]
+  ─────────────────────────────────
+  WHAT I FOUND:
+    [Detailed findings]
+
+  WHAT I FIXED / BUILT:
+    [Specific actions taken; before/after for any logic changes]
+
+  WHAT IS STILL BROKEN OR INCOMPLETE:
+    [Honest accounting — nothing hidden]
+
+  DEPENDENCY CVE STATUS:
+    [Any open CVEs and their resolution status]
+
+  REPOSITORY STATE:
+    [Branch name, PR number if applicable, commit SHA, CI status]
+
+  LIVE URL STATUS (post-Phase 3 only):
+    [Smoke test result, deployment health]
+
+  SESSION LOSS RECOVERY POINT:
+    [Plain-English: where work left off and what command/action resumes it]
+
+  CONFIDENCE SCORE: [0–100%] that this tool handles real-world usage
+  NEXT PHASE: [What starts next]
+
+
+═══════════════════════════════════════════════════════════════════════════════
+SECTION 7 — ABSOLUTE RULES (Override Everything Else)
+═══════════════════════════════════════════════════════════════════════════════
+
+  1.  ALL WORK GOES IN [username/repository-name].
+      No other repository. No exceptions.
+
+  2.  Never skip a failing test. Fix it or escalate with a full explanation
+      of why human intervention is required and exactly what is needed.
+
+  3.  Never mark anything as working unless a test proves it.
+
+  4.  Always show before/after when changing logic.
+
+  5.  Never silently swallow an error. Every failure path must produce a
+      clear, user-friendly message AND a structured log entry.
+
+  6.  Never commit directly to main. All changes flow through pull requests.
+      No PR merges unless GitHub Actions CI passes fully.
+
+  7.  If something is genuinely impossible to fix autonomously, say so
+      clearly, explain why, and specify exactly what human action is needed.
+
+  8.  Nothing lives only in memory or in the Claude Code session. All work
+      is committed to the repository. Every phase ends with a
+      PHASE-COMPLETE-[N].md file.
+
+  9.  After every merge to main, the smoke test runs automatically. If it
+      fails, the rollback workflow executes automatically. Never leave a
+      broken live URL unaddressed.
+
+  10. Never store, log, or transmit user-uploaded content beyond the
+      retention window in P19. Treat every input as if it contains
+      sensitive data — because it might.
+
+  11. The web frontend and all HTML output must pass WCAG 2.1 AA.
+      axe-core checks block merges on any violation. Non-negotiable.
+      [Remove Rule 11 only if your tool has absolutely no web UI or HTML output]
+
+  12. Every library fallback defined in P1 must be tested. An untested
+      fallback is the same as no fallback.
+
+  13. No dependency with an open critical or high CVE may be merged to main.
+      Flag it, find a patched version, document the resolution.
+
+  14. The final deliverable is a live URL at:
+        [REQUIRED: full live URL]
+      Any user can [REQUIRED: describe what users can do] — with zero
+      local setup required.
+
+  15. [REQUIRED: State your output naming rule here as a non-negotiable rule.
+      E.g.: "Output file suffix is _[identifier] — always. No variation."]
+
+
+═══════════════════════════════════════════════════════════════════════════════
+SECTION 8 — PRODUCTION-READINESS CRITERIA
+(Every Item Must Be Verified Before "This Tool Is Production-Ready")
+═══════════════════════════════════════════════════════════════════════════════
+
+  [ ] 100% of tests passing across 3 consecutive clean runs, with 5 new
+      edge case tests added each round
+  [ ] All features/checks in P5 covered by at least one detection test
+      AND one action/remediation test each
+  [ ] [IF APPLICABLE: Round-trip fidelity verified — output scores higher
+      on every previously failing check; original input unchanged]
+  [ ] p95 processing time under [REQUIRED: threshold, e.g. 20 seconds]
+      for inputs under [REQUIRED: size threshold, e.g. 10 MB]
+  [ ] [IF APPLICABLE: Maximum batch size processed without timeout or
+      degradation]
+  [ ] Smoke test passes on the live URL post-deployment
+  [ ] Rollback workflow verified: triggers correctly on deployment failure,
+      restores previous working deployment
+  [ ] [IF APPLICABLE: Web UI and HTML output pass axe-core WCAG 2.1 AA]
+  [ ] [IF APPLICABLE: Cross-browser tests pass in Chrome, Firefox, Edge]
+  [ ] Data retention tests pass — no input or output persists beyond the
+      deletion window
+  [ ] Rate limiting and abuse prevention tests pass at all thresholds
+  [ ] Library fallback chain tests pass for all defined fallback paths
+  [ ] [IF APPLICABLE: Ambiguous input threshold tests pass for above- and
+      below-threshold cases]
+  [ ] No open critical or high CVEs in any pinned dependency
+  [ ] Uptime monitor active and pointed at the live URL
+  [ ] MONITORING.md committed and complete
+  [ ] ROLLBACK.md committed and complete
+  [ ] Privacy notice visible in UI before any input submission
+  [ ] Privacy notice in every HTML output report
+  [ ] PHASE-COMPLETE-[N].md committed for every phase
+  [ ] Final summary report produced and committed to the repository
+  [ ] README.md includes plain-English usage instructions and known limitations
+
+  Only when every applicable item above is checked may you state:
+  "This tool is production-ready."
+
+
+═══════════════════════════════════════════════════════════════════════════════
+SECTION 9 — KNOWN LIMITATIONS
+(Document These in README.md and in the Tool UI)
+═══════════════════════════════════════════════════════════════════════════════
+
+  [REQUIRED: List every confirmed limitation of your tool. These must be
+   communicated clearly to users in the README and in the tool UI.
+   Every tool should have at least 4-6 known limitations listed.
+
+   Examples for a forensic scheduling analysis tool:
+   1. Analysis is based on schedule data only — the tool cannot assess
+      whether the underlying scope or resource assumptions are realistic.
+   2. Baseline comparison requires a saved baseline. Schedules without
+      a baseline receive partial analysis only.
+   3. Activity logic errors (wrong predecessors, missed constraints) may
+      not be detectable by automated analysis if the schedule is internally
+      consistent but strategically wrong.
+   4. The tool does not constitute legal or expert witness testimony.
+      Findings must be reviewed and validated by a qualified scheduler.
+   5. Schedules exceeding [N] activities may experience slower processing
+      on the free-tier hosting platform.
+   6. Import is supported for [list formats]. Other formats require manual
+      export to a supported format before use.]
+
+BEGIN WITH PRE-PHASE 0 NOW.
