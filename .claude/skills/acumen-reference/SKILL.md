@@ -94,7 +94,7 @@ The rows below correspond to manipulation probes in `forensic-manipulation-patte
 
 ### 4.5 EVMS rows — semantics only
 
-Guidelines 8–32 (rows 59–325) govern EVMS (PMB, CPR, BCWS/BCWP/ACWP, CPI/SPI, MR/UB). Examples: **08A101a** PMB alignment with IMS — `X/Y ≤ 10%` CA [DECM row 59]; **22I102a** BCWP > BAC — `X/Y = 0%` WP [DECM row 143]; **23A101a** required VARs generated — `X/Y ≤ 2%` CA [DECM row 145]. Referenced for **semantics only**; EVA integration is **deferred to Phase 3**.
+Guidelines 8–32 (rows 59–325) govern EVMS (PMB, CPR, BCWS/BCWP/ACWP, CPI/SPI, MR/UB). Examples: **08A101a** PMB alignment with IMS — `X/Y ≤ 10%` WP+CA (dual-level) [DECM row 59]; **22I102a** BCWP > BAC — `X/Y = 0%` WP [DECM row 143]; **23A101a** required VARs generated — `X/Y ≤ 2%` CA [DECM row 145]. Referenced for **semantics only**; EVA integration is **deferred to Phase 3**.
 
 ### 4.6 DECM template update rules
 
@@ -143,7 +143,7 @@ Acumen's `TotalFloat` in the API data model is exposed in **minutes** [API p.13]
 
 ### 5.5 Source-tool compatibility
 
-Acumen's import layer reads MS Project 2013–2021 Standard/Professional, MSP Server 2013–2019, and Primavera P6 8.4–21.12 (XER/Web/XML) [ATO pp.12–13], plus IPMDAR SPD/CPD, UN/CEFACT, Phoenix 4.0–4.8, PowerProject 16.0.1, and Safran 5.0 [ATO p.13]. Importantly, "Acumen links to MS Project files through your installed copy of MS Project or by directly reading an MS Project file (without needing MSP installed on your PC)" [ATO p.12] — i.e., Acumen has its own MPP reader distinct from our JPype/MPXJ path.
+Acumen's import layer reads MS Project 2013–2021 Standard/Professional, MSP Server 2013–2019, and Primavera P6 8.4–21.12 (XER/Web/XML) [ATO pp.12–13], plus IPMDAR SPD/CPD, UN/CEFACT, Phoenix 4.0-4.6, 4.8, PowerProject 16.0.1, and Safran 5.0 [ATO p.13]. Importantly, "Acumen links to MS Project files through your installed copy of MS Project or by directly reading an MS Project file (without needing MSP installed on your PC)" [ATO p.12] — i.e., Acumen has its own MPP reader distinct from our JPype/MPXJ path.
 
 ## 6. Cost-data CSV structure (reference only — EVA deferred to Phase 3)
 
@@ -176,7 +176,7 @@ The Acumen API is an **XML export interface** [API p.5] with three modules: API 
 
 ### 7.4 Why our tool does not call the Acumen API
 
-Three reasons: **(1) CUI locality** — the API is reached inside the Acumen client, requiring the MPP to have been loaded into a workbook (see `cui-compliance-constraints` §2a). **(2) Licensing** — requires a licensed installation at `C:\Program Files (x86)\Deltek\Acumen 8.8` [AIG p.6], controlled by Deltek [DMG p.2]. **(3) No admin rights** — the installer must run in Administration mode [ARN p.6]; our envelope is a non-admin workstation. API semantics are documented so an analyst can map our output to what an Acumen user would see — not because we call it.
+Three reasons: **(1) CUI locality** — the API is reached inside the Acumen client, requiring the MPP to have been loaded into a workbook (see `cui-compliance-constraints` §2a). **(2) Licensing** — requires a licensed installation at `C:\Program Files (x86)\Deltek\Acumen 8.8` [AIG pp.11–12], controlled by Deltek [DMG p.2]. **(3) No admin rights** — the installer must run in Administration mode [ARN p.6]; our envelope is a non-admin workstation. API semantics are documented so an analyst can map our output to what an Acumen user would see — not because we call it.
 
 ## 8. Release-note deltas worth tracking (Acumen 8.8 series)
 
@@ -198,14 +198,14 @@ None of the 8.8 changes change the DECM schedule-side formulas at the rows we ci
 - **`mpp-parsing-com-automation`** — §3 Appendix D gotchas (MINUTES units at Gotcha 5; single-threaded COM at Gotcha 3); §5 UniqueID-not-TaskID rule is the precondition for any snapshot-based Special Field (`PreviousActualStart`/`Finish`).
 - **`driving-slack-and-paths`** — §§2–5 cover CPM discipline that Acumen's `TotalFloat`/`FreeFloat`/`LongestPath`/`IsCritical` fields [API p.13] compute from the same relationship graph; our tool derives them locally.
 - **`nasa-schedule-management`** — §6 (schedule health and quality, NASA overlay on DCMA 14-Point) explicitly invokes DECM rows as the EVMS backstop for NASA IMS quality expectations.
-- **`cui-compliance-constraints`** — §2 (the eight non-negotiable CUI rules) is why we do not call the Acumen API, upload to Acumen cloud, or publish metric results to a remote database (see §7.5).
+- **`cui-compliance-constraints`** — §2 (the eight non-negotiable CUI rules) is why we do not call the Acumen API, upload to Acumen cloud, or publish metric results to a remote database (see §7.4).
 
 ## 10. What this skill does NOT cover
 
 - **Running Acumen Fuse or Acumen Risk.** Workflow for S1–S5 tabs, Ribbon/Phase view configuration, risk event authoring, and uncertainty slider operation are outside scope [AQS pp.1–14 — referenced only for tab nomenclature].
 - **Installing Acumen.** Hardware sizing, deployment models, DSM download procedure, and Citrix/XenApp installation are not forensic-tool concerns [AIG pp.1–61 — referenced only for install location of templates]. Silent-install procedure via `SETUP.ISS` / `SETUP.LOG` is likewise out of scope [ASI pp.1–13].
 - **Acumen UI workflows.** Metric editor click-paths, publishing to DOCX/XLSX, dashboard layout are out of scope.
-- **Calling the Acumen API at runtime.** See §7.5 — our tool does not integrate with the Acumen client process.
+- **Calling the Acumen API at runtime.** See §7.4 — our tool does not integrate with the Acumen client process.
 - **Cost-side EVA computation.** Deferred to Phase 3; cost CSV schema documented in §6 for vocabulary only.
 - **Replicating Acumen internals.** The forensic engine is deterministic and independent; Acumen is a **reference vocabulary**, not an implementation target.
 
