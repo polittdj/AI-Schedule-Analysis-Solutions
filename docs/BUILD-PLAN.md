@@ -860,8 +860,11 @@ applied before scoring so legitimate actuals never contribute.
 
 1. A schedule pair with zero manipulation signals returns score 0 —
    not 100. The always-100 bug regression test passes.
-2. A schedule pair with one constraint-injection on one task returns
-   a score less than 10 (small finding, bounded contribution).
+2. A schedule pair with exactly one constraint-injection on one task
+   returns a non-zero score equal to the `constraint_injection` weight
+   in `app/engine/manipulation/aggregator.py` per
+   `forensic-manipulation-patterns §10`, verified within floating-point
+   tolerance.
 3. A schedule pair where tasks completed legitimately between Period
    A and Period B is filtered per `forensic-manipulation-patterns
    §3.2`; legitimate actuals contribute 0 to the score.
