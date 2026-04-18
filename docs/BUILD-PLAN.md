@@ -112,7 +112,7 @@ dev server; multi-worker deployment is out of scope.
 
 2.2 **AI backend: Ollama default, Claude API opt-in.** Ollama
 `schedule-analyst` on `http://localhost:11434`; Claude API
-(`claude-sonnet-4-20250514`) only for unclassified projects
+(`claude-sonnet-4-6`) only for unclassified projects
 (`cui-compliance-constraints §§2b, 2f`).
 
 2.3 **Parser: `win32com` COM automation only.** MPXJ/JPype removed
@@ -916,7 +916,7 @@ first session under-runs on detector breadth.
 
 **Deliverables.** `app/ai/base.py` abstract interface;
 `app/ai/ollama_client.py` for localhost:11434; `app/ai/claude_client.py`
-calling the Anthropic SDK with `claude-sonnet-4-20250514`.
+calling the Anthropic SDK with `claude-sonnet-4-6`.
 `app/ai/router.py` reads `Config.is_cui_safe_mode()` (default True).
 Classification toggle lives in the web UI (per-session). Claude client
 constructed only when classification is explicitly "unclassified."
