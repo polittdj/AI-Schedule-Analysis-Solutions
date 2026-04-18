@@ -12,7 +12,7 @@ Authoritative reference for NASA governance as it constrains schedule control. P
 
 This skill gives the forensic engine the governance context for a schedule — which KDP was imminent, which LCR had just closed, what baseline was in force, what Decision Authority signed what — and the vocabulary to name it. It covers the two-authority model, program/project types, life-cycle phases and KDPs, LCRs and the SRB, PMC hierarchy, authority documents, ABC and MA, JCL, governance-managed schedule margin, reporting cadence, and rebaseline triggers.
 
-It does **not** restate IMS construction, margin placement, status-date discipline, or SRA procedure — see `nasa-schedule-management §§2, 3, 5, 7`. DCMA formulas are in `dcma-14-point-assessment §§4, 8`. Driving-path mechanics are in `driving-slack-and-paths §2.3`. `.mpp` extraction is in `mpp-parsing-com-automation §3`. CUI handling during governance reporting is in `cui-compliance-constraints`. Forensic interpretation of deviations is deferred to `forensic-manipulation-patterns (planned — future skill)`.
+It does **not** restate IMS construction, margin placement, status-date discipline, or SRA procedure — see `nasa-schedule-management §§2, 3, 5, 7`. DCMA formulas are in `dcma-14-point-assessment §§4, 8`. Driving-path mechanics are in `driving-slack-and-paths §2.3`. `.mpp` extraction is in `mpp-parsing-com-automation §3`. CUI handling during governance reporting is in `cui-compliance-constraints`. Forensic interpretation of deviations is deferred to `forensic-manipulation-patterns`.
 
 Forensic framing: these documents state *expected* governance posture. Deviation (CDR without a JCL update; KDP-C without an ABC; lost FSM without a replan) is process drift, not automatically manipulation — cite the rule, characterise the deviation, leave intent to the investigator.
 
@@ -20,7 +20,7 @@ Forensic framing: these documents state *expected* governance posture. Deviation
 
 NASA governance runs on two parallel lines: **Programmatic Authority** (Mission Directorates and their programs/projects) and **Institutional Authority** (Center institutional organisations and other non-programmatic units) [NID §3.1.1 p.42]. **Technical Authority (TA)** is a subset of Institutional Authority providing independent safety-and-mission-success oversight through individuals with formally delegated authority funded independently of the Programmatic line [NID §3.1.1 p.42; §3.3.1 p.45; §3.3.2 p.46]. TA originates with the Administrator and is delegated to the NASA AA, then to the NASA Chief Engineer (Engineering TA), Chief SMA (SMA TA), Chief Health and Medical Officer (HMTA), and then to Center Directors [NID §3.3.2 p.46]. TA concurrence is required on technical and operational decisions involving safety and mission-success residual risk [NID §3.3.3.2 p.46].
 
-Risk-acceptance decisions — including schedule-risk acceptance via rebaseline, waiver, or a decision to proceed past a KDP — require TA concurrence or elevation through formal dissent on nonconcurrence [NPR8K §2.3.4 p.18; §3.5.3–3.5.5 pp.27–28]. A KDP is "an integrated system-level roll-up of the many decisions… through which risk has been implicitly or explicitly accepted… and a decision to proceed represents both formal acceptance of this risk and accountability for this risk going forward" [NPR8K §3.5.1 p.27]. Each Acquirer oversees its Providers' risk management, and performance-requirement rebaselines must be negotiated with higher-level organisations, documented, and subject to configuration control [NPR8K §1.2.1.6 p.8; §1.2.4.5 p.15].
+Risk-acceptance decisions — including schedule-risk acceptance via rebaseline, waiver, or a decision to proceed past a KDP — require TA concurrence or elevation through formal dissent on nonconcurrence [NPR8K §2.3.4 p.19; §3.5.3–3.5.5 pp.27–28]. A KDP is "an integrated system-level roll-up of the many decisions… through which risk has been implicitly or explicitly accepted… and a decision to proceed represents both formal acceptance of this risk and accountability for this risk going forward" [NPR8K §3.5.1 p.27]. Each Acquirer oversees its Providers' risk management, and performance-requirement rebaselines must be negotiated with higher-level organisations, documented, and subject to configuration control [NPR8K §1.2.1.6 p.9; §1.2.4.5 p.15].
 
 Forensic consequence: a schedule version crossing a KDP or a rebaseline is "before vs. after under a specific Decision Authority signature, with or without TA concurrence, with or without a documented basis." Provenance metadata lives outside the `.mpp`; the operator supplies it at import.
 
@@ -80,7 +80,7 @@ Mission Directorates plan and budget single-project programs ≥ $1B at KDP-B an
 
 ## 9. Funded Schedule Margin and UFE
 
-**Funded Schedule Margin (FSM)** per `[GPR]` is the project-held priced time allowance in working days allocated to project schedules to protect them from uncertainty and risk [GPR §1.2 p.4; App. A.3 p.19]. FSM is expressed in working days and dollars but carries no specific scope [GPR §1.2 p.4]. Governing rules: FSM is relative to the critical path; funds use a phase-appropriate burn rate; FSM is **not** part of project-held UFE; contractor-held FSM not PM-controlled is excluded; working-day counts use a 5-day week (≈ 21 days/month); slack ≠ FSM [GPR §2.0 p.9; App. A.3/A.7 pp.18–19].
+**Funded Schedule Margin (FSM)** per `[GPR]` is the project-held priced time allowance in working days allocated to project schedules to protect them from uncertainty and risk [GPR §1.2 p.4; App. A.3 p.18]. FSM is expressed in working days and dollars but carries no specific scope [GPR §1.2 p.4]. Governing rules: FSM is relative to the critical path; funds use a phase-appropriate burn rate; FSM is **not** part of project-held UFE; contractor-held FSM not PM-controlled is excluded; working-day counts use a 5-day week (≈ 21 days/month); slack ≠ FSM [GPR §2.0 p.9; App. A.3/A.7 p.18].
 
 Mission-flight thresholds: from KDP-C to start of observatory I&T, **1.5 months per 12 months** (Interval 1); from I&T start to delivery to launch site, **2 months per 12 months** (Interval 2); from delivery to launch, **1 week per month** (Interval 3) [GPR §2.1 p.9; Table 1 p.6]. Standalone I/P and enterprise ground-system projects use analogous intervals tied to I/P I&T and to ORR or ground-system freeze [GPR §§2.2–2.3 p.11; Tables 2–3 pp.7–8].
 
@@ -92,13 +92,13 @@ Three governance cadences operate in parallel:
 
 - **Monthly Agency.** The **Baseline Performance Review (BPR)** is a monthly Agency-level independent assessment informing senior leadership of performance against mission and P/p commitments; the NASA Chief Engineer leads mission and P/p performance assessment for the BPR [NID App. A p.54 BPR definition; §3.2.a/h pp.42–44].
 - **Monthly Center.** The CMC monitors P/p status through mechanisms including Monthly Status Reviews [NID §3.2.d(4) p.43]. At Goddard, projects present FSM and budget-margin status at monthly FPD tag-ups and Center MSRs, with metrics reported monthly to the CMC [GPR §4.0 p.17; P.9 p.3].
-- **Quarterly Agency repository.** Covered space-flight projects and single-project programs (and R&T projects ≥ $50M) submit IMS in native scheduling-tool format to the Agency Schedule Repository quarterly, SRR through LRR [SMH Fig 2-5 p.22].
+- **Quarterly Agency repository.** Covered space-flight projects and single-project programs (and R&T projects ≥ $50M) submit IMS in native scheduling-tool format to the Agency Schedule Repository quarterly, SRR through LRR [SMH Fig 2-5 p.21].
 
 Internal P/p reporting runs at least monthly against the IMS status date; LCR preparation uses the three-drop cadence (Data Access; Data Drop 1; Data Drop 2) negotiated in the SRB Terms of Reference [SMH §8.3.2.3.1 p.354; §8.3.2.3.2 pp.355–356]. EVM surveillance is continuous [NID §2.2.8.4 p.27]. DM amendments are issued between KDPs on significant MA divergence [NID §2.4.1.2 p.38].
 
 ## 11. Rebaseline, replan, and configuration control
 
-Programs and projects are **rebaselined** when any of three triggers is met [NID §2.4.1.8 pp.39–40]: (1) estimated development cost exceeds the ABC development cost by **30% or more** (and for projects > $250M, Congress has reauthorised); (2) the NASA AA judges external events make rebaseline appropriate; (3) the NASA AA judges the ABC scope has been changed or the project interrupted. ABCs are not rebaselined for growth failing these triggers [NID §2.4.1.8 p.40]. On rebaseline the Decision Authority directs an SRB (or equivalent) review of the new baseline; JCL is recalculated per §8 [NID §2.4.1.8 p.40; §2.4.3.5 p.41]. Risk documentation, the RMP, and risk-acceptance decisions are maintained under formal configuration control [NPR8K §3.2.2k p.26]. Performance-requirement changes are subject to configuration control and Acquirer approval [NPR8K §1.2.4.5 p.15].
+Programs and projects are **rebaselined** when any of three triggers is met [NID §2.4.1.8 pp.39–40]: (1) estimated development cost exceeds the ABC development cost by **30% or more** (and for projects > $250M, Congress has reauthorised); (2) the NASA AA judges external events make rebaseline appropriate; (3) the NASA AA judges the ABC scope has been changed or the project interrupted. ABCs are not rebaselined for growth failing these triggers [NID §2.4.1.8 p.40]. On rebaseline the Decision Authority directs an SRB (or equivalent) review of the new baseline; JCL is recalculated per §8 [NID §2.4.1.8 p.40; §2.4.3.5 p.41]. Risk documentation, the RMP, and risk-acceptance decisions are maintained under formal configuration control [NPR8K §3.2.2k p.24]. Performance-requirement changes are subject to configuration control and Acquirer approval [NPR8K §1.2.4.5 p.15].
 
 A **replan** updates the schedule inside an unchanged ABC; **rebaseline** changes the ABC. This maps to the comparator's baseline-category choice; execution mechanics are in `nasa-schedule-management §8`.
 
@@ -121,15 +121,15 @@ Planner/Scheduler and Schedule Analyst detail is governed by `[SMH]` — see `na
 - **driving-slack-and-paths** — driving-path analysis for FSM sufficiency against the current critical path [GPR §2.0.b p.9].
 - **mpp-parsing-com-automation** — `.mpp` extraction; governance provenance (KDP, LCR, ABC version) is supplied separately.
 - **cui-compliance-constraints** — CUI handling during governance reporting, incl. Agency Schedule Repository submissions.
-- **forensic-manipulation-patterns (planned — future skill)** — interpretation of governance-deviation signatures.
-- **acumen-reference (planned — future skill)** — Acumen Fuse metric cross-reference.
+- **forensic-manipulation-patterns** — interpretation of governance-deviation signatures.
+- **acumen-reference** — Acumen Fuse metric cross-reference.
 
 ## 14. What this skill does NOT cover
 
 - **Systems-engineering NPR and SRB Handbook content.** Outside the approved source list; LCR entrance/success criteria beyond what `[NID]` restates are `(inferred — not sourced)` and deferred to Session 18.
 - **NPD 1000-series governance.** Referenced by `[NPR8K]` and `[NID]` but not cited directly; Session 18 may add a supplemental module if in scope.
 - **PMIAA implementation detail.** Referenced in `[NID]` footnotes only; outside scope.
-- **Forensic interpretation of governance deviations.** Deferred to `forensic-manipulation-patterns (planned — future skill)`.
+- **Forensic interpretation of governance deviations.** Deferred to `forensic-manipulation-patterns`.
 - **Engine-code mechanics.** DM-tag plumbing in the Flask layer is deferred to implementation.
 
 ## 15. References
@@ -137,10 +137,10 @@ Planner/Scheduler and Schedule Analyst detail is governed by `[SMH]` — see `na
 | Rule / concept | Source | Location |
 |---|---|---|
 | KDP as integrated risk-acceptance roll-up | NPR8K | §3.5.1 p.27 |
-| TA concurrence on residual-risk decisions | NPR8K | §2.3.4 p.18; §3.5.3–5 pp.27–28 |
-| Acquirer oversight; rebaseline negotiation, CM | NPR8K | §1.2.1.6 p.8; §1.2.4.5 p.15 |
-| RMP elements incl. reporting frequency | NPR8K | §3.2.2i pp.21–23 |
-| Risk documentation under configuration control | NPR8K | §3.2.2k p.26 |
+| TA concurrence on residual-risk decisions | NPR8K | §2.3.4 p.19; §3.5.3–5 pp.27–28 |
+| Acquirer oversight; rebaseline negotiation, CM | NPR8K | §1.2.1.6 p.9; §1.2.4.5 p.15 |
+| RMP reporting-frequency element | NPR8K | §3.2.2.i(10) p.23 |
+| Risk documentation under configuration control | NPR8K | §3.2.2k p.24 |
 | Program vs. project definitions; four program types | NID | §2.1.1.1 p.16; §2.1.2 pp.16–17 |
 | Project categorization (LCC × priority) | NID | Table 2-1 p.18 |
 | Four life-cycle figures | NID | Figs 2-2 through 2-5 pp.20–23 |
@@ -169,12 +169,11 @@ Planner/Scheduler and Schedule Analyst detail is governed by `[SMH]` — see `na
 | MDAA performance-deviation reporting | NID | §3.2.c p.43 |
 | Center Director concurrence on estimates | NID | §3.2.d(9) p.44 |
 | CFO cost-and-schedule policy leadership | NID | §3.2.g p.44 |
-| FSM definition and rules | GPR | §1.2 p.4; §2.0 p.9; App. A.3 p.19 |
-| FSM mission-flight intervals | GPR | §2.1 p.9; Table 1 p.6 |
-| FSM standalone I/P and enterprise ground-system | GPR | §§2.2–2.3 p.11; Tables 2–3 pp.7–8 |
+| FSM definition and rules | GPR | §1.2 p.4; §2.0 p.9; App. A.3 p.18 |
+| FSM intervals — mission-flight, I/P, ground-system | GPR | §§2.1–2.3 pp.9–11; Tables 1–3 pp.6–8 |
 | Budget-margin step-down by KDP | GPR | §3.1 p.13; Table 1 p.6 |
 | Slack ≠ FSM | GPR | App. A.7 p.18 |
 | Monthly FSM/budget-margin reporting to CMC | GPR | P.9 p.3; §4.0 p.17 |
 | CMC noncompliance direction in GSFC KDP letter | GPR | §1.5 p.5 |
-| Quarterly IMS to Agency Schedule Repository | SMH | Fig 2-5 p.22 |
+| Quarterly IMS to Agency Schedule Repository | SMH | Fig 2-5 p.21 |
 | Monthly IMS status; LCR three-drop cadence | SMH | §8.3.2.3.1 p.354; §8.3.2.3.2 pp.355–356 |
