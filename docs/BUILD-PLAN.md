@@ -556,7 +556,7 @@ boundary behavior (4.9% passes, 5.1% fails).
 **Dependencies.** Milestones 3, 4, 5.
 
 **Deliverables.** Per-metric modules under `app/engine/dcma/` per
-`dcma-14-point-assessment §§4.5–4.10`:
+`dcma-14-point-assessment §§4.5–4.8, §4.10`:
 
 - Metric 5 (Hard Constraints): tasks with MSO/MFO/SNLT/FNLT / Total
   Tasks; threshold ≤5% (09NOV09 four-constraint list).
@@ -603,7 +603,7 @@ through `tests/test_dcma_metric_10.py` (9 is covered in Milestone 7).
 - `tests/test_dcma_metric_5.py`, `…_6.py`, `…_7.py`, `…_8.py`,
   `…_10.py`.
 
-**Skills referenced.** `dcma-14-point-assessment` (§§4.5–4.10),
+**Skills referenced.** `dcma-14-point-assessment` (§§4.5–4.8, §4.10),
 `acumen-reference` (§4.4 DECM row cross-reference for 06A209a,
 06A211a).
 
