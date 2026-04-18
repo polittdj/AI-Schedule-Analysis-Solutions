@@ -100,6 +100,17 @@ ED, RW) were uploaded to `main` via direct-to-main commit `29bd250`
 | ACD   | DeltekAcumen88CostDataCsvStructure.pdf                                 |
 | ARN   | DeltekAcumen88ReleaseNotes.pdf                                         |
 
+### Filename canonicalization note
+
+Where an on-disk filename and an earlier prose reference disagree, the
+**on-disk filename is canonical**. The Edwards 2016 and Ron Winter 2011
+DCMA papers were uploaded with `14-Point` (hyphenated); the Rev 4
+handoff ledger and earlier audit notes used `14Point` (concatenated).
+This manifest's `[ED]` and `[RW]` rows above use the hyphenated form to
+match the on-disk filenames; the eight skill SKILL.md files reference
+these papers exclusively via the `[ED]` / `[RW]` bracket tags (never by
+filename) and required no edit during this reconciliation.
+
 ## Authoritative scope rule
 
 Each SKILL.md enforces a per-skill source-approval matrix. A tag that
