@@ -1,6 +1,6 @@
 ---
 name: cui-compliance-constraints
-description: Controlled Unclassified Information (CUI) handling rules for this schedule-forensics tool. Schedule data in .mpp, .xer, .mpx, .xml, .pmxml, and CSV/XLSX exports is treated as CUI by default. Constrains how the tool parses, uploads, and stores schedule content; blocks network transmit to cloud or external API endpoints; governs log and telemetry emission; prevents commit to git; and enforces dual-mode AI routing (local Ollama default, Claude API opt-in only for unclassified work). Load before any code path that reads schedule files, constructs AI prompts, logs task data, or configures outbound HTTP.
+description: CUI (controlled unclassified information) handling for this schedule-forensics tool. Schedule files (.mpp .xer .xml .pmxml .mpx .csv .xlsx) are CUI by default. Enforces data locality, local-only Ollama inference, cloud-egress prohibition, no-git-commit, dual-mode AI (Ollama default, Claude opt-in unclassified only). Covers no-admin-rights enterprise workstations with monitoring agents (SentinelOne), OneDrive sync, portable installs. Load before reading schedule files or configuring HTTP egress.
 ---
 
 # CUI Compliance Constraints
@@ -34,9 +34,10 @@ gated by enterprise DLP controls, but this skill does not rely on those
 controls — the tool is responsible for not attempting egress in the first
 place.
 
-[Cite: Lessons Learned §1 "Operating Environment"; NPR 8000.4C p.5 Chapter 1
-Introduction referencing NPD 2810.1; NPR 8000.4C p.18 §2.2.7 CIO
-cybersecurity policy responsibilities.]
+[Cite: [LL] §1 "Operating Environment." For the NASA cybersecurity-policy
+authority underpinning this posture, see nasa-program-project-governance
+§2 (two-authority governance) for the authoritative citation — this skill
+points rather than quotes.]
 
 ## 2. Eight Non-Negotiable CUI Rules
 
@@ -64,8 +65,10 @@ Anthropic client. Chart.js and Tabulator.js load from
 `app/web/static/lib/` with a CDN fallback that an air-gapped deployment
 strips at install time.
 
-[Cite: Lessons Learned §9.1 "No schedule data egress"; Lessons Learned §13
-Commandment 8; NPR 8000.4C p.18 §2.2.7 CIO cybersecurity policy.]
+[Cite: [LL] §9.1 "No schedule data egress"; [LL] §13 Commandment 8. For
+the underlying NASA cybersecurity-policy citation, see
+nasa-program-project-governance §2 — this skill defers the quotation to
+that skill and points here.]
 
 ### 2b. Default to Ollama schedule-analyst; Claude API is explicit opt-in
 
@@ -84,9 +87,10 @@ explicitly sets classification to unclassified. The Flask route for
 active. `app/ai/base.py` defines the abstract interface; concrete clients
 honor `is_available()` but do not themselves inspect classification.
 
-[Cite: Build State Summary §5 "Dual-mode AI"; Lessons Learned §9.5
-"No silent cloud fallback"; NID 7120.148 p.112 §3.8 System Security Plan
-and reference to NPR 2810.1.]
+[Cite: [LL] §9.5 "No silent cloud fallback"; [PRNS] dual-mode-AI scope
+brief. For the System Security Plan authority underpinning this rule,
+see nasa-program-project-governance §3 — this skill does not inline-quote
+the source.]
 
 ### 2c. No schedule file or derivative is ever committed to git
 
@@ -105,10 +109,10 @@ directory. Developers are expected to run `git status` before every commit.
 A future pre-commit hook can assert these patterns programmatically;
 absent that, the rule is enforced by reviewer discipline.
 
-[Cite: Lessons Learned §9.4 "Git hygiene"; Lessons Learned §10.4 "Test
-fixture boundary"; GPR 7120.7B p.3 P.8 records retention / NRRS 1441.1
-implication that retention of controlled artifacts is governed
-and not a developer discretion.]
+[Cite: [LL] §9.4 "Git hygiene"; [LL] §10.4 "Test fixture boundary." For
+the NASA records-retention authority that backstops this rule, see
+nasa-program-project-governance §6 for the authoritative citation — this
+skill points rather than inlines the source.]
 
 ### 2d. No schedule content to stdout, stderr, or log files
 
@@ -166,10 +170,12 @@ decision before any cloud call.
 Enforcement: The `/ai-analyze` route checks backend availability and
 returns an error to the UI when the selected backend is unavailable. The
 UI does not present a "try the other backend" button; the analyst must
-explicitly change classification and resubmit. [Cite: Lessons Learned §9.5
-sources the prohibition on silent fallback. The specific halt-versus-
-error-fallback enforcement in this tool is (inferred — not sourced) from
-the prohibition; it is the strictest implementation consistent with §9.5.]
+explicitly change classification and resubmit. [Cite: [LL] §9.5 sources
+the prohibition on silent fallback. The specific halt-versus-error-
+fallback enforcement in this tool is (inferred — not sourced) from the
+prohibition; it is the strictest implementation consistent with §9.5 and
+is tagged for Session 19 or post-Phase-B review to confirm no less-strict
+alternative is preferred.]
 
 ### 2g. Persistent banner when Claude API is active
 
@@ -186,8 +192,9 @@ Enforcement: `base.html` renders a conditional banner driven by the
 active backend state. The banner is not dismissible for the duration of
 an active cloud-backed session. [Label: (inferred — not sourced). This
 UI affordance is a defense-in-depth control derived from the spirit of
-Lessons Learned §9.5 rather than an explicit requirement cited in the
-approved sources.]
+[LL] §9.5 rather than an explicit requirement cited in the approved
+sources. Tagged for Session 19 or post-Phase-B review to upgrade or
+relax the banner requirement once a primary source is located.]
 
 ### 2h. Session end or TTL expiry wipes uploads, session state, and in-memory analysis
 
@@ -242,9 +249,10 @@ patterns.
   before the prompt is built; a prompt that contains a raw `task.name`
   is a finding even if classification is toggled to unclassified.
 
-[Cite: derived from Lessons Learned §9.1, §9.4, §9.5, and §12. Watchdog
-signature catalog as-implemented is (inferred — not sourced) in its
-specific pattern enumeration.]
+[Cite: derived from [LL] §9.1, §9.4, §9.5, and §12. Watchdog signature
+catalog as-implemented is (inferred — not sourced) in its specific
+pattern enumeration, and is tagged for Session 19 or post-Phase-B review
+to confirm the enumeration is complete as the tool matures.]
 
 ## 4. What CUI Compliance Does NOT Mean
 
@@ -281,58 +289,183 @@ by this skill.
   tool's runtime tree, including the OneDrive-synced portable runtime,
   is not a CUI exposure. [Label: (inferred — not sourced). The
   open-source-and-weights carve-out is a practical corollary of the
-  boundary logic in Lessons Learned §9.1; it is not written as an
-  explicit bullet in the approved sources.]
+  boundary logic in [LL] §9.1; it is not written as an explicit bullet
+  in the approved sources, and is tagged for Session 19 or post-Phase-B
+  review to capture a primary source if one is identified.]
 
-[Cite: Lessons Learned §9.1 boundary logic distinguishing content from
+[Cite: [LL] §9.1 boundary logic distinguishing content from
 metadata and from tooling.]
 
-## 5. References
+## 5. Cloud-Egress Prohibition — Comprehensive Enumeration
 
-Sources cited in this skill are present in `docs/sources/` of this
-repository unless otherwise noted.
+Section 2a states the no-egress rule in broad terms. This section enumerates
+the specific external services the tool must never contact, so that a
+reviewer can audit a diff against an explicit list rather than against a
+principle.
 
-- `Schedule_Forensics_Lessons_Learned.md` — §1 Operating Environment;
+- No Acumen cloud, licensing callbacks, or telemetry endpoints. Acumen
+  reference data is consulted entirely offline (see acumen-reference §7.4
+  for the API-isolation posture).
+- No OpenAI, Google Gemini, Cohere, Mistral API, Together, Replicate, or
+  any other third-party LLM API under any circumstance. The AI interface
+  is restricted to Ollama and Anthropic, with Anthropic gated behind
+  classification.
+- Claude API is permitted only when classification is explicitly toggled
+  to unclassified. It is never the default. The toggle lives in the web
+  UI, not in a configuration file that an automated script could flip
+  silently. [Cite: [LL] §9.5.]
+- Ollama is the default for CUI work and runs on `http://localhost:11434`
+  with no outbound network calls. Ollama model pulls happen at install
+  time only, against a pre-approved base-image source, and never during
+  analysis.
+- No cloud Git forges for CUI data — schedule files, pickled analyses, or
+  any CUI extract must never be pushed. Skills, prompts, and non-CUI
+  source code go to GitHub; schedules never do. [Cite: [LL] §9.4.]
+- No cloud telemetry, crash-reporting services, or anonymous usage
+  statistics. Error reporting writes to local log files only, subject to
+  the logging rule in Section 2d.
+- No auto-update channels that pull from arbitrary URLs. Dependency
+  updates are handled through the portable-install workflow described in
+  [PRNS]; the tool does not phone home to check for updates, model
+  revisions, or license entitlement.
+
+(inferred — not sourced; to be reviewed in Session 19 master-build-plan
+scope as a first-class enforcement table distinct from this narrative.)
+
+## 6. Corporate-IT Monitoring — Posture and Boundaries
+
+The workstation runs enterprise monitoring agents. SentinelOne EDR,
+Microsoft SCCM/CcmExec, Intune, BigFix, Splunk forwarders, and Nessus
+scanners are expected to be present. The tool is designed to coexist with
+these agents, not to evade them.
+
+- Tool operations, including in-memory parsed schedule content, are
+  observable by EDR. The tool does not attempt memory isolation, process
+  hiding, or anti-forensic techniques. If EDR flags the Python process,
+  IT escalation is the correct response, not tool-side evasion.
+- Without local administrator rights the tool cannot add firewall rules,
+  register services, or install kernel modules. Controls are enforced
+  entirely in-process and through file-system conventions the logged-in
+  user can apply.
+- The tool MUST NOT obfuscate its network behavior, mask process names,
+  or persist credentials outside the user profile. Transparency to
+  corporate IT is a security feature of this tool, not a bug.
+- If corporate policy requires schedule data reporting to a central
+  archive — for example a records-management SharePoint or a
+  contract-closeout data room — the tool defers to that workflow; it
+  does not attempt to substitute for compliance channels, nor does it
+  duplicate the archival function.
+
+(inferred — not sourced; derived from the CLAUDE.md workstation context
+described in Section 1, to be reviewed in Session 19 master-build-plan
+scope.)
+
+## 7. Data-at-Rest — OneDrive Sync Implications
+
+Portable installs of Python, Java, Ollama, and the tool tree live under
+`C:\Users\{user}\OneDrive - NASA\Desktop\` per the project's operating
+context. OneDrive replicates this path to Microsoft cloud storage, which
+creates a subtle exposure path if CUI data is written anywhere inside the
+sync scope.
+
+- The tool's working directory for parsing, pickling, and exporting CUI
+  schedules MUST live outside OneDrive sync scope. A safe convention is
+  `C:\Tool\AI-Schedule-Analysis-Solutions\workspace\` or any equivalent
+  non-synced local path; the specific path is an install-time choice as
+  long as it sits outside the OneDrive root.
+- Non-CUI configuration — skill files, the Ollama Modelfile, UI theme
+  preferences — may reside within the user profile and OneDrive scope.
+  These are source-code artifacts and carry no customer schedule data.
+- Log files that could capture exception text traceable to a schedule
+  MUST target a non-synced path. The tool's default log directory is
+  configured in the workspace root above, not under the user profile.
+- Pickled analysis blobs (`analysis_<uuid>.pkl`) are by policy
+  short-lived and session-scoped (Section 2h). Those blobs also MUST NOT
+  be written to any OneDrive-synced path, even transiently, because the
+  sync engine can capture a file between write and delete.
+
+(inferred — not sourced; derived from the CLAUDE.md workstation context
+described in Section 1, to be reviewed in Session 19 master-build-plan
+scope.)
+
+## 8. Cross-Skill Pointers
+
+CUI discipline intersects several other skills in this project. When
+working in a code path that sits at one of those intersections, consult
+the target skill for authoritative treatment of the non-CUI dimensions.
+
+- NASA governance framing for CUI-rated programs →
+  nasa-program-project-governance §2 (two-authority governance) and §3
+  (program categorization).
+- IMS quality and schedule-health expectations that overlay CUI handling
+  → nasa-schedule-management §6 (schedule health and quality).
+- Driving-path and driving-slack analysis data locality and cross-version
+  matching → driving-slack-and-paths.
+- MSP COM-automation data-handling gotchas, including zombie-process
+  hygiene that could otherwise leak open-file handles on CUI data →
+  mpp-parsing-com-automation §3 (Appendix D gotchas).
+- Forensic manipulation-detection workflow under CUI — including why
+  certain detection patterns must run offline — see
+  forensic-manipulation-patterns.
+- Acumen and DECM reference lookups that the tool consults offline rather
+  than via the Acumen API → acumen-reference §7.4.
+- DCMA 14-Point assessment overlays and the interaction between DCMA
+  thresholds and CUI-safe reporting → dcma-14-point-assessment.
+
+## 9. References
+
+Approved sources for this skill (tag → file):
+
+- [LL] `Schedule_Forensics_Lessons_Learned.md` — §1 Operating Environment;
   §8B; §9.1 No schedule data egress / telemetry clause; §9.3 Session
   lifecycle and retention; §9.4 Git hygiene; §9.5 No silent cloud
   fallback; §9.6; §9.7; §10.4 Test fixture boundary; §12 Tier 1
   Synthetic fixtures only; §13 Commandment 8.
 
-- `Schedule_Forensics_Prompt_Engineering_Reference_Guide_Ed1_4.docx` —
-  referenced as the authoring source for the A.4 watchdog prompt that
-  consumes the enforcement signatures in Section 3 of this skill.
+- [PERG] `Schedule_Forensics_Prompt_Engineering_Reference_Guide_Ed1_4.docx`
+  — authoring source for the A.4 watchdog prompt consumed by the
+  enforcement signatures in Section 3.
 
-- `N_PR_8000_004C_.pdf` (NPR 8000.4C) — p.5 Chapter 1 Introduction
-  referencing NPD 2810.1; p.8 §1.2.1.4.d hackers and information
-  system compromise, §1.2.1.5.a; p.14 §1.2.3.3 cybersecurity risk as
-  an intentional threat; p.18 §2.2.7 CIO cybersecurity policy
-  responsibilities (strongest NASA citation for the default-deny
-  posture); p.23 item (9) information system Authorizing Official.
+- [PRNS] `Papisito_Paste_Ready_Next_Steps.docx` — scope brief for
+  dual-mode-AI routing referenced in Section 2b and for the portable-
+  install update workflow referenced in Section 5.
 
-- `NID_7120_148_.pdf` (NID 7120.148) — p.111 §3.5 export control,
-  sensitive and proprietary information handling; p.112 §3.8 System
-  Security Plan with reference to NPR 2810.1.
+- [UPT] `Universal_Claude_Code_Master_Prompt_Template.txt` — template
+  inputs to the A.4 watchdog prompt; referenced by Section 3 through
+  [PERG].
 
-- `GPR_7120_7B_Admin_Ext_08_09_2023.pdf` (GPR 7120.7B) — p.3 P.8
-  Records retention with reference to NRRS 1441.1.
+- [UPT2] `Universal_Claude_Code_Master_TooL_Development_Prompt_Template.txt`
+  — tool-development template inputs referenced by Section 3 through
+  [PERG].
 
-- `NASA_Acronyms.pdf` — present in `docs/sources/` but text extraction
-  failed (the PDF is scanned or encrypted and not machine-readable in
-  the current session). Referenced here for completeness; no textual
-  citation is drawn from it.
+- [V3P] `Schedule-Forensics-Claude-Code-Prompt-v3.md` — current-generation
+  operator prompt that consumes this skill at runtime.
 
-External authority referenced but not stored in this repository:
+Cross-skill pointers used in place of direct rule-bearing citations to
+NASA-governance documents (NPR 8000.4C, NID 7120.148, GPR 7120.7B,
+SMH, NPR 2810.1) and to Deltek Acumen documentation:
 
-- NPR 2810.1 (Security of Information and Information Systems) is
-  referenced transitively via NPR 8000.4C p.5 and NID 7120.148 p.112.
-  NPR 2810.1 itself is NOT present in `docs/sources/`. When this skill
-  invokes NPR 2810.1 as authority, it does so through the two NASA
-  documents that cite it, not from the NPR 2810.1 text directly.
+- nasa-program-project-governance — holds the authoritative NASA
+  cybersecurity, records-retention, and System Security Plan citations.
+  This skill defers those quotations to nasa-program-project-governance
+  rather than inlining them, in keeping with the per-skill
+  source-approval matrix.
 
-Citations inside Sections 2 and 3 that are labeled
-"(inferred — not sourced)" indicate a rule or control that is the
-strictest tool-level implementation consistent with the sourced
-principle, but is not itself verbatim in an approved citation. Those
-labels exist so a later reviewer can upgrade the citation when a
-primary source is located, or relax the control if policy evolves.
+- nasa-schedule-management — holds SMH IMS-integrity framing consulted
+  where CUI handling intersects schedule-health expectations (Section 8).
+
+- forensic-manipulation-patterns — holds DECM/DMG/manipulation-detection
+  references consulted where CUI data-egress concerns intersect
+  manipulation-pattern detection.
+
+- acumen-reference — holds Deltek Acumen documentation references
+  consulted entirely offline; this skill points at §7.4 rather than
+  inlining Acumen quotations.
+
+Citations labeled "(inferred — not sourced)" inside Sections 2, 3, 5, 6,
+and 7 indicate a rule or control that is the strictest tool-level
+implementation consistent with the sourced principle but is not itself
+verbatim in an approved citation. These are tagged for Session 19 or
+later review so a later reviewer can upgrade the citation when a primary
+source is located, or relax the control if policy evolves.
 
