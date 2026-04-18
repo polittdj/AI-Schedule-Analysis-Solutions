@@ -553,6 +553,9 @@ boundary behavior (4.9% passes, 5.1% fails).
 
 ### Milestone 6 — DCMA metrics 5–8, 10 (Hard Constraints, High Float, Negative Float, High Duration, Resources)
 
+(Metric 10 groups with M6 — simple ratio, no CPM or date-comparison
+dependency; Metric 9 groups with M7's date-sensitive metrics.)
+
 **Dependencies.** Milestones 3, 4, 5.
 
 **Deliverables.** Per-metric modules under `app/engine/dcma/` per
