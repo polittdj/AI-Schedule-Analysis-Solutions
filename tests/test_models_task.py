@@ -5,15 +5,13 @@ Covers gotchas G1, G2, G3, G6, G7, G8 from Milestone 2 prompt §4.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
 
 from app.models.enums import ConstraintType, TaskType
 from app.models.task import Task
-
-UTC = timezone.utc
 
 
 def _dt(d: int = 1, h: int = 8) -> datetime:

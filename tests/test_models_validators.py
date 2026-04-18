@@ -10,11 +10,9 @@ from __future__ import annotations
 
 import importlib
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
-
-UTC = timezone.utc
 
 
 class TestPublicApiSmoke:
@@ -107,8 +105,9 @@ class TestGotchaCatalogueAtPackageLevel:
     public API the same way it fails inside its own module."""
 
     def test_g1_package_level(self) -> None:
-        from app.models import Task
         from pydantic import ValidationError
+
+        from app.models import Task
 
         with pytest.raises(ValidationError):
             Task(
@@ -119,22 +118,25 @@ class TestGotchaCatalogueAtPackageLevel:
             )
 
     def test_g3_package_level(self) -> None:
-        from app.models import Task
         from pydantic import ValidationError
+
+        from app.models import Task
 
         with pytest.raises(ValidationError):
             Task(unique_id=0, task_id=0, name="x")
 
     def test_g4_package_level(self) -> None:
-        from app.models import Relation
         from pydantic import ValidationError
+
+        from app.models import Relation
 
         with pytest.raises(ValidationError):
             Relation(predecessor_unique_id=5, successor_unique_id=5)
 
     def test_g6_package_level(self) -> None:
-        from app.models import ConstraintType, Task
         from pydantic import ValidationError
+
+        from app.models import ConstraintType, Task
 
         with pytest.raises(ValidationError):
             Task(
@@ -146,8 +148,9 @@ class TestGotchaCatalogueAtPackageLevel:
             )
 
     def test_g7_package_level(self) -> None:
-        from app.models import ConstraintType, Task
         from pydantic import ValidationError
+
+        from app.models import ConstraintType, Task
 
         with pytest.raises(ValidationError):
             Task(
@@ -158,8 +161,9 @@ class TestGotchaCatalogueAtPackageLevel:
             )
 
     def test_g10_package_level(self) -> None:
-        from app.models import Schedule, Task
         from pydantic import ValidationError
+
+        from app.models import Schedule, Task
 
         with pytest.raises(ValidationError):
             Schedule(
@@ -170,8 +174,9 @@ class TestGotchaCatalogueAtPackageLevel:
             )
 
     def test_g11_package_level(self) -> None:
-        from app.models import Relation, Schedule, Task
         from pydantic import ValidationError
+
+        from app.models import Relation, Schedule, Task
 
         with pytest.raises(ValidationError):
             Schedule(

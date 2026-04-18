@@ -89,7 +89,7 @@ class Schedule(BaseModel):
         return require_tz_aware(v)
 
     @model_validator(mode="after")
-    def _cross_model_checks(self) -> "Schedule":
+    def _cross_model_checks(self) -> Schedule:
         """G10, G11 — schedule-level referential integrity.
 
         * G10 — every ``Task.unique_id`` must be unique.

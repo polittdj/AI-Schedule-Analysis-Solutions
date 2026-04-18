@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
 
 from app.models.calendar import Calendar, CalendarException, WorkingTime
-
-UTC = timezone.utc
 
 
 def _dt(year: int, month: int, day: int, hour: int = 8) -> datetime:

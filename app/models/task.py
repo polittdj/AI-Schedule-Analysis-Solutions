@@ -196,7 +196,7 @@ class Task(BaseModel):
         return require_tz_aware(v)
 
     @model_validator(mode="after")
-    def _check_constraint_date_rules(self) -> "Task":
+    def _check_constraint_date_rules(self) -> Task:
         """G6 / G7: constraint type and constraint date must agree.
 
         * ASAP / ALAP MUST NOT carry a constraint date (G6).

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -13,8 +13,6 @@ from app.models.relation import Relation
 from app.models.resource import Resource, ResourceAssignment
 from app.models.schedule import Schedule
 from app.models.task import Task
-
-UTC = timezone.utc
 
 
 def _dt(d: int = 1, h: int = 8) -> datetime:

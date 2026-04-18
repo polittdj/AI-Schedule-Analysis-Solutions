@@ -51,7 +51,7 @@ class Relation(BaseModel):
     09NOV09 5-day MSP/OpenPlan carve-out."""
 
     @model_validator(mode="after")
-    def _no_self_loop(self) -> "Relation":
+    def _no_self_loop(self) -> Relation:
         """G4: a task cannot be its own predecessor."""
         if self.predecessor_unique_id == self.successor_unique_id:
             raise ValueError(
