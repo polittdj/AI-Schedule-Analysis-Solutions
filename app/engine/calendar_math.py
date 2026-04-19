@@ -277,7 +277,7 @@ def subtract_working_minutes(start: datetime, minutes: int, cal: Calendar) -> da
     m = _minute_of_day(cur)
     remaining = minutes
     for d, w_start, w_end in _iter_windows_backward(cur.date(), cal):
-        if d == cur.date() and m <= w_start:
+        if d == cur.date() and m < w_start:
             continue
         window_exit = min(m, w_end) if d == cur.date() else w_end
         available = window_exit - w_start
@@ -288,7 +288,9 @@ def subtract_working_minutes(start: datetime, minutes: int, cal: Calendar) -> da
             )
         remaining -= available
         if remaining == 0:
-            continue
+            return datetime.combine(
+                d, time(w_start // 60, w_start % 60), tzinfo=start.tzinfo
+            )
     raise RuntimeError("subtract_working_minutes exhausted horizon")
 
 

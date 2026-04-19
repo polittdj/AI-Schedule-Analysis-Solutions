@@ -218,10 +218,16 @@ def test_subtract_working_minutes_within_day(standard_cal: Calendar) -> None:
 def test_subtract_working_minutes_zero_from_start_of_day(
     standard_cal: Calendar,
 ) -> None:
-    # Subtracting 0 from Mon 08:00: landing exactly on boundary snaps
-    # to previous window end (Fri 16:00).
+    # Zero minutes from Mon 08:00 → stays at Mon 08:00 (Mon 08:00 is a
+    # working minute under the half-open convention; no boundary roll).
     out = subtract_working_minutes(_dt(2026, 4, 20, 8, 0), 0, standard_cal)
-    assert out == _dt(2026, 4, 17, 16, 0)
+    assert out == _dt(2026, 4, 20, 8, 0)
+
+
+def test_subtract_working_minutes_one_full_day(standard_cal: Calendar) -> None:
+    # Tue 08:00 - 1 working day = Mon 08:00.
+    out = subtract_working_minutes(_dt(2026, 4, 21, 8, 0), 480, standard_cal)
+    assert out == _dt(2026, 4, 20, 8, 0)
 
 
 def test_subtract_working_minutes_across_weekend(
