@@ -231,6 +231,38 @@ class TestLoeByNameFallback:
         assert result.numerator == 0
 
 
+class TestCalendarFallbackToFirst:
+    """Closes the mismatched-default-calendar fallback branch in
+    :func:`app.metrics.high_float._calendar_hours_per_day` (line
+    102) — when ``default_calendar_name`` does not match any
+    calendar, the helper falls back to the first calendar rather
+    than the hard-coded 8.0 final fallback."""
+
+    def test_mismatched_default_calendar_falls_back_to_first(self) -> None:
+        # default_calendar_name points at a missing calendar → the
+        # helper must return the first calendar's hours_per_day (10h)
+        # rather than the final 8.0 fallback. 44 WD @ 10h = 26400 min;
+        # a task at 26401 min therefore flags.
+        cal = Calendar(name="First", hours_per_day=10.0)
+        sched = Schedule(
+            name="mismatched-cal",
+            default_calendar_name="Does Not Exist",
+            tasks=[
+                Task(unique_id=1, task_id=1, name="T", duration_minutes=480),
+            ],
+            calendars=[cal],
+        )
+        cpm = CPMResult(
+            tasks={1: TaskCPMResult(unique_id=1, total_slack_minutes=26401)}
+        )
+        result = run_high_float(sched, cpm)
+        assert result.severity is Severity.FAIL
+        assert result.numerator == 1
+        # Note echoes hours_per_day from the first-calendar fallback,
+        # not 8.0.
+        assert "hours_per_day=10.0" in result.notes
+
+
 class TestInvalidOptions:
     def test_negative_pct_threshold_rejected(self) -> None:
         with pytest.raises(InvalidThresholdError):
