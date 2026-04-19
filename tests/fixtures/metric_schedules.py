@@ -1825,3 +1825,178 @@ def invalid_dates_excluded_population_schedule() -> Schedule:
         tasks=tasks,
         calendars=[_std_cal()],
     )
+
+
+# ===========================================================================
+# M7 Block 3 — Metric 11 (Missed Tasks) fixtures
+# ===========================================================================
+
+
+def missed_tasks_known_schedule() -> Schedule:
+    """10 baseline-due tasks; 1 missed (UID 3) → 1/10 = 10% FAIL.
+
+    The other 9 baseline-due tasks have actual_finish populated
+    (finished on or after baseline; Metric 11 only asks "did it
+    finish by status_date", not "on time against baseline").
+
+    Denominator includes only the 10 baseline-due tasks (tasks 11-15
+    have baseline after status and are excluded from the denominator
+    population)."""
+    tasks: list[Task] = []
+    # Tasks 1-10: baseline ≤ status_date; T3 never actualized.
+    for i in range(1, 11):
+        bf = STATUS_DATE - timedelta(days=10 - i + 1)
+        bs = bf - timedelta(days=2)
+        af = None if i == 3 else bf  # T3 missed; others hit
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"Due T{i}",
+                duration_minutes=480,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=af,
+                percent_complete=100.0 if af is not None else 50.0,
+                finish=bf if af is not None else STATUS_DATE + timedelta(days=5),
+            )
+        )
+    # Tasks 11-15: baseline after status (outside window).
+    for i in range(11, 16):
+        bf = STATUS_DATE + timedelta(days=i - 10)
+        bs = bf - timedelta(days=2)
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"Future T{i}",
+                duration_minutes=480,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                start=bs,
+                finish=bf,
+            )
+        )
+    return Schedule(
+        name="missed_tasks_known",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def missed_tasks_rolling_wave_exempt_schedule() -> Schedule:
+    """5 baseline-due tasks; 1 is rolling-wave (UID 3) and has no
+    actual_finish → rolling-wave exempt from numerator; numerator = 0
+    → 0/5 PASS. Denominator still 5."""
+    tasks: list[Task] = []
+    for i in range(1, 6):
+        bf = STATUS_DATE - timedelta(days=5 - i + 1)
+        bs = bf - timedelta(days=1)
+        is_rw = i == 3
+        af = None if is_rw else bf
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                is_rolling_wave=is_rw,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=af,
+                percent_complete=100.0 if af is not None else 0.0,
+                finish=bf if af is not None else STATUS_DATE + timedelta(days=5),
+            )
+        )
+    return Schedule(
+        name="missed_tasks_rolling_wave",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def missed_tasks_loe_exempt_schedule() -> Schedule:
+    """5 baseline-due tasks; 1 is LOE (UID 3) and not actualized →
+    LOE exempt from numerator; numerator = 0 → PASS."""
+    tasks: list[Task] = []
+    for i in range(1, 6):
+        bf = STATUS_DATE - timedelta(days=5 - i + 1)
+        bs = bf - timedelta(days=1)
+        is_loe = i == 3
+        af = None if is_loe else bf
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                is_loe=is_loe,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=af,
+                percent_complete=100.0 if af is not None else 0.0,
+                finish=bf if af is not None else STATUS_DATE + timedelta(days=5),
+            )
+        )
+    return Schedule(
+        name="missed_tasks_loe",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def missed_tasks_no_baseline_schedule() -> Schedule:
+    """Schedule with zero baseline coverage → indicator-only WARN."""
+    tasks = [
+        Task(
+            unique_id=i,
+            task_id=i,
+            name=f"T{i}",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=i),
+            finish=STATUS_DATE + timedelta(days=i + 2),
+        )
+        for i in range(1, 4)
+    ]
+    return Schedule(
+        name="missed_tasks_no_baseline",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def missed_tasks_no_status_date_schedule() -> Schedule:
+    """Baselined but no status_date — indicator-only WARN."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Baselined",
+            duration_minutes=480,
+            baseline_start=ANCHOR,
+            baseline_finish=ANCHOR + timedelta(days=1),
+            baseline_duration_minutes=480,
+        )
+    ]
+    return Schedule(
+        name="missed_tasks_no_status",
+        status_date=None,
+        project_start=ANCHOR,
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
