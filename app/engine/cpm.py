@@ -49,7 +49,6 @@ from app.engine.constraints import (
 )
 from app.engine.exceptions import (
     ConstraintViolation,
-    MissingCalendarError,
 )
 from app.engine.options import CPMOptions
 from app.engine.relations import (

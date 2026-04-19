@@ -44,6 +44,8 @@ def test_naive_override_rejected() -> None:
 
 
 def test_options_are_immutable() -> None:
+    import dataclasses
+
     opts = CPMOptions()
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         opts.strict_cycles = True  # type: ignore[misc]

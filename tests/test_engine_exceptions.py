@@ -52,8 +52,10 @@ def test_constraint_violation_is_data_only_not_raised() -> None:
     assert v.unique_id == 5
     assert v.kind == "FNLT_BREACHED"
     assert v.detail == "pushed 3d late"
-    # frozen dataclass — attempting to mutate raises.
-    with pytest.raises(Exception):
+    # frozen dataclass — attempting to mutate raises FrozenInstanceError.
+    import dataclasses
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
         v.unique_id = 99  # type: ignore[misc]
 
 

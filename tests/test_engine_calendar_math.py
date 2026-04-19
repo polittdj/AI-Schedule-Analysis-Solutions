@@ -310,6 +310,60 @@ def test_working_minutes_between_rejects_naive(standard_cal: Calendar) -> None:
         )
 
 
+def test_working_exception_empty_times_uses_default_window() -> None:
+    """Exception with is_working=True and empty working_times uses
+    the calendar's default 08:00 + hours_per_day window."""
+    cal = Calendar(
+        name="WE",
+        exceptions=[
+            CalendarException(
+                name="Special Sat",
+                start=datetime(2026, 4, 25, tzinfo=UTC),
+                finish=datetime(2026, 4, 25, tzinfo=UTC),
+                is_working=True,
+                working_times=[],
+            )
+        ],
+    )
+    windows = working_windows_for_date(datetime(2026, 4, 25).date(), cal)
+    assert windows == [(8 * 60, 16 * 60)]
+
+
+def test_snap_backward_before_window_on_current_day_falls_through() -> None:
+    """Line 218 — snap_backward when m < w_start on current date."""
+    cal = Calendar(name="Std")
+    # Tue 06:00 — before Tue's window. Should snap back to Mon 16:00.
+    out = snap_backward(_dt(2026, 4, 21, 6, 0), cal)
+    assert out == _dt(2026, 4, 20, 16, 0)
+
+
+def test_subtract_working_minutes_current_day_before_window_falls_through() -> None:
+    """Line 281 — subtract where m < w_start on current date."""
+    cal = Calendar(name="Std")
+    # Tue 06:00 (pre-window) - 60 min → Mon 15:00.
+    out = subtract_working_minutes(_dt(2026, 4, 21, 6, 0), 60, cal)
+    assert out == _dt(2026, 4, 20, 15, 0)
+
+
+def test_add_working_minutes_past_window_end_skips_to_next_day() -> None:
+    """Line 249 — add where m >= w_end on current date."""
+    cal = Calendar(name="Std")
+    # Mon 18:00 + 60 min → Tue 09:00.
+    out = add_working_minutes(_dt(2026, 4, 20, 18, 0), 60, cal)
+    assert out == _dt(2026, 4, 21, 9, 0)
+
+
+def test_working_minutes_between_start_after_window_end() -> None:
+    """Line 314-315 — a starts after the first window end."""
+    cal = Calendar(name="Std")
+    # a = Mon 17:00 (past window end); b = Tue 10:00.
+    # Mon contributes 0 (past end), Tue contributes 120 min.
+    out = working_minutes_between(
+        _dt(2026, 4, 20, 17, 0), _dt(2026, 4, 21, 10, 0), cal
+    )
+    assert out == 120
+
+
 def test_saturday_working_override_counts(saturday_working_cal: Calendar) -> None:
     # Saturday override 09:00-15:00. 09:30 is working.
     assert is_working_minute(

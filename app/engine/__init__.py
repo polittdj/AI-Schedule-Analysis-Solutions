@@ -11,11 +11,16 @@ DCMA consumer skills read slack and constraint fields emitted here
 their own metrics in later milestones.
 
 Public API — see ``app/engine/README.md`` for the mutation-vs-wrap
-decision and algorithm notes.
+decision, big-O notes, and forensic-defensibility commentary.
 """
 
 from __future__ import annotations
 
+from app.engine.cpm import CPMEngine, compute_cpm
+from app.engine.duration import (
+    minutes_to_working_days,
+    working_days_to_minutes,
+)
 from app.engine.exceptions import (
     CircularDependencyError,
     ConstraintViolation,
@@ -24,12 +29,27 @@ from app.engine.exceptions import (
     MissingCalendarError,
 )
 from app.engine.options import CPMOptions
+from app.engine.paths import (
+    critical_path_chains,
+    driving_slack_to_focus,
+    near_critical_chain,
+)
+from app.engine.result import CPMResult, TaskCPMResult
 
 __all__ = [
+    "CPMEngine",
     "CPMOptions",
+    "CPMResult",
     "CircularDependencyError",
     "ConstraintViolation",
     "EngineError",
     "InvalidConstraintError",
     "MissingCalendarError",
+    "TaskCPMResult",
+    "compute_cpm",
+    "critical_path_chains",
+    "driving_slack_to_focus",
+    "minutes_to_working_days",
+    "near_critical_chain",
+    "working_days_to_minutes",
 ]

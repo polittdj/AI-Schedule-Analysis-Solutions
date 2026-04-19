@@ -14,7 +14,7 @@ from app.engine.cpm import CPMEngine, compute_cpm
 from app.engine.exceptions import CircularDependencyError
 from app.engine.options import CPMOptions
 from app.models.calendar import Calendar
-from app.models.enums import ConstraintType, RelationType
+from app.models.enums import ConstraintType
 from app.models.relation import Relation
 from app.models.schedule import Schedule
 from app.models.task import Task
@@ -24,7 +24,6 @@ from tests.fixtures.schedules import (
     medium_mixed_relations,
     small_fs_chain,
 )
-
 
 # ---- E2 — empty schedule -----------------------------------------
 

@@ -180,3 +180,69 @@ def test_fs_chain_critical_driving_slack_consistent(finish_focus: int) -> None:
     # Everything on the critical chain has DS 0.
     for uid in (1, 2, 3):
         assert ds[uid] == 0
+
+
+def test_driving_slack_with_non_matching_calendar_name() -> None:
+    """Paths uses the first calendar when default_calendar_name is
+    absent — exercises fallback branch."""
+    tasks = [_t(1), _t(2)]
+    relations = [_r(1, 2)]
+    s = Schedule(
+        name="mismatch",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        default_calendar_name="Missing",
+        calendars=[Calendar(name="Other")],
+    )
+    result = compute_cpm(s)
+    ds = driving_slack_to_focus(s, result, focus_uid=2)
+    assert ds[2] == 0
+    assert ds[1] == 0
+
+
+def test_driving_slack_with_no_calendars_synthesizes_default() -> None:
+    """Empty calendars list — paths module must synthesize a default.
+
+    Constructs the Schedule via model_construct because the Schedule
+    validator doesn't currently reject empty calendar lists but we
+    want to exercise the code path explicitly."""
+    tasks = [_t(1)]
+    s = Schedule(
+        name="nocal",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=[],
+        calendars=[],
+    )
+    result = compute_cpm(s)
+    ds = driving_slack_to_focus(s, result, focus_uid=1)
+    assert ds[1] == 0
+
+
+def test_driving_slack_task_with_mixed_in_and_out_of_reach_successors() -> None:
+    """Line 170 coverage — a predecessor with one successor in the DS
+    map and another not in it. Task 1 has successors 2 (focus) and 3
+    (downstream of focus, no path back to focus → not in ds)."""
+    tasks = [_t(1), _t(2), _t(3)]
+    relations = [_r(1, 2), _r(1, 3)]
+    s = _schedule(tasks, relations)
+    result = compute_cpm(s)
+    ds = driving_slack_to_focus(s, result, focus_uid=2)
+    assert 2 in ds
+    assert 1 in ds
+    # 3 has no link back to 2, not in ds.
+    assert 3 not in ds
+
+
+def test_driving_slack_focus_downstream_task_absent() -> None:
+    """Task downstream of focus is absent from the DS map."""
+    tasks = [_t(1), _t(2), _t(3)]
+    relations = [_r(1, 2), _r(2, 3)]
+    s = _schedule(tasks, relations)
+    result = compute_cpm(s)
+    ds = driving_slack_to_focus(s, result, focus_uid=2)
+    # Task 3 is downstream of the focus; 1 is upstream.
+    assert 3 not in ds
+    assert ds[2] == 0
+    assert ds[1] == 0

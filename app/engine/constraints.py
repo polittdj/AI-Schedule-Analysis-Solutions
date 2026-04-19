@@ -179,7 +179,7 @@ def apply_backward_constraint(
     ct = task.constraint_type
     ls = ls_from_successors
     lf = lf_from_successors
-    violation: BackwardConstraintOutcome.__annotations__["violation"] = None  # type: ignore[valid-type]
+    violation: ConstraintViolation | None = None
 
     if ct == ConstraintType.AS_SOON_AS_POSSIBLE:
         pass
