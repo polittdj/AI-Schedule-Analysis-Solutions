@@ -83,6 +83,8 @@ def run_lags(
 
     non_lead_relations = [r for r in schedule.relations if r.lag_minutes >= 0]
     denominator = len(non_lead_relations)
+    total_relationships = len(schedule.relations)
+    lead_count = total_relationships - denominator
 
     if denominator == 0:
         return MetricResult(
@@ -116,6 +118,15 @@ def run_lags(
     pct = (numerator / denominator) * 100.0
     severity = Severity.PASS if pct <= opts.lags_threshold_pct else Severity.FAIL
 
+    notes = ""
+    if lead_count > 0:
+        notes = (
+            f"Denominator excludes {lead_count} lead relationships per "
+            f"LG5 double-count-avoidance policy; DCMA §4.3 literal "
+            f"denominator would be total relationships "
+            f"({total_relationships})."
+        )
+
     return MetricResult(
         metric_id=_METRIC_ID,
         metric_name=_METRIC_NAME,
@@ -125,6 +136,7 @@ def run_lags(
         denominator=denominator,
         offenders=tuple(offenders),
         computed_value=pct,
+        notes=notes,
     )
 
 

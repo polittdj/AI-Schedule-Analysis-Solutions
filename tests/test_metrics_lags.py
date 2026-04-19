@@ -111,6 +111,21 @@ class TestDenominatorExcludesLeads:
         assert result.severity is Severity.FAIL
         assert result.computed_value == pytest.approx(100.0 / 19, rel=1e-9)
 
+    def test_lg5_policy_note_emitted_when_leads_present(self) -> None:
+        # Fixture has 1 lead among 20 relations → note must cite the
+        # excluded lead count and the literal DCMA §4.3 denominator.
+        result = run_lags(lags_with_leads_schedule())
+        assert "LG5" in result.notes
+        assert "1 lead" in result.notes
+        assert "20" in result.notes
+        assert "§4.3" in result.notes
+
+    def test_lg5_policy_note_absent_when_no_leads(self) -> None:
+        # No leads in the fixture → note must be empty so operators do
+        # not see spurious policy chatter.
+        result = run_lags(lags_pass_schedule())
+        assert result.notes == ""
+
 
 class TestCrossMetricInvariants:
     def test_result_is_frozen(self) -> None:
