@@ -16,6 +16,7 @@ from app.metrics.negative_float import NegativeFloatMetric, run_negative_float
 from app.metrics.options import MetricOptions
 from app.models.schedule import Schedule
 from app.models.task import Task
+from tests._utils import cpm_result_snapshot
 from tests.fixtures.metric_schedules import (
     negative_float_empty_with_cpm,
     negative_float_fail_with_cpm,
@@ -159,6 +160,14 @@ class TestFrozenContractAndProvenance:
         before = sched.model_dump_json()
         run_negative_float(sched, cpm)
         assert sched.model_dump_json() == before
+
+    def test_cpm_result_not_mutated(self) -> None:
+        """Metric reads ``cpm_result.tasks[...]`` without mutating
+        the CPMResult or its tasks dict (BUILD-PLAN §5 M4 AC10)."""
+        sched, cpm = negative_float_fail_with_cpm()
+        before = cpm_result_snapshot(cpm)
+        run_negative_float(sched, cpm)
+        assert cpm_result_snapshot(cpm) == before
 
     def test_class_wrapper_matches_function(self) -> None:
         s, c = negative_float_fail_with_cpm()

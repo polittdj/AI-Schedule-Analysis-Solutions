@@ -23,6 +23,7 @@ from app.metrics import (
     run_resources,
 )
 from app.models.schedule import Schedule
+from tests._utils import cpm_result_snapshot
 from tests.fixtures.metric_schedules import (
     integration_schedule,
     m6_integration_schedule,
@@ -193,6 +194,15 @@ class TestNineMetricIntegration:
         before = sched.model_dump_json()
         _run_all_nine(sched, cpm)
         assert sched.model_dump_json() == before
+
+    def test_no_metric_mutates_the_cpm_result(self) -> None:
+        """Mutation-vs-wrap invariant (BUILD-PLAN §5 M4 AC10): the
+        CPM-consuming metrics must read ``cpm_result.tasks[...]``
+        without mutating the CPMResult or its tasks dict."""
+        sched, cpm = m6_integration_schedule()
+        before = cpm_result_snapshot(cpm)
+        _run_all_nine(sched, cpm)
+        assert cpm_result_snapshot(cpm) == before
 
     def test_determinism_across_two_invocations(self) -> None:
         sched, cpm = m6_integration_schedule()
