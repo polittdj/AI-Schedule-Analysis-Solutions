@@ -155,6 +155,69 @@ git-commit rule.
 
 (Decision 2.12 consolidated with 2.6.)
 
+2.13 **Mutation-vs-wrap.** The CPM engine returns a
+:class:`~app.engine.result.CPMResult` wrapper rather than mutating
+``Schedule``. Every downstream consumer (DCMA metrics, comparator,
+driving path, manipulation engine, narrative layer) reads both
+``Schedule`` and ``CPMResult`` **read-only**. Where a milestone needs
+a variant schedule — the Metric 12 CPT +600-WD probe, the M9
+cross-version comparator — it produces the variant via
+``Schedule.model_copy(update=...)`` / ``Task.model_copy(update=...)``
+and runs CPM against the copy. Tests assert byte-equality of the
+inputs before and after any metric invocation (M6 `_utils.py`
+snapshot helper; M7 mutation-invariance assertions).
+
+2.14 **Metric result contract.**
+:class:`~app.metrics.base.MetricResult`,
+:class:`~app.metrics.base.Offender`,
+:class:`~app.metrics.base.ThresholdConfig`,
+:class:`~app.metrics.base.Severity`, and
+:class:`~app.metrics.options.MetricOptions` are
+``@dataclass(frozen=True, slots=True)`` and are **frozen** as a
+public contract from M5 forward. Extensions land additively — new
+sibling classes in ``app.metrics.base`` or new threshold fields on
+``MetricOptions`` — never as mutations of existing fields. M6 (five
+metrics) and M7 (five metrics + baseline plumbing) both ship under
+this rule; M11 (manipulation) consumes ``MetricResult`` without
+re-deriving any field.
+
+2.15 **Indicator-only metrics.** DCMA Metric 10 (Resources) has no
+published pass/fail threshold under the 09NOV09 protocol
+(``dcma-14-point-assessment §4.10``,
+``DeltekDECMMetricsJan2022.xlsx`` sheet *Metrics*). It emits
+``Severity.WARN`` regardless of ratio, and its
+:class:`ThresholdConfig` carries ``direction="indicator-only"`` as a
+sentinel so the threshold carrier remains schema-stable. Other
+indicator-only cases — baseline-required metrics (11, 13, 14) on a
+schedule with no baseline coverage, BEI on a zero-denominator
+window, and CPT's "structural-pass-fail" variant — use the same
+convention: the metric returns a valid :class:`MetricResult` with
+``Severity.WARN`` and an explanatory ``notes`` string rather than
+raising. Raise is reserved for structural prerequisite failures
+(missing :class:`CPMResult` on a CPM-consuming metric).
+
+2.16 **Minutes → working days via engine helper.** The single source
+of truth for the unit conversion is
+:func:`app.engine.duration.minutes_to_working_days` (and its
+inverse :func:`working_days_to_minutes`). Every metric that
+presents a working-day value (Metrics 6, 7, 8 for slack / duration;
+Metric 13 for CPLI baseline length) routes through the helper using
+the project default calendar's ``hours_per_day``. No metric rolls
+its own ``minutes / 480`` arithmetic; a non-8h/day calendar scales
+correctly end-to-end.
+
+2.17 **CPMResult consumption is read-only in the metrics layer.** A
+metric that needs CPM output (Metrics 6, 7, 12, 13) accepts a
+:class:`~app.engine.result.CPMResult` argument and reads
+``cpm_result.tasks[unique_id]`` without mutation. The metric never
+recomputes forward or backward pass. A missing ``CPMResult`` on a
+CPM-consuming metric raises
+:class:`~app.metrics.exceptions.MissingCPMResultError`, mirroring
+the ``MissingCPMResultError`` hierarchy that M5 introduced as a
+forward-looking API for M6 / M7. The engine is the single producer
+of ``CPMResult``; the metrics layer is the sole consumer in
+Phase 1.
+
 ---
 
 ## 3. Starting State
@@ -505,24 +568,38 @@ example verifies DS values slide-for-slide. Synthetic data only.
 
 **Dependencies.** Milestones 3, 4.
 
-**Deliverables.** Per-metric modules under `app/engine/dcma/`. Each
-function takes `ScheduleData`, returns `MetricResult` with
-`metric_id`, `numerator`, `denominator`, `percentage`, `threshold`,
-`pass_flag`, and `flagged_tasks: list[FlaggedTask]` (each carrying
+**Deliverables.** Per-metric modules under `app/metrics/` (**AM4,
+shipped 2026-04-18 in the M5 PR:** the as-implemented package is
+`app/metrics/`, not `app/engine/dcma/` as originally scoped here.
+Rationale: the engine layer (`app/engine/`) owns CPM forward /
+backward pass and duration arithmetic; the metrics layer
+(`app/metrics/`) is its sibling consumer. The split keeps the
+engine free of DCMA-specific threshold logic and lets the
+manipulation engine (M11) consume metric results without touching
+the CPM surface. Downstream milestones read `app.metrics`.) Each
+function takes `Schedule`, returns `MetricResult` with `metric_id`,
+`numerator`, `denominator`, `computed_value`, `threshold`,
+`severity`, and `offenders: tuple[Offender, ...]` (each carrying
 `unique_id`, `name`, and the causing field value). Per
 `dcma-14-point-assessment §4`:
 
 - Metric 1a (Missing Logic): incomplete tasks with zero predecessors or
   zero successors, excluding project start/finish milestones; threshold
-  ≤5%.
+  ≤5%. **Shipped in M5.**
 - Metric 1b (Dangling): tasks with SS-only predecessor (dangling
   finish) or FF-only successor (dangling start); threshold ≤5%.
+  **Deferred post-M5** (see M5 audit Minor 2 and §9 Out-of-Scope
+  ledger entry). The M5 PR shipped "1a, 2, 3, 4"; 1b requires
+  per-relation drivership that the engine will expose once M10
+  driving-path plumbing lands.
 - Metric 2 (Leads): relationships with negative lag / total
   relationships; threshold 0%.
 - Metric 3 (Lags): relationships with positive lag / total
   relationships; threshold ≤5% with 09NOV09 5-day MSP/OpenPlan
   carve-out (P6 does not receive the carve-out — not applicable for
   MPP input, but carve-out handling documented for later P6 import).
+  **Carve-out deferred** (see §9 ledger) to post-Phase-1 P6/XER
+  ingestion work; Phase 1 ships the MPP-only numerator.
 - Metric 4 (Relationship Types): FS / total; threshold ≥90%.
 
 **Acceptance criteria.**
@@ -550,17 +627,29 @@ threshold exactly. `tests/test_dcma_metric_1a.py` through
 `tests/test_dcma_metric_4.py`. Parametrized tests verify threshold
 boundary behavior (4.9% passes, 5.1% fails).
 
-**File-by-file scope.**
+**File-by-file scope** (as-shipped in the M5 PR, branch
+`claude/milestone-5-dcma-metrics-1-4-2026-04-18`):
 
-- `app/engine/dcma/__init__.py`.
-- `app/engine/dcma/result.py` — `MetricResult` and `FlaggedTask` models.
-- `app/engine/dcma/denominators.py` — Total Tasks, Incomplete Tasks,
-  Relationships populations.
-- `app/engine/dcma/logic.py` — Metrics 1a, 1b.
-- `app/engine/dcma/leads.py` — Metric 2.
-- `app/engine/dcma/lags.py` — Metric 3 (with carve-out).
-- `app/engine/dcma/relationships.py` — Metric 4.
-- `tests/test_dcma_metric_*.py` — one file per metric.
+- `app/metrics/__init__.py` — public API re-exports.
+- `app/metrics/base.py` — `MetricResult`, `Offender`,
+  `ThresholdConfig`, `Severity`, `BaseMetric`.
+- `app/metrics/options.py` — `MetricOptions` with per-metric
+  threshold overrides; `__post_init__` range validation.
+- `app/metrics/exceptions.py` — `MetricError`,
+  `MissingCPMResultError`, `InvalidThresholdError`.
+- `app/metrics/logic.py` — Metric 1a. (1b deferred — see
+  deliverables.)
+- `app/metrics/leads.py` — Metric 2.
+- `app/metrics/lags.py` — Metric 3 (carve-out deferred).
+- `app/metrics/relationship_types.py` — Metric 4.
+- `tests/test_metrics_base.py`, `tests/test_metrics_options.py`,
+  `tests/test_metrics_exceptions.py`, `tests/test_metrics_logic.py`,
+  `tests/test_metrics_leads.py`, `tests/test_metrics_lags.py`,
+  `tests/test_metrics_relationship_types.py`, plus
+  `tests/test_metrics_integration.py` covering the four-metric
+  integration fixture.
+- `tests/fixtures/metric_schedules.py` — synthetic `Schedule`
+  builders for the M5 metric tests.
 
 **Skills referenced.** `dcma-14-point-assessment` (§§3, 4.1, 4.2, 4.3,
 4.4), `acumen-reference` (§4.4 DECM cross-reference).
@@ -574,7 +663,9 @@ dependency; Metric 9 groups with M7's date-sensitive metrics.)
 
 **Dependencies.** Milestones 3, 4, 5.
 
-**Deliverables.** Per-metric modules under `app/engine/dcma/` per
+**Deliverables.** Per-metric modules under `app/metrics/` (per
+AM4 / §2.14 — the metrics package is `app/metrics/`, not
+`app/engine/dcma/`; confirmed in the M6 PR shipped 2026-04-19) per
 `dcma-14-point-assessment §§4.5–4.8, §4.10`:
 
 - Metric 5 (Hard Constraints): tasks with MSO/MFO/SNLT/FNLT / Total
@@ -612,15 +703,28 @@ the numerator, denominator, and threshold boundary. Parametrized
 rolling-wave exemption. Tests under `tests/test_dcma_metric_5.py`
 through `tests/test_dcma_metric_10.py` (9 is covered in Milestone 7).
 
-**File-by-file scope.**
+**File-by-file scope** (as-shipped in the M6 PR, branch
+`claude/milestone-6-dcma-metrics-5-8-10-2026-04-19`):
 
-- `app/engine/dcma/constraints.py` — Metric 5 (hard-constraint list).
-- `app/engine/dcma/high_float.py` — Metric 6.
-- `app/engine/dcma/negative_float.py` — Metric 7.
-- `app/engine/dcma/high_duration.py` — Metric 8.
-- `app/engine/dcma/resources.py` — Metric 10.
-- `tests/test_dcma_metric_5.py`, `…_6.py`, `…_7.py`, `…_8.py`,
-  `…_10.py`.
+- `app/metrics/hard_constraints.py` — Metric 5.
+- `app/metrics/high_float.py` — Metric 6 (consumes CPMResult).
+- `app/metrics/negative_float.py` — Metric 7 (consumes CPMResult).
+- `app/metrics/high_duration.py` — Metric 8.
+- `app/metrics/resources.py` — Metric 10 (indicator-only per §2.15).
+- `app/metrics/options.py` — extended with M6 threshold fields.
+- `app/metrics/__init__.py` — extended with M6 exports.
+- `app/metrics/README.md` — threshold table + grouping rationale.
+- `tests/test_metrics_hard_constraints.py`,
+  `tests/test_metrics_high_float.py`,
+  `tests/test_metrics_negative_float.py`,
+  `tests/test_metrics_high_duration.py`,
+  `tests/test_metrics_resources.py`.
+- `tests/_utils.py` — `cpm_result_snapshot` mutation-invariance
+  helper.
+- `tests/fixtures/metric_schedules.py` — extended with M6 builders
+  and the `m6_integration_schedule` nine-metric fixture.
+- `tests/test_metrics_integration.py` — extended to cover all nine
+  M5 + M6 metrics.
 
 **Skills referenced.** `dcma-14-point-assessment` (§§4.5–4.8, §4.10),
 `acumen-reference` (§4.4 DECM row cross-reference for 06A209a,
@@ -632,24 +736,62 @@ through `tests/test_dcma_metric_10.py` (9 is covered in Milestone 7).
 
 **Dependencies.** Milestones 3, 4, 5.
 
-**Deliverables.** Per-metric modules under `app/engine/dcma/` per
-`dcma-14-point-assessment §§4.9, 4.11–4.14`:
+**Deliverables.** Per-metric modules under `app/metrics/` (per
+§2.14 — the metrics package is `app/metrics/`, not
+`app/engine/dcma/`) per `dcma-14-point-assessment §§4.9,
+4.11–4.14`:
 
-- Metric 9a (Forecast-before-status): any forecast start/finish before
-  `status_date`; threshold 0%.
-- Metric 9b (Actual-after-status): any actual start/finish after
-  `status_date`; threshold 0%.
-- Metric 11 (Missed Tasks): incomplete tasks with `baseline_finish ≤
-  status_date` / Total Tasks; threshold ≤5%.
-- Metric 12 (Critical Path Test): add 600 WD to a critical task's
-  `remaining_duration`, re-run CPM via `ScheduleData.model_copy(…)` +
-  `TaskData.model_copy(…)`, compare project finish — must shift by the
-  full 600 WD to pass. Boolean pass/fail.
-- Metric 13 (CPLI): `(CP_length + total_float_to_contract_finish) /
-  CP_length`; threshold ≥0.95.
-- Metric 14 (BEI): tasks completed by status date / tasks with
-  `baseline_finish ≤ status_date`; threshold ≥0.95; cumulative-hit
-  definition per Edwards.
+- Metric 9 (Invalid Dates): a pure date-validity validator. Flags
+  (a) actuals after `status_date`, (b) forecasts before
+  `status_date` on incomplete work, and (c) `actual_finish <
+  actual_start` (temporal inversion). Threshold 0%. No baseline
+  dependency, no CPMResult dependency.
+- Metric 11 (Missed Tasks): incomplete tasks with `baseline_finish
+  ≤ status_date` / tasks with `baseline_finish ≤ status_date`;
+  threshold ≤5%. Baseline-required — no-baseline schedules
+  return an indicator-only result per §2.15. Rolling-wave and LOE
+  tasks exempt from the numerator; denominator unchanged.
+- Metric 12 (Critical Path Test): structural verification of an
+  unbroken zero-total-slack path from project start to project
+  finish via CPMResult read-only traversal. Binary pass / fail
+  encoded on `MetricResult` with `threshold.direction =
+  "structural-pass-fail"`. No baseline dependency. Consumes
+  CPMResult read-only per §2.17.
+- Metric 13 (Critical Path Length Index): `CPLI = (baseline_cp_length
+  + total_slip) / baseline_cp_length`; threshold ≥ 0.95.
+  Baseline-required and CPMResult-required.
+- Metric 14 (Baseline Execution Index): `BEI = tasks_completed /
+  tasks_baseline_due_by_status_date`; threshold ≥ 0.95;
+  cumulative-hit definition per Edwards (`§5.1`). Baseline-required;
+  zero-denominator window returns indicator-only.
+- Baseline comparison plumbing: `app/metrics/baseline.py` providing
+  `has_baseline`, `baseline_slip_minutes`,
+  `tasks_with_baseline_finish_by`,
+  `baseline_critical_path_length_minutes`, and
+  `has_baseline_coverage` helpers. Baseline lives on
+  `Task.baseline_start / baseline_finish /
+  baseline_duration_minutes` (per M2 data model); baseline is **not**
+  a separate `Schedule` object. No-baseline cases are handled
+  gracefully (helpers return `None` / `False`; metrics return
+  indicator-only MetricResult per §2.15).
+
+**M7 scope notes:**
+
+- `CPMOptions.auto_synthesize_calendar` default-flip (True → False)
+  considered during M4 / M5 / M6 and **deferred** to a post-M14
+  cleanup session: the existing M6 fixtures do not universally
+  carry an explicit calendar, so flipping the default would force a
+  wide fixture sweep. Captured in §9 ledger.
+- Metric 12 CPT is rebuilt around a structural read of CPMResult's
+  zero-slack set rather than the 600-WD `model_copy` probe
+  originally sketched in this milestone. Rationale: the M4 engine
+  already emits `critical_path_uids` and per-task
+  `total_slack_minutes`; a structural traversal produces the same
+  pass / fail verdict with fewer moving parts and satisfies
+  §6 AC bar #3 (forensically defensible evidence) without the
+  mutation risk of a +600-WD probe. The `model_copy` probe remains
+  available as a Phase 2 cross-check; it is not the Phase 1 CPT
+  implementation.
 
 **Acceptance criteria.**
 
@@ -675,15 +817,39 @@ CPT test verifies no-mutation invariant via `hash(input.model_dump_json())`
 before and after. BEI and CPLI worked examples are pytest parametrized
 against the §5 values in `dcma-14-point-assessment`.
 
-**File-by-file scope.**
+**File-by-file scope** (M7 build session; branch
+`claude/milestone-7-dcma-metrics-9-11-12-13-14-2026-04-19`):
 
-- `app/engine/dcma/invalid_dates.py` — Metric 9a, 9b.
-- `app/engine/dcma/missed_tasks.py` — Metric 11.
-- `app/engine/dcma/cpt.py` — Metric 12 with `model_copy` probe.
-- `app/engine/dcma/cpli.py` — Metric 13.
-- `app/engine/dcma/bei.py` — Metric 14.
-- `tests/test_dcma_metric_9.py`, `…_11.py`, `…_12.py`, `…_13.py`,
-  `…_14.py`.
+- `app/metrics/baseline.py` — baseline comparison plumbing
+  (`has_baseline`, `baseline_slip_minutes`,
+  `tasks_with_baseline_finish_by`,
+  `baseline_critical_path_length_minutes`,
+  `has_baseline_coverage`).
+- `app/metrics/invalid_dates.py` — Metric 9 (all three invalid-date
+  kinds as one module per §2.14 single-result contract).
+- `app/metrics/missed_tasks.py` — Metric 11.
+- `app/metrics/critical_path_test.py` — Metric 12 (structural).
+- `app/metrics/critical_path_length_index.py` — Metric 13.
+- `app/metrics/baseline_execution_index.py` — Metric 14.
+- `app/metrics/options.py` — extended with `missed_tasks_threshold_pct`,
+  `cpli_threshold_value`, `bei_threshold_value` (defaults per
+  `dcma-14-point-assessment §§4.11, 4.13, 4.14`).
+- `app/metrics/__init__.py` — extended with M7 exports.
+- `app/metrics/README.md` — extended with M7 rows in the threshold
+  and CPM-consumer tables; mixed-shape metrics grouping rationale;
+  baseline-plumbing contract; no-baseline graceful behavior;
+  updated deferral ledger.
+- `tests/test_metrics_baseline.py` — baseline-plumbing unit tests.
+- `tests/test_metrics_invalid_dates.py`.
+- `tests/test_metrics_missed_tasks.py`.
+- `tests/test_metrics_critical_path_test.py`.
+- `tests/test_metrics_critical_path_length_index.py`.
+- `tests/test_metrics_baseline_execution_index.py`.
+- `tests/fixtures/metric_schedules.py` — extended (chunked-heredoc
+  appends) with per-metric fixtures and an `m7_integration_schedule`
+  fourteen-metric builder.
+- `tests/test_metrics_integration.py` — extended to cover all 14
+  M5 + M6 + M7 metrics.
 
 **Skills referenced.** `dcma-14-point-assessment` (§§4.9, 4.11–4.14,
 §5), `acumen-reference` (§4.4 DECM cross-reference).
@@ -1247,6 +1413,22 @@ introduce them:
 - **Source-file uploads to any remote storage** (GitHub forges for
   schedules, Acumen cloud, OpenAI/Gemini/other LLM APIs). Forbidden
   by `cui-compliance-constraints §§2a, 2c, 5`.
+
+### 9.1 Post-milestone deferral ledger
+
+Items descoped from a milestone mid-build; none are permanently
+out-of-scope but none block any Phase 1 milestone from shipping.
+
+| Item                                                   | Deferred from  | Target phase / session                  | Reason                                                                                                                               |
+|--------------------------------------------------------|----------------|-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| Metric 1b "Dangling Logic" (SS-only / FF-only)         | M5 (Minor 2)   | Post-M10 — requires per-relation drivership the engine exposes after M10 driving-path plumbing lands | Defensible SS-only / FF-only detection needs per-relation drivership context. Tracked as backlog.                                    |
+| DCMA Metric 3 — 09NOV09 5-day MSP/OpenPlan carve-out   | M5             | Post-Phase-1 (P6/XER ingestion work)    | Needs per-file tool-provenance detection (MSP / OpenPlan / P6). The Phase 1 parser is MPP-only, so the carve-out is latent.          |
+| `CPMOptions.auto_synthesize_calendar` default flip T→F | M4 / M5 / M6   | Post-M14 cleanup session                | Existing M6 fixtures do not universally carry explicit calendars; flipping the default at M7 time would force a wide fixture sweep.  |
+| Metric 12 CPT +600-WD `model_copy` probe               | M7             | Phase 2 cross-check                     | Phase 1 ships the structural zero-slack-traversal variant (see M7 deliverables); the +600-WD probe is available as a future check.   |
+
+Each entry is restated in the relevant milestone's deliverables /
+notes so a build session reading only §5 does not miss it. The
+ledger is the single source of truth for cross-session descopes.
 
 ---
 

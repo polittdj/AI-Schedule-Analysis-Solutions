@@ -10,7 +10,7 @@ shared edge cases listed in the M5 prompt §5 gotcha tables.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.engine.result import CPMResult, TaskCPMResult
 from app.models.calendar import Calendar
@@ -1531,50 +1531,1430 @@ def m6_integration_schedule() -> tuple[Schedule, CPMResult]:
     return sched, cpm
 
 
-__all__ = [
-    "ANCHOR",
-    "all_complete_schedule",
-    "empty_schedule",
-    "hard_constraints_boundary_schedule",
-    "hard_constraints_excluded_population_schedule",
-    "hard_constraints_golden_fail_schedule",
-    "hard_constraints_pass_schedule",
-    "high_duration_boundary_schedule",
-    "high_duration_excluded_population_schedule",
-    "high_duration_golden_fail_schedule",
-    "high_duration_pass_schedule",
-    "high_duration_rolling_wave_schedule",
-    "high_float_boundary_with_cpm",
-    "high_float_empty_with_cpm",
-    "high_float_excluded_population_with_cpm",
-    "high_float_fail_with_cpm",
-    "high_float_pass_with_cpm",
-    "integration_schedule",
-    "lags_below_threshold_schedule",
-    "lags_golden_fail_schedule",
-    "lags_pass_schedule",
-    "lags_with_leads_schedule",
-    "leads_golden_fail_schedule",
-    "leads_on_completed_task_schedule",
-    "leads_pass_schedule",
-    "logic_golden_fail_schedule",
-    "logic_loe_by_name_schedule",
-    "logic_pass_schedule",
-    "logic_summary_loe_completed_schedule",
-    "m6_integration_schedule",
-    "negative_float_empty_with_cpm",
-    "negative_float_fail_with_cpm",
-    "negative_float_multi_fail_with_cpm",
-    "negative_float_pass_with_cpm",
-    "negative_float_with_cycle_skipped_with_cpm",
-    "no_relations_schedule",
-    "rel_types_all_fs_schedule",
-    "rel_types_at_threshold_schedule",
-    "rel_types_below_threshold_schedule",
-    "rel_types_golden_fail_schedule",
-    "resources_all_assigned_schedule",
-    "resources_all_missing_schedule",
-    "resources_empty_schedule",
-    "resources_excluded_population_schedule",
-    "resources_half_missing_schedule",
-]
+# ---------------------------------------------------------------------------
+# M7 fixtures appended below (Blocks 2, 3, 4, 5, 6)
+# Keep __all__ as the final declaration in the module.
+# ---------------------------------------------------------------------------
+
+
+# ===========================================================================
+# M7 Block 2 — Metric 9 (Invalid Dates) fixtures
+# ===========================================================================
+
+
+STATUS_DATE = datetime(2026, 6, 1, 8, 0, tzinfo=UTC)
+"""Canonical status date for the M7 date-sensitive fixtures."""
+
+
+def invalid_dates_pass_schedule() -> Schedule:
+    """10 well-formed incomplete tasks, all forecast dates after the
+    status date, no actuals, no inversions. Numerator = 0 → PASS."""
+    tasks: list[Task] = []
+    for i in range(1, 11):
+        # Forecast finish 10 days after status date — well-formed.
+        finish = STATUS_DATE + timedelta(days=10 + i)
+        start = STATUS_DATE + timedelta(days=i)
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                start=start,
+                finish=finish,
+            )
+        )
+    return Schedule(
+        name="invalid_dates_pass",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_actual_after_status_schedule() -> Schedule:
+    """One task has actual_finish after status_date (rule A).
+    Numerator = 1; denominator = 3 (T1 offender + T2, T3 clean) → FAIL."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="LateActual",
+            duration_minutes=480,
+            start=STATUS_DATE - timedelta(days=5),
+            finish=STATUS_DATE - timedelta(days=1),
+            actual_start=STATUS_DATE - timedelta(days=5),
+            actual_finish=STATUS_DATE + timedelta(days=2),  # after status
+            percent_complete=100.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Clean",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=1),
+            finish=STATUS_DATE + timedelta(days=5),
+        ),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="Clean2",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=6),
+            finish=STATUS_DATE + timedelta(days=10),
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_actual_after_status",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_forecast_before_status_schedule() -> Schedule:
+    """One not-yet-started incomplete task has forecast finish before
+    the status date (rule B). Numerator = 1; denominator = 3 → FAIL."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="StaleForecast",
+            duration_minutes=480,
+            start=STATUS_DATE - timedelta(days=10),
+            finish=STATUS_DATE - timedelta(days=3),  # before status
+            percent_complete=0.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="CleanForecast",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=2),
+            finish=STATUS_DATE + timedelta(days=5),
+        ),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="InProgressOK",
+            duration_minutes=480,
+            start=STATUS_DATE - timedelta(days=2),
+            finish=STATUS_DATE + timedelta(days=2),
+            actual_start=STATUS_DATE - timedelta(days=2),
+            percent_complete=40.0,
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_forecast_before_status",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_temporal_inversion_schedule() -> Schedule:
+    """One task has actual_finish < actual_start (rule C).
+    Numerator = 1; denominator = 2 → FAIL."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="InvertedActuals",
+            duration_minutes=480,
+            start=STATUS_DATE - timedelta(days=5),
+            finish=STATUS_DATE - timedelta(days=1),
+            actual_start=STATUS_DATE - timedelta(days=1),
+            actual_finish=STATUS_DATE - timedelta(days=5),  # earlier
+            percent_complete=100.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Clean",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=1),
+            finish=STATUS_DATE + timedelta(days=5),
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_temporal_inversion",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_future_planned_task_schedule() -> Schedule:
+    """Regression fixture: an unstarted incomplete task whose dates
+    are entirely after the status date MUST NOT flag rule B. Rule B
+    only flags forecast dates STRICTLY BEFORE status_date."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Future",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=10),
+            finish=STATUS_DATE + timedelta(days=15),
+            percent_complete=0.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="AlsoFuture",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=16),
+            finish=STATUS_DATE + timedelta(days=20),
+            percent_complete=0.0,
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_future_planned",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=1),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_loe_flagged_schedule() -> Schedule:
+    """LOE task has an actual after status — per §3.12 the metric
+    applies to LOE. Numerator includes the LOE task."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="LOE project mgmt",
+            duration_minutes=2400,
+            is_loe=True,
+            start=STATUS_DATE - timedelta(days=30),
+            finish=STATUS_DATE + timedelta(days=30),
+            actual_start=STATUS_DATE - timedelta(days=30),
+            actual_finish=STATUS_DATE + timedelta(days=5),  # future actual
+            percent_complete=100.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Clean",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=1),
+            finish=STATUS_DATE + timedelta(days=5),
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_loe_flagged",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_no_status_date_schedule() -> Schedule:
+    """schedule.status_date is None. Rule C (inversion) still runs;
+    rules A/B are deferred. Notes should explain."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="InvertedActuals",
+            duration_minutes=480,
+            actual_start=ANCHOR + timedelta(days=2),
+            actual_finish=ANCHOR + timedelta(days=1),  # inverted
+            percent_complete=100.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Clean",
+            duration_minutes=480,
+            start=ANCHOR + timedelta(days=5),
+            finish=ANCHOR + timedelta(days=10),
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_no_status",
+        status_date=None,
+        project_start=ANCHOR,
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_excluded_population_schedule() -> Schedule:
+    """Summary and milestone tasks with invalid dates MUST NOT flag
+    (excluded from denominator and numerator)."""
+    tasks = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+            # milestone with an actual after status — MUST NOT flag
+            actual_start=STATUS_DATE + timedelta(days=3),
+            actual_finish=STATUS_DATE + timedelta(days=3),
+        ),
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Summary phase",
+            duration_minutes=2400,
+            is_summary=True,
+            actual_start=STATUS_DATE + timedelta(days=1),
+            actual_finish=STATUS_DATE + timedelta(days=2),
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Clean",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=3),
+            finish=STATUS_DATE + timedelta(days=6),
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_excluded_population",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+# ===========================================================================
+# M7 Block 3 — Metric 11 (Missed Tasks) fixtures
+# ===========================================================================
+
+
+def missed_tasks_known_schedule() -> Schedule:
+    """10 baseline-due tasks; 1 missed (UID 3) → 1/10 = 10% FAIL.
+
+    The other 9 baseline-due tasks have actual_finish populated
+    (finished on or after baseline; Metric 11 only asks "did it
+    finish by status_date", not "on time against baseline").
+
+    Denominator includes only the 10 baseline-due tasks (tasks 11-15
+    have baseline after status and are excluded from the denominator
+    population)."""
+    tasks: list[Task] = []
+    # Tasks 1-10: baseline ≤ status_date; T3 never actualized.
+    for i in range(1, 11):
+        bf = STATUS_DATE - timedelta(days=10 - i + 1)
+        bs = bf - timedelta(days=2)
+        af = None if i == 3 else bf  # T3 missed; others hit
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"Due T{i}",
+                duration_minutes=480,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=af,
+                percent_complete=100.0 if af is not None else 50.0,
+                finish=bf if af is not None else STATUS_DATE + timedelta(days=5),
+            )
+        )
+    # Tasks 11-15: baseline after status (outside window).
+    for i in range(11, 16):
+        bf = STATUS_DATE + timedelta(days=i - 10)
+        bs = bf - timedelta(days=2)
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"Future T{i}",
+                duration_minutes=480,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                start=bs,
+                finish=bf,
+            )
+        )
+    return Schedule(
+        name="missed_tasks_known",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def missed_tasks_rolling_wave_exempt_schedule() -> Schedule:
+    """5 baseline-due tasks; 1 is rolling-wave (UID 3) and has no
+    actual_finish → rolling-wave exempt from numerator; numerator = 0
+    → 0/5 PASS. Denominator still 5."""
+    tasks: list[Task] = []
+    for i in range(1, 6):
+        bf = STATUS_DATE - timedelta(days=5 - i + 1)
+        bs = bf - timedelta(days=1)
+        is_rw = i == 3
+        af = None if is_rw else bf
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                is_rolling_wave=is_rw,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=af,
+                percent_complete=100.0 if af is not None else 0.0,
+                finish=bf if af is not None else STATUS_DATE + timedelta(days=5),
+            )
+        )
+    return Schedule(
+        name="missed_tasks_rolling_wave",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def missed_tasks_loe_exempt_schedule() -> Schedule:
+    """5 baseline-due tasks; 1 is LOE (UID 3) and not actualized →
+    LOE exempt from numerator; numerator = 0 → PASS."""
+    tasks: list[Task] = []
+    for i in range(1, 6):
+        bf = STATUS_DATE - timedelta(days=5 - i + 1)
+        bs = bf - timedelta(days=1)
+        is_loe = i == 3
+        af = None if is_loe else bf
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                is_loe=is_loe,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=af,
+                percent_complete=100.0 if af is not None else 0.0,
+                finish=bf if af is not None else STATUS_DATE + timedelta(days=5),
+            )
+        )
+    return Schedule(
+        name="missed_tasks_loe",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def missed_tasks_no_baseline_schedule() -> Schedule:
+    """Schedule with zero baseline coverage → indicator-only WARN."""
+    tasks = [
+        Task(
+            unique_id=i,
+            task_id=i,
+            name=f"T{i}",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=i),
+            finish=STATUS_DATE + timedelta(days=i + 2),
+        )
+        for i in range(1, 4)
+    ]
+    return Schedule(
+        name="missed_tasks_no_baseline",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def missed_tasks_no_status_date_schedule() -> Schedule:
+    """Baselined but no status_date — indicator-only WARN."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Baselined",
+            duration_minutes=480,
+            baseline_start=ANCHOR,
+            baseline_finish=ANCHOR + timedelta(days=1),
+            baseline_duration_minutes=480,
+        )
+    ]
+    return Schedule(
+        name="missed_tasks_no_status",
+        status_date=None,
+        project_start=ANCHOR,
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+# ===========================================================================
+# M7 Block 4 — Metric 12 (Critical Path Test) fixtures
+# ===========================================================================
+
+
+def cpt_linear_pass_schedule() -> tuple[Schedule, CPMResult]:
+    """Simple linear FS chain bracketed by Start/Finish milestones,
+    every task on critical path (TS=0). CPT should PASS."""
+    tasks: list[Task] = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+        )
+    ]
+    for i in range(1, 5):
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+            )
+        )
+    tasks.append(
+        Task(
+            unique_id=200,
+            task_id=200,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        )
+    )
+    relations: list[Relation] = [
+        Relation(predecessor_unique_id=100, successor_unique_id=1),
+        Relation(predecessor_unique_id=1, successor_unique_id=2),
+        Relation(predecessor_unique_id=2, successor_unique_id=3),
+        Relation(predecessor_unique_id=3, successor_unique_id=4),
+        Relation(predecessor_unique_id=4, successor_unique_id=200),
+    ]
+    sched = Schedule(
+        name="cpt_linear_pass",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+    cpm_tasks = {
+        uid: TaskCPMResult(
+            unique_id=uid,
+            total_slack_minutes=0,
+            on_critical_path=True,
+        )
+        for uid in (100, 1, 2, 3, 4, 200)
+    }
+    cpm = CPMResult(
+        tasks=cpm_tasks,
+        critical_path_uids=frozenset(cpm_tasks.keys()),
+    )
+    return sched, cpm
+
+
+def cpt_gap_fail_schedule() -> tuple[Schedule, CPMResult]:
+    """Linear chain with a float break in the middle — T3 has TS>0,
+    so the backward walk from Finish halts at T4 (whose only
+    predecessor is the non-critical T3). CPT FAIL with T4 as gap."""
+    tasks: list[Task] = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+        )
+    ]
+    for i in range(1, 5):
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+            )
+        )
+    tasks.append(
+        Task(
+            unique_id=200,
+            task_id=200,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        )
+    )
+    relations: list[Relation] = [
+        Relation(predecessor_unique_id=100, successor_unique_id=1),
+        Relation(predecessor_unique_id=1, successor_unique_id=2),
+        Relation(predecessor_unique_id=2, successor_unique_id=3),
+        Relation(predecessor_unique_id=3, successor_unique_id=4),
+        Relation(predecessor_unique_id=4, successor_unique_id=200),
+    ]
+    sched = Schedule(
+        name="cpt_gap_fail",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+    # T3 carries 480 min of slack — the break. T4 and downstream
+    # tasks are still critical, but cannot reach Start via a
+    # zero-slack predecessor because T3 is in the way.
+    tfs = {100: 0, 1: 0, 2: 0, 3: 480, 4: 0, 200: 0}
+    cpm_tasks = {
+        uid: TaskCPMResult(
+            unique_id=uid,
+            total_slack_minutes=tf,
+            on_critical_path=tf <= 0,
+        )
+        for uid, tf in tfs.items()
+    }
+    cpm = CPMResult(
+        tasks=cpm_tasks,
+        critical_path_uids=frozenset(
+            uid for uid, tf in tfs.items() if tf <= 0
+        ),
+    )
+    return sched, cpm
+
+
+def cpt_parallel_critical_paths_schedule() -> tuple[Schedule, CPMResult]:
+    """Two parallel zero-slack branches from Start merge at Finish.
+    Either branch suffices — CPT PASS."""
+    tasks: list[Task] = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
+        Task(unique_id=1, task_id=1, name="A1", duration_minutes=480),
+        Task(unique_id=2, task_id=2, name="A2", duration_minutes=480),
+        Task(unique_id=3, task_id=3, name="B1", duration_minutes=480),
+        Task(unique_id=4, task_id=4, name="B2", duration_minutes=480),
+        Task(
+            unique_id=200,
+            task_id=200,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
+    ]
+    relations: list[Relation] = [
+        Relation(predecessor_unique_id=100, successor_unique_id=1),
+        Relation(predecessor_unique_id=1, successor_unique_id=2),
+        Relation(predecessor_unique_id=2, successor_unique_id=200),
+        Relation(predecessor_unique_id=100, successor_unique_id=3),
+        Relation(predecessor_unique_id=3, successor_unique_id=4),
+        Relation(predecessor_unique_id=4, successor_unique_id=200),
+    ]
+    sched = Schedule(
+        name="cpt_parallel",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+    cpm_tasks = {
+        uid: TaskCPMResult(
+            unique_id=uid,
+            total_slack_minutes=0,
+            on_critical_path=True,
+        )
+        for uid in (100, 1, 2, 3, 4, 200)
+    }
+    cpm = CPMResult(
+        tasks=cpm_tasks,
+        critical_path_uids=frozenset(cpm_tasks.keys()),
+    )
+    return sched, cpm
+
+
+def cpt_no_endpoints_schedule() -> tuple[Schedule, CPMResult]:
+    """Schedule has no bracketing milestones — endpoint detection
+    returns None for both; result is indicator-only WARN."""
+    tasks = [
+        Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
+        Task(unique_id=2, task_id=2, name="B", duration_minutes=480),
+    ]
+    relations = [Relation(predecessor_unique_id=1, successor_unique_id=2)]
+    sched = Schedule(
+        name="cpt_no_endpoints",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+    cpm = CPMResult(
+        tasks={
+            uid: TaskCPMResult(unique_id=uid, total_slack_minutes=0)
+            for uid in (1, 2)
+        },
+        critical_path_uids=frozenset({1, 2}),
+    )
+    return sched, cpm
+
+
+def cpt_finish_not_critical_schedule() -> tuple[Schedule, CPMResult]:
+    """Project finish milestone has positive total_slack → CPT FAIL
+    at the top; evidence records the finish as the gap."""
+    tasks = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
+        Task(unique_id=1, task_id=1, name="T1", duration_minutes=480),
+        Task(
+            unique_id=200,
+            task_id=200,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
+    ]
+    relations = [
+        Relation(predecessor_unique_id=100, successor_unique_id=1),
+        Relation(predecessor_unique_id=1, successor_unique_id=200),
+    ]
+    sched = Schedule(
+        name="cpt_finish_not_critical",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+    cpm_tasks = {
+        100: TaskCPMResult(unique_id=100, total_slack_minutes=0),
+        1: TaskCPMResult(unique_id=1, total_slack_minutes=0),
+        # Finish has high slack — float exists to contract finish,
+        # which in this synthetic case violates CPT.
+        200: TaskCPMResult(unique_id=200, total_slack_minutes=2400),
+    }
+    cpm = CPMResult(
+        tasks=cpm_tasks,
+        critical_path_uids=frozenset({100, 1}),
+    )
+    return sched, cpm
+
+
+# ===========================================================================
+# M7 Block 5 — Metric 13 (CPLI) fixtures
+# ===========================================================================
+
+
+def cpli_on_track_schedule() -> tuple[Schedule, CPMResult]:
+    """Schedule forecast to finish on baseline — CPLI = 1.0 → PASS.
+
+    5 tasks on the critical path; baseline_finish == current finish
+    for every task, so total_float = 0 and CPLI = baseline_cp_length
+    / baseline_cp_length = 1.0.
+    """
+    tasks: list[Task] = []
+    for i in range(1, 6):
+        bs = ANCHOR + timedelta(days=(i - 1) * 2)
+        bf = ANCHOR + timedelta(days=i * 2)
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=960,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=960,
+                start=bs,
+                finish=bf,
+            )
+        )
+    project_finish = ANCHOR + timedelta(days=10)
+    sched = Schedule(
+        name="cpli_on_track",
+        status_date=ANCHOR,
+        project_start=ANCHOR,
+        project_finish=project_finish,
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+    cpm = CPMResult(
+        tasks={
+            uid: TaskCPMResult(unique_id=uid, total_slack_minutes=0)
+            for uid in (1, 2, 3, 4, 5)
+        },
+        critical_path_uids=frozenset({1, 2, 3, 4, 5}),
+        project_finish=project_finish,
+    )
+    return sched, cpm
+
+
+def cpli_slip_fail_schedule() -> tuple[Schedule, CPMResult]:
+    """Schedule slipped — CPLI < 0.95 → FAIL.
+
+    5 tasks on critical path spanning 10 calendar days baseline.
+    Current project_finish is 3 calendar days late → total_float
+    = -3 calendar days. baseline_cp_length = 10 calendar days.
+    CPLI = (10 + (-3)) / 10 = 0.70 < 0.95.
+    """
+    tasks: list[Task] = []
+    for i in range(1, 6):
+        bs = ANCHOR + timedelta(days=(i - 1) * 2)
+        bf = ANCHOR + timedelta(days=i * 2)
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=960,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=960,
+                start=bs,
+                finish=bf + timedelta(days=1),
+            )
+        )
+    project_finish = ANCHOR + timedelta(days=13)  # 3 days past baseline
+    sched = Schedule(
+        name="cpli_slip",
+        status_date=ANCHOR + timedelta(days=5),
+        project_start=ANCHOR,
+        project_finish=project_finish,
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+    cpm = CPMResult(
+        tasks={
+            uid: TaskCPMResult(unique_id=uid, total_slack_minutes=-480)
+            for uid in (1, 2, 3, 4, 5)
+        },
+        critical_path_uids=frozenset({1, 2, 3, 4, 5}),
+        project_finish=project_finish,
+    )
+    return sched, cpm
+
+
+def cpli_no_baseline_schedule() -> tuple[Schedule, CPMResult]:
+    """Schedule without baseline coverage — indicator-only WARN."""
+    tasks = [
+        Task(
+            unique_id=i,
+            task_id=i,
+            name=f"T{i}",
+            duration_minutes=480,
+            start=ANCHOR + timedelta(days=i),
+            finish=ANCHOR + timedelta(days=i + 1),
+        )
+        for i in range(1, 4)
+    ]
+    sched = Schedule(
+        name="cpli_no_baseline",
+        status_date=ANCHOR,
+        project_start=ANCHOR,
+        project_finish=ANCHOR + timedelta(days=5),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+    cpm = CPMResult(
+        tasks={
+            uid: TaskCPMResult(unique_id=uid, total_slack_minutes=0)
+            for uid in (1, 2, 3)
+        },
+        critical_path_uids=frozenset({1, 2, 3}),
+        project_finish=ANCHOR + timedelta(days=5),
+    )
+    return sched, cpm
+
+
+# ===========================================================================
+# M7 Block 6 — Metric 14 (BEI) fixtures
+# ===========================================================================
+
+
+def bei_on_track_schedule() -> Schedule:
+    """5 baseline-due tasks, all completed by status_date → BEI = 1.0
+    PASS."""
+    tasks: list[Task] = []
+    for i in range(1, 6):
+        bf = STATUS_DATE - timedelta(days=5 - i + 1)
+        bs = bf - timedelta(days=1)
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=bf,
+                percent_complete=100.0,
+                finish=bf,
+            )
+        )
+    return Schedule(
+        name="bei_on_track",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_slip_fail_schedule() -> Schedule:
+    """10 baseline-due tasks, 7 completed by status, 3 not.
+    BEI = 7 / 10 = 0.70 < 0.95 → FAIL.
+
+    Per the Edwards cumulative-hit rule: late-but-before-status
+    finishes still count in numerator; after-status finishes do not.
+    """
+    tasks: list[Task] = []
+    for i in range(1, 11):
+        bf = STATUS_DATE - timedelta(days=10 - i + 1)
+        bs = bf - timedelta(days=1)
+        if i <= 5:
+            # On-time actual finishes
+            af = bf
+        elif i <= 7:
+            # Late but before status — still count in numerator
+            af = STATUS_DATE - timedelta(hours=1)
+        else:
+            # Incomplete — not in numerator
+            af = None
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=af,
+                percent_complete=100.0 if af is not None else 30.0,
+                finish=bf if af is not None else STATUS_DATE + timedelta(days=5),
+            )
+        )
+    return Schedule(
+        name="bei_slip",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_rolling_wave_exempt_schedule() -> Schedule:
+    """3 baseline-due tasks; 2 actualized; 1 rolling-wave (exempt from
+    numerator). denominator = 3, numerator = 2 (rolling-wave still
+    counted in denominator) → 2/3 = 0.667 FAIL. The exemption acts on
+    the numerator only — without the exemption, the incomplete
+    rolling-wave would push BEI down and mask legitimate work."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Done",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE - timedelta(days=3),
+            baseline_finish=STATUS_DATE - timedelta(days=2),
+            baseline_duration_minutes=480,
+            actual_start=STATUS_DATE - timedelta(days=3),
+            actual_finish=STATUS_DATE - timedelta(days=2),
+            percent_complete=100.0,
+            finish=STATUS_DATE - timedelta(days=2),
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Done2",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE - timedelta(days=2),
+            baseline_finish=STATUS_DATE - timedelta(days=1),
+            baseline_duration_minutes=480,
+            actual_start=STATUS_DATE - timedelta(days=2),
+            actual_finish=STATUS_DATE - timedelta(days=1),
+            percent_complete=100.0,
+            finish=STATUS_DATE - timedelta(days=1),
+        ),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="RW placeholder",
+            duration_minutes=480,
+            is_rolling_wave=True,
+            baseline_start=STATUS_DATE - timedelta(days=2),
+            baseline_finish=STATUS_DATE - timedelta(days=1),
+            baseline_duration_minutes=480,
+            finish=STATUS_DATE + timedelta(days=3),
+        ),
+    ]
+    return Schedule(
+        name="bei_rolling_wave",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_loe_exempt_schedule() -> Schedule:
+    """Similar to rolling-wave fixture but the exempted task is LOE."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Done",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE - timedelta(days=3),
+            baseline_finish=STATUS_DATE - timedelta(days=2),
+            baseline_duration_minutes=480,
+            actual_start=STATUS_DATE - timedelta(days=3),
+            actual_finish=STATUS_DATE - timedelta(days=2),
+            percent_complete=100.0,
+            finish=STATUS_DATE - timedelta(days=2),
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Done2",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE - timedelta(days=2),
+            baseline_finish=STATUS_DATE - timedelta(days=1),
+            baseline_duration_minutes=480,
+            actual_start=STATUS_DATE - timedelta(days=2),
+            actual_finish=STATUS_DATE - timedelta(days=1),
+            percent_complete=100.0,
+            finish=STATUS_DATE - timedelta(days=1),
+        ),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="LOE coverage",
+            duration_minutes=480,
+            is_loe=True,
+            baseline_start=STATUS_DATE - timedelta(days=2),
+            baseline_finish=STATUS_DATE - timedelta(days=1),
+            baseline_duration_minutes=480,
+            finish=STATUS_DATE + timedelta(days=3),
+        ),
+    ]
+    return Schedule(
+        name="bei_loe",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_zero_denominator_schedule() -> Schedule:
+    """All baselines in the future — zero denominator, indicator-only."""
+    tasks = [
+        Task(
+            unique_id=i,
+            task_id=i,
+            name=f"T{i}",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE + timedelta(days=i),
+            baseline_finish=STATUS_DATE + timedelta(days=i + 1),
+            baseline_duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=i),
+            finish=STATUS_DATE + timedelta(days=i + 1),
+        )
+        for i in range(1, 4)
+    ]
+    return Schedule(
+        name="bei_zero_denom",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_no_baseline_schedule() -> Schedule:
+    """No baseline anywhere — indicator-only WARN."""
+    tasks = [
+        Task(
+            unique_id=i,
+            task_id=i,
+            name=f"T{i}",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=i),
+            finish=STATUS_DATE + timedelta(days=i + 1),
+        )
+        for i in range(1, 4)
+    ]
+    return Schedule(
+        name="bei_no_baseline",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_no_status_date_schedule() -> Schedule:
+    """No status_date — indicator-only WARN."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Baselined",
+            duration_minutes=480,
+            baseline_start=ANCHOR,
+            baseline_finish=ANCHOR + timedelta(days=1),
+            baseline_duration_minutes=480,
+        )
+    ]
+    return Schedule(
+        name="bei_no_status",
+        status_date=None,
+        project_start=ANCHOR,
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_edwards_worked_example_schedule() -> Schedule:
+    """Edwards §5.1 worked example: 10-task proxy.
+
+    Scaled from the 200-task example — 8 baseline-due; 6 completed
+    by status; 2 not. The 10th task has baseline AFTER status and
+    finishes early — it must be excluded from both numerator and
+    denominator per §5.1 ("Early-finishing tasks with later
+    baselines are excluded — their denominator row is outside the
+    BEI window").
+
+    Expected: BEI = 6 / 8 = 0.75 → FAIL."""
+    tasks: list[Task] = []
+    # Tasks 1-8: baseline-due; 1-6 completed, 7-8 incomplete.
+    for i in range(1, 9):
+        bf = STATUS_DATE - timedelta(days=8 - i + 1)
+        bs = bf - timedelta(days=1)
+        if i <= 6:
+            af = bf
+            pct = 100.0
+        else:
+            af = None
+            pct = 30.0
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=af,
+                percent_complete=pct,
+                finish=bf if af is not None else STATUS_DATE + timedelta(days=5),
+            )
+        )
+    # Task 9: future baseline, finished early — excluded from both
+    # numerator and denominator per §5.1.
+    t9_bf = STATUS_DATE + timedelta(days=5)
+    tasks.append(
+        Task(
+            unique_id=9,
+            task_id=9,
+            name="EarlyFinisher",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE + timedelta(days=4),
+            baseline_finish=t9_bf,
+            baseline_duration_minutes=480,
+            actual_start=STATUS_DATE - timedelta(days=2),
+            actual_finish=STATUS_DATE - timedelta(hours=1),
+            percent_complete=100.0,
+            finish=STATUS_DATE - timedelta(hours=1),
+        )
+    )
+    return Schedule(
+        name="bei_edwards",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+# ===========================================================================
+# M7 Block 7 — All-14-metric integration fixture
+# ===========================================================================
+
+
+def m7_integration_schedule() -> tuple[Schedule, CPMResult]:
+    """Fourteen-metric end-to-end integration fixture.
+
+    Extends the ``m6_integration_schedule`` shape with baseline
+    coverage, a valid ``status_date``, bracketing start/finish
+    milestones, and known offender injections for each M7 metric.
+    Every hand-calculable expectation is asserted in
+    :class:`tests.test_metrics_integration.TestFourteenMetricIntegration`.
+
+    Layout:
+
+    * UID 100 — project Start milestone (no predecessor).
+    * UID 1..8 — eight working tasks, all baselined.
+      * UID 1, 2 — completed on or before status_date (counted in
+        BEI numerator).
+      * UID 3 — baseline due, NOT completed → missed / BEI numerator
+        drag.
+      * UID 4 — rolling-wave baseline-due, not completed → BEI
+        numerator exemption.
+      * UID 5 — actual-after-status invalid-date offender (Metric 9).
+      * UID 6 — baseline after status; completed before status →
+        Edwards §5.1 early-finisher (excluded from BEI).
+      * UID 7, 8 — baseline after status, incomplete (future work).
+    * UID 200 — project Finish milestone.
+
+    All eight working tasks lie on the critical path (TS=0) so
+    Metric 12 PASSes. The relation chain is a single FS line:
+    Start → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → Finish. Baselines make
+    CPLI approximately 1.0 (no major slip). Denominators /
+    numerators hand-calc in the integration test.
+    """
+    status = STATUS_DATE
+    # Work tasks spec: (uid, offset_bf_days, actual_finish_offset, is_rw, is_loe,
+    #                   actual_start_offset, is_invalid_actual_after)
+    # Baselines arranged so UIDs 1-5 have baseline ≤ status; 6-8 have
+    # baseline after status.
+    start_baseline = status - timedelta(days=10)
+    tasks: list[Task] = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+            baseline_start=start_baseline,
+            baseline_finish=start_baseline,
+            baseline_duration_minutes=0,
+            actual_start=start_baseline,
+            actual_finish=start_baseline,
+            finish=start_baseline,
+            resource_count=1,
+        )
+    ]
+
+    # UID 1 — completed on baseline, on time
+    bf1 = status - timedelta(days=5)
+    tasks.append(
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="T1 done",
+            duration_minutes=480,
+            baseline_start=bf1 - timedelta(days=1),
+            baseline_finish=bf1,
+            baseline_duration_minutes=480,
+            actual_start=bf1 - timedelta(days=1),
+            actual_finish=bf1,
+            percent_complete=100.0,
+            start=bf1 - timedelta(days=1),
+            finish=bf1,
+            resource_count=1,
+        )
+    )
+
+    # UID 2 — completed on baseline, on time
+    bf2 = status - timedelta(days=4)
+    tasks.append(
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="T2 done",
+            duration_minutes=480,
+            baseline_start=bf2 - timedelta(days=1),
+            baseline_finish=bf2,
+            baseline_duration_minutes=480,
+            actual_start=bf2 - timedelta(days=1),
+            actual_finish=bf2,
+            percent_complete=100.0,
+            start=bf2 - timedelta(days=1),
+            finish=bf2,
+            resource_count=1,
+        )
+    )
+
+    # UID 3 — baseline ≤ status, NOT completed (missed / BEI drag)
+    bf3 = status - timedelta(days=3)
+    tasks.append(
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="T3 missed",
+            duration_minutes=480,
+            baseline_start=bf3 - timedelta(days=1),
+            baseline_finish=bf3,
+            baseline_duration_minutes=480,
+            actual_start=bf3 - timedelta(days=1),
+            percent_complete=50.0,
+            start=bf3 - timedelta(days=1),
+            finish=status + timedelta(days=2),
+            resource_count=1,
+        )
+    )
+
+    # UID 4 — rolling-wave baseline-due, not actualized
+    bf4 = status - timedelta(days=2)
+    tasks.append(
+        Task(
+            unique_id=4,
+            task_id=4,
+            name="T4 rolling-wave",
+            duration_minutes=480,
+            is_rolling_wave=True,
+            baseline_start=bf4 - timedelta(days=1),
+            baseline_finish=bf4,
+            baseline_duration_minutes=480,
+            start=bf4 - timedelta(days=1),
+            finish=status + timedelta(days=3),
+            resource_count=1,
+        )
+    )
+
+    # UID 5 — actual after status (invalid date rule A)
+    bf5 = status - timedelta(days=1)
+    tasks.append(
+        Task(
+            unique_id=5,
+            task_id=5,
+            name="T5 bad actual",
+            duration_minutes=480,
+            baseline_start=bf5 - timedelta(days=1),
+            baseline_finish=bf5,
+            baseline_duration_minutes=480,
+            actual_start=bf5 - timedelta(days=1),
+            actual_finish=status + timedelta(days=1),  # after status!
+            percent_complete=100.0,
+            start=bf5 - timedelta(days=1),
+            finish=status + timedelta(days=1),
+            resource_count=1,
+        )
+    )
+
+    # UID 6 — Edwards early-finisher (baseline after status, finished
+    # before status). Excluded from BEI window on both ends.
+    bf6 = status + timedelta(days=5)
+    tasks.append(
+        Task(
+            unique_id=6,
+            task_id=6,
+            name="T6 early",
+            duration_minutes=480,
+            baseline_start=bf6 - timedelta(days=1),
+            baseline_finish=bf6,
+            baseline_duration_minutes=480,
+            actual_start=status - timedelta(days=2),
+            actual_finish=status - timedelta(hours=1),
+            percent_complete=100.0,
+            start=status - timedelta(days=2),
+            finish=status - timedelta(hours=1),
+            resource_count=1,
+        )
+    )
+
+    # UID 7 — baseline after status, incomplete (future work)
+    bf7 = status + timedelta(days=7)
+    tasks.append(
+        Task(
+            unique_id=7,
+            task_id=7,
+            name="T7 future",
+            duration_minutes=480,
+            baseline_start=bf7 - timedelta(days=1),
+            baseline_finish=bf7,
+            baseline_duration_minutes=480,
+            start=status + timedelta(days=6),
+            finish=bf7,
+            resource_count=1,
+        )
+    )
+
+    # UID 8 — baseline after status, incomplete (future work)
+    bf8 = status + timedelta(days=9)
+    tasks.append(
+        Task(
+            unique_id=8,
+            task_id=8,
+            name="T8 future",
+            duration_minutes=480,
+            baseline_start=bf8 - timedelta(days=1),
+            baseline_finish=bf8,
+            baseline_duration_minutes=480,
+            start=status + timedelta(days=8),
+            finish=bf8,
+            resource_count=1,
+        )
+    )
+
+    tasks.append(
+        Task(
+            unique_id=200,
+            task_id=200,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+            baseline_start=bf8,
+            baseline_finish=bf8,
+            baseline_duration_minutes=0,
+            finish=bf8,
+            resource_count=1,
+        )
+    )
+
+    relations: list[Relation] = [
+        Relation(predecessor_unique_id=100, successor_unique_id=1),
+    ]
+    for i in range(1, 8):
+        relations.append(
+            Relation(predecessor_unique_id=i, successor_unique_id=i + 1)
+        )
+    relations.append(Relation(predecessor_unique_id=8, successor_unique_id=200))
+
+    sched = Schedule(
+        name="m7_integration",
+        status_date=status,
+        project_start=status - timedelta(days=30),
+        project_finish=bf8,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+
+    # All tasks on critical path for M12 / M13 fixture expectations.
+    cpm_tasks: dict[int, TaskCPMResult] = {
+        uid: TaskCPMResult(
+            unique_id=uid,
+            total_slack_minutes=0,
+            on_critical_path=True,
+        )
+        for uid in (100, 1, 2, 3, 4, 5, 6, 7, 8, 200)
+    }
+    cpm = CPMResult(
+        tasks=cpm_tasks,
+        critical_path_uids=frozenset(cpm_tasks.keys()),
+        project_finish=bf8,
+    )
+    return sched, cpm

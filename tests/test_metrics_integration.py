@@ -12,12 +12,17 @@ from app.engine.result import CPMResult
 from app.metrics import (
     MetricResult,
     Severity,
+    run_bei,
+    run_cpli,
+    run_critical_path_test,
     run_hard_constraints,
     run_high_duration,
     run_high_float,
+    run_invalid_dates,
     run_lags,
     run_leads,
     run_logic,
+    run_missed_tasks,
     run_negative_float,
     run_relationship_types,
     run_resources,
@@ -27,6 +32,7 @@ from tests._utils import cpm_result_snapshot
 from tests.fixtures.metric_schedules import (
     integration_schedule,
     m6_integration_schedule,
+    m7_integration_schedule,
 )
 from tests.fixtures.schedules import complex_with_exceptions
 
@@ -233,3 +239,173 @@ class TestCoveragesEngineFixtureForM6:
         assert r.severity is Severity.WARN
         # resource_count defaults to 0 in this fixture.
         assert r.computed_value == 100.0
+
+
+# ---------------------------------------------------------------------------
+# M7 — full fourteen-metric end-to-end integration
+# ---------------------------------------------------------------------------
+
+
+def _run_all_fourteen(schedule: Schedule, cpm: CPMResult) -> dict[str, MetricResult]:
+    """Run every Phase 1 DCMA metric (1-14) on a shared schedule +
+    CPMResult pair. Metric 1b (Dangling Logic) remains deferred per
+    §9.1 ledger; everything else is in M7 scope."""
+    return {
+        "DCMA-1": run_logic(schedule),
+        "DCMA-2": run_leads(schedule),
+        "DCMA-3": run_lags(schedule),
+        "DCMA-4": run_relationship_types(schedule),
+        "DCMA-5": run_hard_constraints(schedule),
+        "DCMA-6": run_high_float(schedule, cpm),
+        "DCMA-7": run_negative_float(schedule, cpm),
+        "DCMA-8": run_high_duration(schedule),
+        "DCMA-9": run_invalid_dates(schedule),
+        "DCMA-10": run_resources(schedule),
+        "DCMA-11": run_missed_tasks(schedule),
+        "DCMA-12": run_critical_path_test(schedule, cpm),
+        "DCMA-13": run_cpli(schedule, cpm),
+        "DCMA-14": run_bei(schedule),
+    }
+
+
+class TestFourteenMetricIntegration:
+    """M7 Block 7 AC — every Phase 1 DCMA metric runs end-to-end on
+    a single realistic (Schedule, CPMResult) pair."""
+
+    def test_every_metric_returns_a_result(self) -> None:
+        sched, cpm = m7_integration_schedule()
+        results = _run_all_fourteen(sched, cpm)
+        expected_ids = {f"DCMA-{i}" for i in range(1, 15) if i != 10} | {"DCMA-10"}
+        # Metric 1b deferred; Metrics 1-14 otherwise all present.
+        assert set(results.keys()) == expected_ids
+        for r in results.values():
+            assert isinstance(r, MetricResult)
+            assert r.severity in (Severity.PASS, Severity.WARN, Severity.FAIL)
+
+    def test_every_result_carries_provenance(self) -> None:
+        sched, cpm = m7_integration_schedule()
+        results = _run_all_fourteen(sched, cpm)
+        for metric_id, r in results.items():
+            assert r.metric_id == metric_id
+            assert r.threshold.source_skill_section
+            assert r.threshold.source_decm_row
+
+    def test_invalid_dates_flags_seeded_actual_after_status(self) -> None:
+        sched, _ = m7_integration_schedule()
+        r = run_invalid_dates(sched)
+        assert r.severity is Severity.FAIL
+        # UID 5 is seeded with actual_finish > status_date.
+        assert 5 in {o.unique_id for o in r.offenders}
+
+    def test_missed_tasks_denominator_is_hand_calculable(self) -> None:
+        sched, _ = m7_integration_schedule()
+        r = run_missed_tasks(sched)
+        # Baseline-due (≤ status): UIDs 1, 2, 3, 4, 5 — five tasks.
+        # Summary/milestone excluded from denominator (none in this
+        # set); LOE/rolling-wave exempt from numerator only.
+        assert r.denominator == 5
+        # Numerator: not-completed, not rolling-wave, not LOE → UID 3.
+        # UID 1, 2, 5 have actual_finish; UID 4 is rolling-wave.
+        assert r.numerator == 1
+        assert {o.unique_id for o in r.offenders} == {3}
+
+    def test_critical_path_test_passes_on_linear_chain(self) -> None:
+        sched, cpm = m7_integration_schedule()
+        r = run_critical_path_test(sched, cpm)
+        assert r.severity is Severity.PASS
+
+    def test_cpli_reports_valid_ratio(self) -> None:
+        sched, cpm = m7_integration_schedule()
+        r = run_cpli(sched, cpm)
+        assert r.computed_value is not None
+        # project_finish matches baseline's max → CPLI ≈ 1.0.
+        assert r.severity is Severity.PASS
+
+    def test_bei_denominator_excludes_early_finisher(self) -> None:
+        sched, _ = m7_integration_schedule()
+        r = run_bei(sched)
+        # Baseline-due ≤ status: UIDs 1, 2, 3, 4, 5 → denominator 5.
+        assert r.denominator == 5
+        # Numerator: completed-by-status, excl. rolling-wave (UID 4) and
+        # LOE → UID 1, 2 (on-time), UID 5 (actual after status, so NOT
+        # counted in numerator because actual_finish > status_date).
+        # UID 3 incomplete. → numerator = 2.
+        assert r.numerator == 2
+        # UID 6 (early-finisher with later baseline) is out of window.
+
+    def test_no_metric_mutates_the_schedule(self) -> None:
+        sched, cpm = m7_integration_schedule()
+        before = sched.model_dump_json()
+        _run_all_fourteen(sched, cpm)
+        assert sched.model_dump_json() == before
+
+    def test_no_metric_mutates_the_cpm_result(self) -> None:
+        sched, cpm = m7_integration_schedule()
+        before = cpm_result_snapshot(cpm)
+        _run_all_fourteen(sched, cpm)
+        assert cpm_result_snapshot(cpm) == before
+
+    def test_determinism_across_two_invocations(self) -> None:
+        sched, cpm = m7_integration_schedule()
+        r1 = _run_all_fourteen(sched, cpm)
+        r2 = _run_all_fourteen(sched, cpm)
+        assert r1 == r2
+
+
+class TestPublicApiCompleteness:
+    """Every M7 metric is importable from the top-level
+    ``app.metrics`` namespace — smoke test for Block 7 exports."""
+
+    def test_all_fourteen_metrics_importable(self) -> None:
+        from app.metrics import (
+            BEIMetric,
+            CPLIMetric,
+            CriticalPathTestMetric,
+            HardConstraintsMetric,
+            HighDurationMetric,
+            HighFloatMetric,
+            InvalidDatesMetric,
+            LagsMetric,
+            LeadsMetric,
+            LogicMetric,
+            MissedTasksMetric,
+            NegativeFloatMetric,
+            RelationshipTypesMetric,
+            ResourcesMetric,
+        )
+
+        expected_ids = {
+            LogicMetric.metric_id,
+            LeadsMetric.metric_id,
+            LagsMetric.metric_id,
+            RelationshipTypesMetric.metric_id,
+            HardConstraintsMetric.metric_id,
+            HighFloatMetric.metric_id,
+            NegativeFloatMetric.metric_id,
+            HighDurationMetric.metric_id,
+            InvalidDatesMetric.metric_id,
+            ResourcesMetric.metric_id,
+            MissedTasksMetric.metric_id,
+            CriticalPathTestMetric.metric_id,
+            CPLIMetric.metric_id,
+            BEIMetric.metric_id,
+        }
+        # 14 distinct metric IDs (Metric 1b deferred).
+        assert len(expected_ids) == 14
+
+    def test_baseline_plumbing_importable(self) -> None:
+        from app.metrics import (
+            BaselineComparison,
+            baseline_critical_path_length_minutes,
+            baseline_slip_minutes,
+            has_baseline,
+            has_baseline_coverage,
+            tasks_with_baseline_finish_by,
+        )
+
+        assert callable(has_baseline)
+        assert callable(has_baseline_coverage)
+        assert callable(baseline_slip_minutes)
+        assert callable(tasks_with_baseline_finish_by)
+        assert callable(baseline_critical_path_length_minutes)
+        assert BaselineComparison.__name__ == "BaselineComparison"

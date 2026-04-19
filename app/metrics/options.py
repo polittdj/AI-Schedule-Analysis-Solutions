@@ -116,6 +116,35 @@ class MetricOptions:
     ``is_rolling_wave=True`` are exempt from the numerator per
     BUILD-PLAN §5 M6 AC 4."""
 
+    invalid_dates_threshold_pct: float = 0.0
+    """Metric 9 (Invalid Dates) — % of eligible tasks allowed to
+    carry any invalid date (actual-after-status, forecast-before-
+    status on not-yet-started incomplete work, or
+    actual-finish-before-actual-start temporal inversion). Default
+    0.0 per ``dcma-14-point-assessment §4.9`` — any offender
+    flags FAIL (BUILD-PLAN §5 M7 §3.10)."""
+
+    missed_tasks_threshold_pct: float = 5.0
+    """Metric 11 (Missed Tasks) — % of baseline-due tasks allowed
+    to remain incomplete as of the status date. Default 5.0 per
+    ``dcma-14-point-assessment §4.11``. Rolling-wave and LOE
+    tasks are exempt from the numerator per BUILD-PLAN §5 M7
+    §§3.11, 3.12."""
+
+    cpli_threshold_value: float = 0.95
+    """Metric 13 (CPLI) — minimum acceptable CPLI ratio. Default
+    0.95 per ``dcma-14-point-assessment §4.13``. Directional check
+    is ``>=`` — a CPLI below the threshold flags FAIL. Permissible
+    range ``(0, 2.0]``; override outside that range raises
+    :class:`InvalidThresholdError`."""
+
+    bei_threshold_value: float = 0.95
+    """Metric 14 (BEI) — minimum acceptable BEI ratio. Default
+    0.95 per ``dcma-14-point-assessment §4.14``. Directional check
+    is ``>=`` — a BEI below the threshold flags FAIL. Permissible
+    range ``[0, 2.0]``; override outside that range raises
+    :class:`InvalidThresholdError`."""
+
     exclude_loe: bool = True
     """Excludes tasks marked as Level-of-Effort
     (``Task.is_loe == True``) from the Metric 1 denominator per
@@ -153,6 +182,8 @@ class MetricOptions:
             ("high_float_threshold_pct", self.high_float_threshold_pct),
             ("negative_float_threshold_pct", self.negative_float_threshold_pct),
             ("high_duration_threshold_pct", self.high_duration_threshold_pct),
+            ("invalid_dates_threshold_pct", self.invalid_dates_threshold_pct),
+            ("missed_tasks_threshold_pct", self.missed_tasks_threshold_pct),
         ):
             if not isinstance(value, int | float):
                 raise InvalidThresholdError("M5", name, value)
@@ -172,3 +203,19 @@ class MetricOptions:
                 raise InvalidThresholdError("M6", name, value)
             if value < 0.0:
                 raise InvalidThresholdError("M6", name, value)
+        # CPLI: ratio range (0, 2.0]; 0 is not admissible (would be
+        # a divide-by-zero downstream). BEI: ratio range [0, 2.0];
+        # 0 is admissible (denominator zero is handled at the metric
+        # layer as indicator-only).
+        if not isinstance(self.cpli_threshold_value, int | float):
+            raise InvalidThresholdError("M7", "cpli_threshold_value",
+                                        self.cpli_threshold_value)
+        if self.cpli_threshold_value <= 0.0 or self.cpli_threshold_value > 2.0:
+            raise InvalidThresholdError("M7", "cpli_threshold_value",
+                                        self.cpli_threshold_value)
+        if not isinstance(self.bei_threshold_value, int | float):
+            raise InvalidThresholdError("M7", "bei_threshold_value",
+                                        self.bei_threshold_value)
+        if self.bei_threshold_value < 0.0 or self.bei_threshold_value > 2.0:
+            raise InvalidThresholdError("M7", "bei_threshold_value",
+                                        self.bei_threshold_value)
