@@ -76,6 +76,46 @@ class MetricOptions:
     must be Finish-to-Start. Default 90.0 per
     ``dcma-14-point-assessment §4.4``."""
 
+    hard_constraints_threshold_pct: float = 5.0
+    """Metric 5 (Hard Constraints) — % of tasks allowed to carry a
+    09NOV09 hard constraint (MSO, MFO, SNLT, FNLT) before the metric
+    flags FAIL. Default 5.0 per ``dcma-14-point-assessment §4.5``.
+    SNET, FNET, ASAP, and ALAP are not counted (ALAP has its own
+    detection path in M11 per ``forensic-manipulation-patterns
+    §5.3``)."""
+
+    high_float_threshold_pct: float = 5.0
+    """Metric 6 (High Float) — % of incomplete tasks allowed to
+    carry ``total_slack`` strictly greater than
+    :attr:`high_float_threshold_working_days`. Default 5.0 per
+    ``dcma-14-point-assessment §4.6``."""
+
+    high_float_threshold_working_days: float = 44.0
+    """Metric 6 (High Float) — working-day ceiling above which a
+    task's ``total_slack`` is counted in the numerator. Default 44.0
+    per ``dcma-14-point-assessment §4.6``. Comparison is strict
+    (``>``) — a task with ``total_slack = 44.0 WD`` does not flag;
+    ``44.01 WD`` does (BUILD-PLAN §5 M6 AC 2)."""
+
+    negative_float_threshold_pct: float = 0.0
+    """Metric 7 (Negative Float) — % of tasks allowed to carry
+    ``total_slack < 0`` before the metric flags FAIL. Default 0.0
+    per ``dcma-14-point-assessment §4.7`` — any negative float flags
+    (BUILD-PLAN §5 M6 AC 3)."""
+
+    high_duration_threshold_pct: float = 5.0
+    """Metric 8 (High Duration) — % of incomplete tasks allowed to
+    carry remaining duration strictly greater than
+    :attr:`high_duration_threshold_working_days`. Default 5.0 per
+    ``dcma-14-point-assessment §4.8``."""
+
+    high_duration_threshold_working_days: float = 44.0
+    """Metric 8 (High Duration) — working-day ceiling above which a
+    task's remaining duration is counted in the numerator. Default
+    44.0 per ``dcma-14-point-assessment §4.8``. Tasks tagged
+    ``is_rolling_wave=True`` are exempt from the numerator per
+    BUILD-PLAN §5 M6 AC 4."""
+
     exclude_loe: bool = True
     """Excludes tasks marked as Level-of-Effort
     (``Task.is_loe == True``) from the Metric 1 denominator per
@@ -109,8 +149,26 @@ class MetricOptions:
             ("leads_threshold_pct", self.leads_threshold_pct),
             ("lags_threshold_pct", self.lags_threshold_pct),
             ("fs_threshold_pct", self.fs_threshold_pct),
+            ("hard_constraints_threshold_pct", self.hard_constraints_threshold_pct),
+            ("high_float_threshold_pct", self.high_float_threshold_pct),
+            ("negative_float_threshold_pct", self.negative_float_threshold_pct),
+            ("high_duration_threshold_pct", self.high_duration_threshold_pct),
         ):
             if not isinstance(value, int | float):
                 raise InvalidThresholdError("M5", name, value)
             if value < 0.0 or value > 100.0:
                 raise InvalidThresholdError("M5", name, value)
+        for name, value in (
+            (
+                "high_float_threshold_working_days",
+                self.high_float_threshold_working_days,
+            ),
+            (
+                "high_duration_threshold_working_days",
+                self.high_duration_threshold_working_days,
+            ),
+        ):
+            if not isinstance(value, int | float):
+                raise InvalidThresholdError("M6", name, value)
+            if value < 0.0:
+                raise InvalidThresholdError("M6", name, value)
