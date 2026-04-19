@@ -49,6 +49,7 @@ from app.engine.constraints import (
 )
 from app.engine.exceptions import (
     ConstraintViolation,
+    MissingCalendarError,
 )
 from app.engine.options import CPMOptions
 from app.engine.relations import (
@@ -91,7 +92,7 @@ class CPMEngine:
             # E2 — empty schedule is a valid no-op.
             return CPMResult(tasks={})
 
-        cal = _find_calendar(schedule)
+        cal = _find_calendar(schedule, self._options)
         topo = topological_order(
             schedule.tasks,
             schedule.relations,
@@ -402,18 +403,24 @@ class CPMEngine:
 # ---- helpers --------------------------------------------------------
 
 
-def _find_calendar(schedule: Schedule) -> Calendar:
+def _find_calendar(schedule: Schedule, options: CPMOptions) -> Calendar:
     for c in schedule.calendars:
         if c.name == schedule.default_calendar_name:
             return c
     if schedule.calendars:
         return schedule.calendars[0]
-    # Synthesize a default calendar on empty lists — a schedule can
-    # arrive with no calendars if constructed from a minimal fixture.
-    # The CPM engine requires *some* calendar; this is the forensic-
-    # defensibility knob (M4 guardrail: flag if model change seems
-    # needed).
-    return Calendar(name=schedule.default_calendar_name or "Standard")
+    # No calendar on the schedule. Synthesis is gated: by default
+    # (M4) the engine fabricates a Standard calendar to keep existing
+    # minimal fixtures working; with
+    # ``CPMOptions(auto_synthesize_calendar=False)`` — the strict-
+    # forensic mode slated to become default in M5 — the engine
+    # raises instead (driving-slack-and-paths §8 CPM discipline
+    # requires calendar-faithful arithmetic; synthesis risks a silent
+    # 5x8 assumption on a schedule that is actually 6x10 or 7x24).
+    name = schedule.default_calendar_name or "Standard"
+    if not options.auto_synthesize_calendar:
+        raise MissingCalendarError(name)
+    return Calendar(name=name)
 
 
 def _index_relations(

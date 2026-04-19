@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.engine.cpm import CPMEngine, compute_cpm
-from app.engine.exceptions import CircularDependencyError
+from app.engine.exceptions import CircularDependencyError, MissingCalendarError
 from app.engine.options import CPMOptions
 from app.models.calendar import Calendar
 from app.models.enums import ConstraintType
@@ -456,6 +456,43 @@ def test_backward_pass_multi_successor_uses_min() -> None:
     assert result.tasks[4].on_critical_path is True
     assert result.tasks[2].total_slack_minutes > 0
     assert result.tasks[3].total_slack_minutes > 0
+
+
+# ---- Calendar-synthesis gating (Block C4) ------------------------
+
+
+def test_calendar_synthesis_default_allows_empty_calendars() -> None:
+    """Default CPMOptions synthesizes a Standard calendar on empty
+    calendar lists so minimal fixtures continue to compute. The
+    flip to strict mode is tracked for M5."""
+    s = Schedule(
+        name="no-cal",
+        project_start=ANCHOR,
+        tasks=[
+            Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
+        ],
+        # No calendars — relies on synthesis.
+    )
+    # Default CPMOptions has auto_synthesize_calendar=True.
+    result = compute_cpm(s)
+    assert 1 in result.tasks
+    assert result.tasks[1].early_start == ANCHOR
+
+
+def test_calendar_synthesis_off_raises_on_empty_calendars() -> None:
+    """With auto_synthesize_calendar=False the engine must not
+    fabricate a calendar — the absence is a forensic signal
+    (driving-slack-and-paths §8 CPM discipline)."""
+    s = Schedule(
+        name="no-cal-strict",
+        project_start=ANCHOR,
+        tasks=[
+            Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
+        ],
+    )
+    opts = CPMOptions(auto_synthesize_calendar=False)
+    with pytest.raises(MissingCalendarError):
+        compute_cpm(s, opts)
 
 
 # ---- Medium fixture smoke tests ----------------------------------

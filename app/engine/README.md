@@ -126,6 +126,52 @@ task-for-task against `CPMResult.critical_path_uids` — this test
 requires MS Project on the host and is deferred to on-workstation
 verification, tracked in `docs/BUILD-PLAN.md §7`.
 
+## Calendar-synthesis gating (Option B)
+
+When a `Schedule` arrives with an empty `calendars` list — a shape
+permitted by the Pydantic model and used by several minimal fixtures
+— the engine needs *some* calendar to drive
+`add_working_minutes` / `subtract_working_minutes`. There are two
+defensible behaviors:
+
+* **Option A (strict, forensic default).** Raise
+  `MissingCalendarError`. A schedule without a calendar cannot yield
+  MSP-match dates, which is the `driving-slack-and-paths §8` CPM
+  discipline requirement. Under Option A, every fixture and every
+  parsed `.mpp` must carry an explicit calendar.
+* **Option B (gated synthesis).** Synthesize a default `Standard`
+  calendar when absent, but expose the switch on `CPMOptions` so
+  forensic callers can force Option A locally. Minimal fixtures and
+  unit tests that do not care about calendar semantics still
+  compute.
+
+M4 adopts **Option B**. Rationale:
+
+1. The M4 cleanup pass is not a fixture rewrite. Flipping to strict
+   would require updating every unit fixture in the repo to add an
+   explicit `Calendar`, expanding the blast radius of this PR
+   beyond the audit's minors list.
+2. The knob
+   (`CPMOptions.auto_synthesize_calendar: bool = True`) makes the
+   behavior explicit rather than silent. A forensic caller that
+   must reproduce MSP output (M7, M9, M10 downstream consumers)
+   can opt into the strict mode by passing
+   `CPMOptions(auto_synthesize_calendar=False)`, which the engine
+   surfaces as `MissingCalendarError`.
+3. The default flip to `False` is slated for **Milestone 5**, once
+   every fixture carries an explicit `Standard` calendar and the
+   M5 parser path emits calendars deterministically per
+   `mpp-parsing-com-automation §3.5`. The flip is therefore a
+   one-line change guarded by a single option default.
+
+Tests:
+
+* `test_calendar_synthesis_default_allows_empty_calendars` —
+  empty-calendar schedule under default options still computes.
+* `test_calendar_synthesis_off_raises_on_empty_calendars` —
+  empty-calendar schedule under `auto_synthesize_calendar=False`
+  raises `MissingCalendarError`.
+
 ## Guardrails enforced
 
 * No `win32com`, `ollama`, `anthropic`, or cloud SDK imports

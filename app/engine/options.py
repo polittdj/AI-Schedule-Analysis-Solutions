@@ -42,6 +42,14 @@ class CPMOptions:
     near_critical_threshold_days: float = 10.0
     project_finish_override: datetime | None = None
     strict_cycles: bool = False
+    auto_synthesize_calendar: bool = True
+    """If True (M4 default), ``_find_calendar`` fabricates a synthetic
+    ``Standard`` calendar when ``Schedule.calendars`` is empty. If
+    False, the engine raises
+    :class:`~app.engine.exceptions.MissingCalendarError` instead —
+    required for strict MSP-match mode (`driving-slack-and-paths §8`
+    CPM discipline). Slated to flip to ``False`` in M5 once all
+    fixtures carry an explicit calendar."""
 
     def __post_init__(self) -> None:
         if self.near_critical_threshold_days < 0:

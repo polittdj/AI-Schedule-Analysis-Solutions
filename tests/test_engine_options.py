@@ -14,6 +14,8 @@ def test_defaults_match_skill_driving_slack_paths_section_4() -> None:
     assert opts.near_critical_threshold_days == 10.0
     assert opts.project_finish_override is None
     assert opts.strict_cycles is False
+    # M4 synthesis default — slated to flip to False in M5.
+    assert opts.auto_synthesize_calendar is True
 
 
 def test_override_near_critical_threshold() -> None:
