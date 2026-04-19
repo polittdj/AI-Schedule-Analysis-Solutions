@@ -654,9 +654,9 @@ def integration_schedule() -> Schedule:
     relations: list[Relation] = [
         Relation(predecessor_unique_id=100, successor_unique_id=1),
     ]
-    # Chain T1 → T2 → … → T19 → Finish; leave T20 detached for the
-    # Missing-Logic offender.
-    for i in range(1, 19):
+    # Chain T1 → T2 → … → T18 → Finish; leave T19 and T20 detached
+    # so the Missing-Logic numerator is 2/20 = 10% > 5% → FAIL.
+    for i in range(1, 18):
         rt = RelationType.FS
         lag = 0
         if i == 4:
@@ -680,7 +680,7 @@ def integration_schedule() -> Schedule:
             )
         )
     relations.append(
-        Relation(predecessor_unique_id=19, successor_unique_id=200)
+        Relation(predecessor_unique_id=18, successor_unique_id=200)
     )
 
     return Schedule(
