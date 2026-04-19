@@ -10,7 +10,7 @@ shared edge cases listed in the M5 prompt §5 gotcha tables.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.engine.result import CPMResult, TaskCPMResult
 from app.models.calendar import Calendar
@@ -1531,50 +1531,297 @@ def m6_integration_schedule() -> tuple[Schedule, CPMResult]:
     return sched, cpm
 
 
-__all__ = [
-    "ANCHOR",
-    "all_complete_schedule",
-    "empty_schedule",
-    "hard_constraints_boundary_schedule",
-    "hard_constraints_excluded_population_schedule",
-    "hard_constraints_golden_fail_schedule",
-    "hard_constraints_pass_schedule",
-    "high_duration_boundary_schedule",
-    "high_duration_excluded_population_schedule",
-    "high_duration_golden_fail_schedule",
-    "high_duration_pass_schedule",
-    "high_duration_rolling_wave_schedule",
-    "high_float_boundary_with_cpm",
-    "high_float_empty_with_cpm",
-    "high_float_excluded_population_with_cpm",
-    "high_float_fail_with_cpm",
-    "high_float_pass_with_cpm",
-    "integration_schedule",
-    "lags_below_threshold_schedule",
-    "lags_golden_fail_schedule",
-    "lags_pass_schedule",
-    "lags_with_leads_schedule",
-    "leads_golden_fail_schedule",
-    "leads_on_completed_task_schedule",
-    "leads_pass_schedule",
-    "logic_golden_fail_schedule",
-    "logic_loe_by_name_schedule",
-    "logic_pass_schedule",
-    "logic_summary_loe_completed_schedule",
-    "m6_integration_schedule",
-    "negative_float_empty_with_cpm",
-    "negative_float_fail_with_cpm",
-    "negative_float_multi_fail_with_cpm",
-    "negative_float_pass_with_cpm",
-    "negative_float_with_cycle_skipped_with_cpm",
-    "no_relations_schedule",
-    "rel_types_all_fs_schedule",
-    "rel_types_at_threshold_schedule",
-    "rel_types_below_threshold_schedule",
-    "rel_types_golden_fail_schedule",
-    "resources_all_assigned_schedule",
-    "resources_all_missing_schedule",
-    "resources_empty_schedule",
-    "resources_excluded_population_schedule",
-    "resources_half_missing_schedule",
-]
+# ---------------------------------------------------------------------------
+# M7 fixtures appended below (Blocks 2, 3, 4, 5, 6)
+# Keep __all__ as the final declaration in the module.
+# ---------------------------------------------------------------------------
+
+
+# ===========================================================================
+# M7 Block 2 — Metric 9 (Invalid Dates) fixtures
+# ===========================================================================
+
+
+STATUS_DATE = datetime(2026, 6, 1, 8, 0, tzinfo=UTC)
+"""Canonical status date for the M7 date-sensitive fixtures."""
+
+
+def invalid_dates_pass_schedule() -> Schedule:
+    """10 well-formed incomplete tasks, all forecast dates after the
+    status date, no actuals, no inversions. Numerator = 0 → PASS."""
+    tasks: list[Task] = []
+    for i in range(1, 11):
+        # Forecast finish 10 days after status date — well-formed.
+        finish = STATUS_DATE + timedelta(days=10 + i)
+        start = STATUS_DATE + timedelta(days=i)
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                start=start,
+                finish=finish,
+            )
+        )
+    return Schedule(
+        name="invalid_dates_pass",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_actual_after_status_schedule() -> Schedule:
+    """One task has actual_finish after status_date (rule A).
+    Numerator = 1; denominator = 3 (T1 offender + T2, T3 clean) → FAIL."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="LateActual",
+            duration_minutes=480,
+            start=STATUS_DATE - timedelta(days=5),
+            finish=STATUS_DATE - timedelta(days=1),
+            actual_start=STATUS_DATE - timedelta(days=5),
+            actual_finish=STATUS_DATE + timedelta(days=2),  # after status
+            percent_complete=100.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Clean",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=1),
+            finish=STATUS_DATE + timedelta(days=5),
+        ),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="Clean2",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=6),
+            finish=STATUS_DATE + timedelta(days=10),
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_actual_after_status",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_forecast_before_status_schedule() -> Schedule:
+    """One not-yet-started incomplete task has forecast finish before
+    the status date (rule B). Numerator = 1; denominator = 3 → FAIL."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="StaleForecast",
+            duration_minutes=480,
+            start=STATUS_DATE - timedelta(days=10),
+            finish=STATUS_DATE - timedelta(days=3),  # before status
+            percent_complete=0.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="CleanForecast",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=2),
+            finish=STATUS_DATE + timedelta(days=5),
+        ),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="InProgressOK",
+            duration_minutes=480,
+            start=STATUS_DATE - timedelta(days=2),
+            finish=STATUS_DATE + timedelta(days=2),
+            actual_start=STATUS_DATE - timedelta(days=2),
+            percent_complete=40.0,
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_forecast_before_status",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_temporal_inversion_schedule() -> Schedule:
+    """One task has actual_finish < actual_start (rule C).
+    Numerator = 1; denominator = 2 → FAIL."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="InvertedActuals",
+            duration_minutes=480,
+            start=STATUS_DATE - timedelta(days=5),
+            finish=STATUS_DATE - timedelta(days=1),
+            actual_start=STATUS_DATE - timedelta(days=1),
+            actual_finish=STATUS_DATE - timedelta(days=5),  # earlier
+            percent_complete=100.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Clean",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=1),
+            finish=STATUS_DATE + timedelta(days=5),
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_temporal_inversion",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_future_planned_task_schedule() -> Schedule:
+    """Regression fixture: an unstarted incomplete task whose dates
+    are entirely after the status date MUST NOT flag rule B. Rule B
+    only flags forecast dates STRICTLY BEFORE status_date."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Future",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=10),
+            finish=STATUS_DATE + timedelta(days=15),
+            percent_complete=0.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="AlsoFuture",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=16),
+            finish=STATUS_DATE + timedelta(days=20),
+            percent_complete=0.0,
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_future_planned",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=1),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_loe_flagged_schedule() -> Schedule:
+    """LOE task has an actual after status — per §3.12 the metric
+    applies to LOE. Numerator includes the LOE task."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="LOE project mgmt",
+            duration_minutes=2400,
+            is_loe=True,
+            start=STATUS_DATE - timedelta(days=30),
+            finish=STATUS_DATE + timedelta(days=30),
+            actual_start=STATUS_DATE - timedelta(days=30),
+            actual_finish=STATUS_DATE + timedelta(days=5),  # future actual
+            percent_complete=100.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Clean",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=1),
+            finish=STATUS_DATE + timedelta(days=5),
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_loe_flagged",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_no_status_date_schedule() -> Schedule:
+    """schedule.status_date is None. Rule C (inversion) still runs;
+    rules A/B are deferred. Notes should explain."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="InvertedActuals",
+            duration_minutes=480,
+            actual_start=ANCHOR + timedelta(days=2),
+            actual_finish=ANCHOR + timedelta(days=1),  # inverted
+            percent_complete=100.0,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Clean",
+            duration_minutes=480,
+            start=ANCHOR + timedelta(days=5),
+            finish=ANCHOR + timedelta(days=10),
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_no_status",
+        status_date=None,
+        project_start=ANCHOR,
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def invalid_dates_excluded_population_schedule() -> Schedule:
+    """Summary and milestone tasks with invalid dates MUST NOT flag
+    (excluded from denominator and numerator)."""
+    tasks = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+            # milestone with an actual after status — MUST NOT flag
+            actual_start=STATUS_DATE + timedelta(days=3),
+            actual_finish=STATUS_DATE + timedelta(days=3),
+        ),
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Summary phase",
+            duration_minutes=2400,
+            is_summary=True,
+            actual_start=STATUS_DATE + timedelta(days=1),
+            actual_finish=STATUS_DATE + timedelta(days=2),
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Clean",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=3),
+            finish=STATUS_DATE + timedelta(days=6),
+        ),
+    ]
+    return Schedule(
+        name="invalid_dates_excluded_population",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
