@@ -154,7 +154,13 @@ class MetricResult:
             compute a value (e.g. Relationship Types on a schedule
             with zero relations).
         threshold: :class:`ThresholdConfig`.
-        numerator: count of offenders contributing to the metric.
+        numerator: the numerator of the X/Y ratio this metric
+            computes. For lower-is-better metrics this is typically
+            the count of offenders; for higher-is-better metrics this
+            is typically the count of passing items. Downstream
+            consumers should rely on ``computed_value`` and
+            ``threshold.direction`` rather than interpreting this
+            field's semantics.
         denominator: count of items in the population (incomplete
             tasks, total relations, etc.).
         offenders: drill-down list per BUILD-PLAN §6 AC bar #3.
