@@ -302,24 +302,40 @@ session-end wipe semantics that the upload route stubs).
 
 **Dependencies.** Milestone 1.
 
-**Deliverables.** Pydantic v2 models: `ScheduleData`, `TaskData`,
-`Relationship`, `Constraint`, `CalendarData`, `ProjectData`,
-`AnalysisResult`. All use `ConfigDict(extra="forbid")` and
+**Deliverables.** Pydantic v2 models. (**AM2, landed 2026-04-18 in
+M3 PR:** the as-implemented package name is `app/models/` and the
+class names are `Schedule`, `Task`, `Relation`, `Calendar`,
+`Resource`, `ResourceAssignment`, `CalendarException`,
+`WorkingTime`, plus the enums `ConstraintType`, `RelationType`,
+`ResourceType`, `TaskType` and the frozenset constants
+`HARD_CONSTRAINTS` / `DATE_BEARING_CONSTRAINTS`. The names
+`ScheduleData`/`TaskData`/`Relationship`/`CalendarData`/`ProjectData`
+in the original §5 M2 scope are superseded; downstream milestones
+read `app.models`.) All use `ConfigDict(extra="forbid")` and
 `model_dump(mode="json")`. Durations in minutes; working-day
-conversion is a method on `TaskData`. `TaskData` fields cover
-`unique_id`, `task_id`, `name`, `wbs`, all date fields (start, finish,
-baseline, actual, early, late), duration and slack in minutes,
-`percent_complete`, `is_milestone`, `is_summary`, `is_critical_from_msp`,
-`is_loe`, `is_rolling_wave`, `is_schedule_margin`, `resource_count`,
-`constraint`, `predecessors`, `successors`.
+conversion is provided by the engine layer (see AC2 amendment
+below). `Task` fields cover `unique_id`, `task_id`, `name`, `wbs`,
+all date fields (start, finish, baseline, actual, early, late),
+duration and slack in minutes, `percent_complete`, `is_milestone`,
+`is_summary`, `is_critical_from_msp`, `is_loe`, `is_rolling_wave`,
+`is_schedule_margin`, `resource_count`, `constraint_type` /
+`constraint_date`. Relations are stored on `Schedule.relations`,
+not on per-task `predecessors` / `successors` lists.
 
 **Acceptance criteria.**
 
 1. `from app.schema import ScheduleData` imports cleanly with no JVM,
    COM, or network side effects.
-2. A `TaskData` populated with integer `duration_minutes = 2400`
-   returns `2400 / (8*60) = 5.0` from its `duration_working_days(8)`
-   method, matching `mpp-parsing-com-automation §3.5` Gotcha 5.
+2. (**AM3, 2026-04-18 in M3 PR:** minutes → working-days conversion
+   is routed to `app/engine/duration.py` — the engine layer — rather
+   than to a method on `Task`. Rationale: the CPM engine and the
+   DCMA metric layer are the only callers of the conversion; placing
+   it on the model would force every unit test of the model to pass
+   an `hours_per_day` that models do not otherwise carry. The helper
+   will be built in M4 or M5 when the first consumer lands. M2 AC2
+   is thereby satisfied by the model carrying `duration_minutes` as
+   an integer in minutes per Gotcha 5; the helper's unit test is
+   deferred to its birth milestone.)
 3. Round-trip JSON: `ScheduleData(…).model_dump(mode="json")` → JSON
    string → `ScheduleData.model_validate_json(...)` yields an equal
    model (pytest parametrized over a synthetic 10-task schedule).

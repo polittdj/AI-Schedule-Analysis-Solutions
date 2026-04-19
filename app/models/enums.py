@@ -20,8 +20,8 @@ class RelationType(IntEnum):
     Integer values follow the Microsoft Project COM ``PjTaskLinkType``
     enumeration documented in
     ``mpp-parsing-com-automation §5``: ``0=FF, 1=FS, 2=SF, 3=SS``.
-    This differs from the MPXJ enum; never share integers between COM
-    and MPXJ code paths without conversion.
+    Third-party library enum orderings differ; do not port integer
+    values verbatim between code paths without conversion.
     """
 
     FF = 0

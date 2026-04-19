@@ -41,8 +41,9 @@ class Relation(BaseModel):
 
     relation_type: RelationType = RelationType.FS
     """COM property: ``TaskDependency.Type``. COM enum 0=FF, 1=FS,
-    2=SF, 3=SS — distinct from MPXJ's enum
-    (``mpp-parsing-com-automation §5``)."""
+    2=SF, 3=SS per ``mpp-parsing-com-automation §5``; third-party
+    library enum orderings differ, so integer values do not cross
+    parser boundaries without conversion."""
 
     lag_minutes: int = 0
     """COM property: ``TaskDependency.Lag``. Minutes (G5). May be
