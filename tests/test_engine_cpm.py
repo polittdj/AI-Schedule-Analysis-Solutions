@@ -393,6 +393,71 @@ def test_fnlt_breach_emits_violation_not_exception() -> None:
     assert "FNLT_BREACHED" in violation_kinds
 
 
+def test_backward_pass_multi_successor_uses_min() -> None:
+    """E16: predecessor LF = MIN across successor-derived bounds.
+
+    Fixture — one predecessor P feeds three FS successors (S1, S2, S3)
+    with different durations and no onward links, so each successor's
+    LF anchors on the project finish and each yields a different
+    successor-driven LS:
+
+      ANCHOR = Mon 2026-04-20 08:00 (an 8-hour working day).
+
+      P   (1d)  ES=Mon 4/20 08, EF=Tue 4/21 08
+      S1  (1d)  ES=Tue 4/21 08, EF=Wed 4/22 08
+      S2  (3d)  ES=Tue 4/21 08, EF=Fri 4/24 08
+      S3  (5d)  ES=Tue 4/21 08, EF=Tue 4/28 08   ← project finish
+
+      Backward pass, anchor_finish = Tue 4/28 08:
+        S3 LS = anchor - 5d = Tue 4/21 08   (Tue 4/28 - Mon 4/27 - Fri 4/24
+                                              - Thu 4/23 - Wed 4/22 - Tue 4/21)
+        S2 LS = anchor - 3d = Thu 4/23 08   (Tue 4/28 - Mon 4/27 - Fri 4/24
+                                              - Thu 4/23)
+        S1 LS = anchor - 1d = Mon 4/27 08
+
+      P's FS successor-derived LF bounds (FS: LF(pred) <= LS(succ)):
+        via S1 -> Mon 4/27 08
+        via S2 -> Thu 4/23 08
+        via S3 -> Tue 4/21 08   ← MIN
+
+      P LF = MIN = Tue 4/21 08  -> TS(P) = 0 (on-critical).
+    """
+    s = Schedule(
+        name="multi-succ",
+        project_start=ANCHOR,
+        tasks=[
+            Task(unique_id=1, task_id=1, name="P", duration_minutes=480),
+            Task(unique_id=2, task_id=2, name="S1", duration_minutes=480),
+            Task(unique_id=3, task_id=3, name="S2", duration_minutes=480 * 3),
+            Task(unique_id=4, task_id=4, name="S3", duration_minutes=480 * 5),
+        ],
+        relations=[
+            Relation(predecessor_unique_id=1, successor_unique_id=2),
+            Relation(predecessor_unique_id=1, successor_unique_id=3),
+            Relation(predecessor_unique_id=1, successor_unique_id=4),
+        ],
+        calendars=[Calendar(name="Standard")],
+    )
+    result = compute_cpm(s)
+
+    # S3 drives the project finish.
+    expected_finish = datetime(2026, 4, 28, 8, tzinfo=UTC)
+    assert result.project_finish == expected_finish
+
+    # MIN aggregation: P LF equals S3 LS, not S1 LS or S2 LS.
+    assert result.tasks[1].late_finish == datetime(2026, 4, 21, 8, tzinfo=UTC)
+    # Sanity — the two non-driving successors do have later LS values.
+    assert result.tasks[2].late_start == datetime(2026, 4, 27, 8, tzinfo=UTC)
+    assert result.tasks[3].late_start == datetime(2026, 4, 23, 8, tzinfo=UTC)
+    assert result.tasks[4].late_start == datetime(2026, 4, 21, 8, tzinfo=UTC)
+
+    # P is on the critical path by driving S3; S1 and S2 have slack.
+    assert result.tasks[1].on_critical_path is True
+    assert result.tasks[4].on_critical_path is True
+    assert result.tasks[2].total_slack_minutes > 0
+    assert result.tasks[3].total_slack_minutes > 0
+
+
 # ---- Medium fixture smoke tests ----------------------------------
 
 
