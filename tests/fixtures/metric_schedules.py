@@ -2379,3 +2379,320 @@ def cpli_no_baseline_schedule() -> tuple[Schedule, CPMResult]:
         project_finish=ANCHOR + timedelta(days=5),
     )
     return sched, cpm
+
+
+# ===========================================================================
+# M7 Block 6 — Metric 14 (BEI) fixtures
+# ===========================================================================
+
+
+def bei_on_track_schedule() -> Schedule:
+    """5 baseline-due tasks, all completed by status_date → BEI = 1.0
+    PASS."""
+    tasks: list[Task] = []
+    for i in range(1, 6):
+        bf = STATUS_DATE - timedelta(days=5 - i + 1)
+        bs = bf - timedelta(days=1)
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=bf,
+                percent_complete=100.0,
+                finish=bf,
+            )
+        )
+    return Schedule(
+        name="bei_on_track",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_slip_fail_schedule() -> Schedule:
+    """10 baseline-due tasks, 7 completed by status, 3 not.
+    BEI = 7 / 10 = 0.70 < 0.95 → FAIL.
+
+    Per the Edwards cumulative-hit rule: late-but-before-status
+    finishes still count in numerator; after-status finishes do not.
+    """
+    tasks: list[Task] = []
+    for i in range(1, 11):
+        bf = STATUS_DATE - timedelta(days=10 - i + 1)
+        bs = bf - timedelta(days=1)
+        if i <= 5:
+            # On-time actual finishes
+            af = bf
+        elif i <= 7:
+            # Late but before status — still count in numerator
+            af = STATUS_DATE - timedelta(hours=1)
+        else:
+            # Incomplete — not in numerator
+            af = None
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=af,
+                percent_complete=100.0 if af is not None else 30.0,
+                finish=bf if af is not None else STATUS_DATE + timedelta(days=5),
+            )
+        )
+    return Schedule(
+        name="bei_slip",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_rolling_wave_exempt_schedule() -> Schedule:
+    """3 baseline-due tasks; 2 actualized; 1 rolling-wave (exempt from
+    numerator). denominator = 3, numerator = 2 (rolling-wave still
+    counted in denominator) → 2/3 = 0.667 FAIL. The exemption acts on
+    the numerator only — without the exemption, the incomplete
+    rolling-wave would push BEI down and mask legitimate work."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Done",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE - timedelta(days=3),
+            baseline_finish=STATUS_DATE - timedelta(days=2),
+            baseline_duration_minutes=480,
+            actual_start=STATUS_DATE - timedelta(days=3),
+            actual_finish=STATUS_DATE - timedelta(days=2),
+            percent_complete=100.0,
+            finish=STATUS_DATE - timedelta(days=2),
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Done2",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE - timedelta(days=2),
+            baseline_finish=STATUS_DATE - timedelta(days=1),
+            baseline_duration_minutes=480,
+            actual_start=STATUS_DATE - timedelta(days=2),
+            actual_finish=STATUS_DATE - timedelta(days=1),
+            percent_complete=100.0,
+            finish=STATUS_DATE - timedelta(days=1),
+        ),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="RW placeholder",
+            duration_minutes=480,
+            is_rolling_wave=True,
+            baseline_start=STATUS_DATE - timedelta(days=2),
+            baseline_finish=STATUS_DATE - timedelta(days=1),
+            baseline_duration_minutes=480,
+            finish=STATUS_DATE + timedelta(days=3),
+        ),
+    ]
+    return Schedule(
+        name="bei_rolling_wave",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_loe_exempt_schedule() -> Schedule:
+    """Similar to rolling-wave fixture but the exempted task is LOE."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Done",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE - timedelta(days=3),
+            baseline_finish=STATUS_DATE - timedelta(days=2),
+            baseline_duration_minutes=480,
+            actual_start=STATUS_DATE - timedelta(days=3),
+            actual_finish=STATUS_DATE - timedelta(days=2),
+            percent_complete=100.0,
+            finish=STATUS_DATE - timedelta(days=2),
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Done2",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE - timedelta(days=2),
+            baseline_finish=STATUS_DATE - timedelta(days=1),
+            baseline_duration_minutes=480,
+            actual_start=STATUS_DATE - timedelta(days=2),
+            actual_finish=STATUS_DATE - timedelta(days=1),
+            percent_complete=100.0,
+            finish=STATUS_DATE - timedelta(days=1),
+        ),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="LOE coverage",
+            duration_minutes=480,
+            is_loe=True,
+            baseline_start=STATUS_DATE - timedelta(days=2),
+            baseline_finish=STATUS_DATE - timedelta(days=1),
+            baseline_duration_minutes=480,
+            finish=STATUS_DATE + timedelta(days=3),
+        ),
+    ]
+    return Schedule(
+        name="bei_loe",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_zero_denominator_schedule() -> Schedule:
+    """All baselines in the future — zero denominator, indicator-only."""
+    tasks = [
+        Task(
+            unique_id=i,
+            task_id=i,
+            name=f"T{i}",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE + timedelta(days=i),
+            baseline_finish=STATUS_DATE + timedelta(days=i + 1),
+            baseline_duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=i),
+            finish=STATUS_DATE + timedelta(days=i + 1),
+        )
+        for i in range(1, 4)
+    ]
+    return Schedule(
+        name="bei_zero_denom",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_no_baseline_schedule() -> Schedule:
+    """No baseline anywhere — indicator-only WARN."""
+    tasks = [
+        Task(
+            unique_id=i,
+            task_id=i,
+            name=f"T{i}",
+            duration_minutes=480,
+            start=STATUS_DATE + timedelta(days=i),
+            finish=STATUS_DATE + timedelta(days=i + 1),
+        )
+        for i in range(1, 4)
+    ]
+    return Schedule(
+        name="bei_no_baseline",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_no_status_date_schedule() -> Schedule:
+    """No status_date — indicator-only WARN."""
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Baselined",
+            duration_minutes=480,
+            baseline_start=ANCHOR,
+            baseline_finish=ANCHOR + timedelta(days=1),
+            baseline_duration_minutes=480,
+        )
+    ]
+    return Schedule(
+        name="bei_no_status",
+        status_date=None,
+        project_start=ANCHOR,
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+
+
+def bei_edwards_worked_example_schedule() -> Schedule:
+    """Edwards §5.1 worked example: 10-task proxy.
+
+    Scaled from the 200-task example — 8 baseline-due; 6 completed
+    by status; 2 not. The 10th task has baseline AFTER status and
+    finishes early — it must be excluded from both numerator and
+    denominator per §5.1 ("Early-finishing tasks with later
+    baselines are excluded — their denominator row is outside the
+    BEI window").
+
+    Expected: BEI = 6 / 8 = 0.75 → FAIL."""
+    tasks: list[Task] = []
+    # Tasks 1-8: baseline-due; 1-6 completed, 7-8 incomplete.
+    for i in range(1, 9):
+        bf = STATUS_DATE - timedelta(days=8 - i + 1)
+        bs = bf - timedelta(days=1)
+        if i <= 6:
+            af = bf
+            pct = 100.0
+        else:
+            af = None
+            pct = 30.0
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=480,
+                actual_start=bs,
+                actual_finish=af,
+                percent_complete=pct,
+                finish=bf if af is not None else STATUS_DATE + timedelta(days=5),
+            )
+        )
+    # Task 9: future baseline, finished early — excluded from both
+    # numerator and denominator per §5.1.
+    t9_bf = STATUS_DATE + timedelta(days=5)
+    tasks.append(
+        Task(
+            unique_id=9,
+            task_id=9,
+            name="EarlyFinisher",
+            duration_minutes=480,
+            baseline_start=STATUS_DATE + timedelta(days=4),
+            baseline_finish=t9_bf,
+            baseline_duration_minutes=480,
+            actual_start=STATUS_DATE - timedelta(days=2),
+            actual_finish=STATUS_DATE - timedelta(hours=1),
+            percent_complete=100.0,
+            finish=STATUS_DATE - timedelta(hours=1),
+        )
+    )
+    return Schedule(
+        name="bei_edwards",
+        status_date=STATUS_DATE,
+        project_start=STATUS_DATE - timedelta(days=30),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
