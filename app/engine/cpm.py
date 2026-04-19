@@ -206,16 +206,61 @@ class CPMEngine:
             )
             ef_final = ef_candidate if ef_candidate and ef_candidate > ef_from_es else ef_from_es
 
+            # Capture predecessor-driven values before the hard-lock
+            # constraint potentially overrides them — needed to emit
+            # MSO/MFO-override violations (driving-slack-and-paths §8).
+            pred_driven_es = es_candidate
+            pred_driven_ef = ef_final
+
             outcome = apply_forward_constraint(task, es_candidate, ef_final, cal)
             es_final = outcome.early_start
             ef_final = outcome.early_finish
 
             if task.constraint_type == ConstraintType.MUST_START_ON:
+                if (
+                    task.constraint_date is not None
+                    and preds_of.get(uid)
+                    and pred_driven_es > task.constraint_date
+                ):
+                    # Predecessor chain pushed ES past the MSO lock.
+                    # Engine respects the MSO lock but records the
+                    # logical infeasibility (BUILD-PLAN §5 M4 E8).
+                    violations.append(
+                        ConstraintViolation(
+                            unique_id=task.unique_id,
+                            kind="MSO_OVERRIDE_PREDECESSOR",
+                            constraint_date=task.constraint_date,
+                            computed_date=pred_driven_es,
+                            detail=(
+                                f"predecessor chain forced ES to "
+                                f"{pred_driven_es.isoformat()} past MSO "
+                                f"{task.constraint_date.isoformat()}"
+                            ),
+                        )
+                    )
                 # Re-derive EF from the locked ES.
                 ef_final = add_working_minutes(
                     es_final, task.duration_minutes, cal
                 )
             elif task.constraint_type == ConstraintType.MUST_FINISH_ON:
+                if (
+                    task.constraint_date is not None
+                    and preds_of.get(uid)
+                    and pred_driven_ef > task.constraint_date
+                ):
+                    violations.append(
+                        ConstraintViolation(
+                            unique_id=task.unique_id,
+                            kind="MFO_OVERRIDE_PREDECESSOR",
+                            constraint_date=task.constraint_date,
+                            computed_date=pred_driven_ef,
+                            detail=(
+                                f"predecessor chain forced EF to "
+                                f"{pred_driven_ef.isoformat()} past MFO "
+                                f"{task.constraint_date.isoformat()}"
+                            ),
+                        )
+                    )
                 # Re-derive ES from the locked EF.
                 es_final = subtract_working_minutes(
                     ef_final, task.duration_minutes, cal
@@ -279,6 +324,14 @@ class CPMEngine:
                     lf_candidate = lf_from_ls
                 ls_final_guess = ls_candidate
 
+            # Capture successor-driven values before the hard-lock
+            # constraint potentially overrides them — needed to emit
+            # MSO/MFO-override SNLT-style violations when the lock
+            # forces a later date than successors allow
+            # (driving-slack-and-paths §8).
+            succ_driven_ls = ls_final_guess
+            succ_driven_lf = lf_candidate
+
             outcome = apply_backward_constraint(
                 task, ls_final_guess, lf_candidate, cal
             )
@@ -286,10 +339,48 @@ class CPMEngine:
             lf_final = outcome.late_finish
 
             if task.constraint_type == ConstraintType.MUST_START_ON:
+                if (
+                    task.constraint_date is not None
+                    and succs_of.get(uid)
+                    and succ_driven_ls < task.constraint_date
+                ):
+                    # Successors require LS earlier than the MSO lock;
+                    # the lock creates negative slack on this chain.
+                    violations.append(
+                        ConstraintViolation(
+                            unique_id=task.unique_id,
+                            kind="MSO_OVERRIDE_SUCCESSOR",
+                            constraint_date=task.constraint_date,
+                            computed_date=succ_driven_ls,
+                            detail=(
+                                f"successor chain required LS "
+                                f"{succ_driven_ls.isoformat()} before MSO "
+                                f"{task.constraint_date.isoformat()}"
+                            ),
+                        )
+                    )
                 lf_final = add_working_minutes(
                     ls_final, task.duration_minutes, cal
                 )
             elif task.constraint_type == ConstraintType.MUST_FINISH_ON:
+                if (
+                    task.constraint_date is not None
+                    and succs_of.get(uid)
+                    and succ_driven_lf < task.constraint_date
+                ):
+                    violations.append(
+                        ConstraintViolation(
+                            unique_id=task.unique_id,
+                            kind="MFO_OVERRIDE_SUCCESSOR",
+                            constraint_date=task.constraint_date,
+                            computed_date=succ_driven_lf,
+                            detail=(
+                                f"successor chain required LF "
+                                f"{succ_driven_lf.isoformat()} before MFO "
+                                f"{task.constraint_date.isoformat()}"
+                            ),
+                        )
+                    )
                 ls_final = subtract_working_minutes(
                     lf_final, task.duration_minutes, cal
                 )

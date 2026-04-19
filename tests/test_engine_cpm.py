@@ -287,6 +287,87 @@ def test_mso_locks_es_in_forward_pass() -> None:
     assert result.tasks[2].early_finish == datetime(2026, 4, 27, 8, tzinfo=UTC)
 
 
+def test_mso_override_predecessor_emits_violation() -> None:
+    """E8: when MSO lock date precedes predecessor-driven ES, the
+    engine honors the MSO lock AND emits a ConstraintViolation so
+    the M12 delay-claim exporter can report the logical infeasibility
+    (driving-slack-and-paths §8 CPM discipline).
+    """
+    # Predecessor is a 3-day task starting Mon 4/20, finishing Thu 4/23.
+    # Successor has MSO = Mon 4/20 (3 working days before predecessor
+    # releases) so the MSO lock overrides the FS link.
+    mso_date = datetime(2026, 4, 20, 8, tzinfo=UTC)
+    s = Schedule(
+        name="mso-override",
+        project_start=ANCHOR,
+        tasks=[
+            Task(unique_id=1, task_id=1, name="A", duration_minutes=480 * 3),
+            Task(
+                unique_id=2, task_id=2, name="B", duration_minutes=480,
+                constraint_type=ConstraintType.MUST_START_ON,
+                constraint_date=mso_date,
+            ),
+        ],
+        relations=[
+            Relation(predecessor_unique_id=1, successor_unique_id=2),
+        ],
+        calendars=[Calendar(name="Standard")],
+    )
+    result = compute_cpm(s)
+
+    # MSO lock still wins.
+    assert result.tasks[2].early_start == mso_date
+
+    overrides = [v for v in result.violations if v.unique_id == 2]
+    kinds = {v.kind for v in overrides}
+    assert "MSO_OVERRIDE_PREDECESSOR" in kinds
+
+    v = next(v for v in overrides if v.kind == "MSO_OVERRIDE_PREDECESSOR")
+    assert v.constraint_date == mso_date
+    # Predecessor EF = Thu 4/23 08:00 → successor pred-driven ES = Thu 4/23 08:00.
+    assert v.computed_date == datetime(2026, 4, 23, 8, tzinfo=UTC)
+    assert v.computed_date > v.constraint_date
+
+
+def test_mfo_override_predecessor_emits_violation() -> None:
+    """E8: 2-task FS chain where predecessor EF forces successor EF
+    past MFO. Engine respects the MFO lock AND records the override."""
+    # Predecessor: 3 days → finishes Thu 4/23 08:00.
+    # Successor: 1 day, MFO = Tue 4/21 16:00 (well before pred finish).
+    mfo_date = datetime(2026, 4, 21, 16, tzinfo=UTC)
+    s = Schedule(
+        name="mfo-override",
+        project_start=ANCHOR,
+        tasks=[
+            Task(unique_id=1, task_id=1, name="A", duration_minutes=480 * 3),
+            Task(
+                unique_id=2, task_id=2, name="B", duration_minutes=480,
+                constraint_type=ConstraintType.MUST_FINISH_ON,
+                constraint_date=mfo_date,
+            ),
+        ],
+        relations=[
+            Relation(predecessor_unique_id=1, successor_unique_id=2),
+        ],
+        calendars=[Calendar(name="Standard")],
+    )
+    result = compute_cpm(s)
+
+    # MFO lock wins — EF snapped to the MFO date.
+    assert result.tasks[2].early_finish == mfo_date
+
+    overrides = [v for v in result.violations if v.unique_id == 2]
+    kinds = {v.kind for v in overrides}
+    assert "MFO_OVERRIDE_PREDECESSOR" in kinds
+
+    v = next(v for v in overrides if v.kind == "MFO_OVERRIDE_PREDECESSOR")
+    assert v.constraint_date == mfo_date
+    # Predecessor EF = Thu 4/23 08:00, successor 1-day duration → pred-driven
+    # EF = Fri 4/24 08:00 (E12 boundary-roll convention).
+    assert v.computed_date == datetime(2026, 4, 24, 8, tzinfo=UTC)
+    assert v.computed_date > v.constraint_date
+
+
 def test_fnlt_breach_emits_violation_not_exception() -> None:
     """E11: FNLT breach is a recorded violation."""
     fnlt = datetime(2026, 4, 20, 16, tzinfo=UTC)
