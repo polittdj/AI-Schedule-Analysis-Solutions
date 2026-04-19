@@ -2253,3 +2253,129 @@ def cpt_finish_not_critical_schedule() -> tuple[Schedule, CPMResult]:
         critical_path_uids=frozenset({100, 1}),
     )
     return sched, cpm
+
+
+# ===========================================================================
+# M7 Block 5 — Metric 13 (CPLI) fixtures
+# ===========================================================================
+
+
+def cpli_on_track_schedule() -> tuple[Schedule, CPMResult]:
+    """Schedule forecast to finish on baseline — CPLI = 1.0 → PASS.
+
+    5 tasks on the critical path; baseline_finish == current finish
+    for every task, so total_float = 0 and CPLI = baseline_cp_length
+    / baseline_cp_length = 1.0.
+    """
+    tasks: list[Task] = []
+    for i in range(1, 6):
+        bs = ANCHOR + timedelta(days=(i - 1) * 2)
+        bf = ANCHOR + timedelta(days=i * 2)
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=960,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=960,
+                start=bs,
+                finish=bf,
+            )
+        )
+    project_finish = ANCHOR + timedelta(days=10)
+    sched = Schedule(
+        name="cpli_on_track",
+        status_date=ANCHOR,
+        project_start=ANCHOR,
+        project_finish=project_finish,
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+    cpm = CPMResult(
+        tasks={
+            uid: TaskCPMResult(unique_id=uid, total_slack_minutes=0)
+            for uid in (1, 2, 3, 4, 5)
+        },
+        critical_path_uids=frozenset({1, 2, 3, 4, 5}),
+        project_finish=project_finish,
+    )
+    return sched, cpm
+
+
+def cpli_slip_fail_schedule() -> tuple[Schedule, CPMResult]:
+    """Schedule slipped — CPLI < 0.95 → FAIL.
+
+    5 tasks on critical path spanning 10 calendar days baseline.
+    Current project_finish is 3 calendar days late → total_float
+    = -3 calendar days. baseline_cp_length = 10 calendar days.
+    CPLI = (10 + (-3)) / 10 = 0.70 < 0.95.
+    """
+    tasks: list[Task] = []
+    for i in range(1, 6):
+        bs = ANCHOR + timedelta(days=(i - 1) * 2)
+        bf = ANCHOR + timedelta(days=i * 2)
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=960,
+                baseline_start=bs,
+                baseline_finish=bf,
+                baseline_duration_minutes=960,
+                start=bs,
+                finish=bf + timedelta(days=1),
+            )
+        )
+    project_finish = ANCHOR + timedelta(days=13)  # 3 days past baseline
+    sched = Schedule(
+        name="cpli_slip",
+        status_date=ANCHOR + timedelta(days=5),
+        project_start=ANCHOR,
+        project_finish=project_finish,
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+    cpm = CPMResult(
+        tasks={
+            uid: TaskCPMResult(unique_id=uid, total_slack_minutes=-480)
+            for uid in (1, 2, 3, 4, 5)
+        },
+        critical_path_uids=frozenset({1, 2, 3, 4, 5}),
+        project_finish=project_finish,
+    )
+    return sched, cpm
+
+
+def cpli_no_baseline_schedule() -> tuple[Schedule, CPMResult]:
+    """Schedule without baseline coverage — indicator-only WARN."""
+    tasks = [
+        Task(
+            unique_id=i,
+            task_id=i,
+            name=f"T{i}",
+            duration_minutes=480,
+            start=ANCHOR + timedelta(days=i),
+            finish=ANCHOR + timedelta(days=i + 1),
+        )
+        for i in range(1, 4)
+    ]
+    sched = Schedule(
+        name="cpli_no_baseline",
+        status_date=ANCHOR,
+        project_start=ANCHOR,
+        project_finish=ANCHOR + timedelta(days=5),
+        tasks=tasks,
+        calendars=[_std_cal()],
+    )
+    cpm = CPMResult(
+        tasks={
+            uid: TaskCPMResult(unique_id=uid, total_slack_minutes=0)
+            for uid in (1, 2, 3)
+        },
+        critical_path_uids=frozenset({1, 2, 3}),
+        project_finish=ANCHOR + timedelta(days=5),
+    )
+    return sched, cpm
