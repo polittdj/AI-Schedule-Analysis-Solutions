@@ -200,6 +200,37 @@ class TestFrozenContractAndProvenance:
         assert wrapper_result == run_high_float(sched, cpm)
 
 
+class TestLoeByNameFallback:
+    """Closes the LOE name-pattern fallback branch in
+    :func:`app.metrics.high_float._is_loe` (lines 75-76)."""
+
+    def test_loe_name_pattern_fallback_excludes_task(self) -> None:
+        sched = Schedule(
+            name="loe-name",
+            tasks=[
+                Task(
+                    unique_id=1, task_id=1,
+                    name="Project Management LOE",
+                    duration_minutes=480,
+                ),
+                Task(unique_id=2, task_id=2, name="Live", duration_minutes=480),
+            ],
+        )
+        cpm = CPMResult(
+            tasks={
+                1: TaskCPMResult(unique_id=1, total_slack_minutes=0),
+                2: TaskCPMResult(unique_id=2, total_slack_minutes=0),
+            }
+        )
+        result = run_high_float(
+            sched, cpm,
+            MetricOptions(loe_name_patterns=("loe",)),
+        )
+        # The LOE-by-name task is excluded → denominator=1, numerator=0.
+        assert result.denominator == 1
+        assert result.numerator == 0
+
+
 class TestInvalidOptions:
     def test_negative_pct_threshold_rejected(self) -> None:
         with pytest.raises(InvalidThresholdError):

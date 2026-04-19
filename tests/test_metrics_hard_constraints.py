@@ -251,6 +251,35 @@ class TestFrozenContractAndProvenance:
         assert HardConstraintsMetric().run(sched) == run_hard_constraints(sched)
 
 
+class TestLoeByNameFallback:
+    """Closes the LOE name-pattern fallback branch in
+    :func:`app.metrics.hard_constraints._is_loe` (lines 74-75)."""
+
+    def test_loe_name_pattern_fallback_excludes_task(self) -> None:
+        cd = datetime(2026, 6, 1, 8, 0, tzinfo=UTC)
+        sched = Schedule(
+            name="loe-name",
+            tasks=[
+                Task(
+                    unique_id=1, task_id=1,
+                    name="Project Management LOE",
+                    duration_minutes=480,
+                    constraint_type=ConstraintType.MUST_START_ON,
+                    constraint_date=cd,
+                ),
+                Task(unique_id=2, task_id=2, name="Live", duration_minutes=480),
+            ],
+        )
+        result = run_hard_constraints(
+            sched, MetricOptions(loe_name_patterns=("loe",)),
+        )
+        # The LOE-by-name task (MSO) is excluded → denominator=1,
+        # numerator=0, PASS.
+        assert result.denominator == 1
+        assert result.numerator == 0
+        assert result.severity is Severity.PASS
+
+
 class TestInvalidOptions:
     """A structurally invalid override raises InvalidThresholdError."""
 
