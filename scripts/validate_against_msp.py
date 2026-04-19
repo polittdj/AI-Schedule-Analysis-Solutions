@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import sys
 
-
 _WORKFLOW_POINTER = (
     "validate_against_msp.py is a stub; the real harness is not yet "
     "implemented. See .claude/skills/mpp-parsing-com-automation/"
