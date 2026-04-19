@@ -1412,19 +1412,25 @@ def m6_integration_schedule() -> tuple[Schedule, CPMResult]:
       11.1% FAIL (19 non-lead relations minus the 1 lead = 18).
     * Metric 4 (Relationship Types): 4 non-FS relations / 19 total
       → 15/19 ≈ 78.9% FS FAIL.
-    * Metric 5 (Hard Constraints): UID 3 MSO + UID 11 FNLT → 2/20
-      = 10% FAIL.
+    * Metric 5 (Hard Constraints): UID 3 MSO + UID 11 FNLT →
+      2/22 ≈ 9.09% FAIL (denominator includes the two milestones
+      because §3 exclusions don't drop them for Metric 5).
     * Metric 6 (High Float): UIDs 17 and 18 carry TF = 21125 min
-      (44.01 WD) → 2/20 = 10% FAIL.
+      (44.01 WD) → 2/22 ≈ 9.09% FAIL.
     * Metric 7 (Negative Float): UID 9 carries TF = -480 min →
-      1/20 = 5% > 0% FAIL.
-    * Metric 8 (High Duration): UID 13 carries 24000 min (50 WD)
-      → 1/20 = 5% PASS at boundary. (Kept at boundary so the
-      integration fixture exercises the <= semantics.)
-    * Metric 10 (Resources): UIDs 19 and 20 have resource_count=0
-      (all others have 1) → 2/20 = 10% ratio.
+      1/22 ≈ 4.55% > 0% FAIL (absolute threshold).
+    * Metric 8 (High Duration): UID 13 carries 24000 min (50 WD);
+      milestones have duration=0 so they don't flag → 1/22 ≈
+      4.55% PASS (below the 5% ceiling).
+    * Metric 10 (Resources): UIDs 19 and 20 have resource_count=0;
+      milestones get resource_count=1 so they don't spuriously
+      flag → 2/22 ≈ 9.09% ratio (indicator-only).
     """
     cd = datetime(2026, 6, 1, 8, 0, tzinfo=UTC)
+    # Start milestone — resource_count=1 so Metric 10's seeded
+    # offender set stays pinned to {19, 20} (milestones with the
+    # default resource_count=0 would otherwise flag as indicator
+    # offenders and dilute the seeded signal).
     tasks: list[Task] = [
         Task(
             unique_id=100,
@@ -1432,6 +1438,7 @@ def m6_integration_schedule() -> tuple[Schedule, CPMResult]:
             name="Start",
             duration_minutes=0,
             is_milestone=True,
+            resource_count=1,
         )
     ]
     for i in range(1, 21):
@@ -1462,6 +1469,7 @@ def m6_integration_schedule() -> tuple[Schedule, CPMResult]:
             name="Finish",
             duration_minutes=0,
             is_milestone=True,
+            resource_count=1,
         )
     )
 

@@ -209,6 +209,12 @@ class TestInvalidOptions:
         with pytest.raises(InvalidThresholdError):
             MetricOptions(high_float_threshold_working_days=-5.0)
 
+    def test_non_numeric_wd_threshold_rejected(self) -> None:
+        with pytest.raises(InvalidThresholdError):
+            MetricOptions(
+                high_float_threshold_working_days="forty-four",  # type: ignore[arg-type]
+            )
+
 
 def test_notes_carry_hours_per_day_for_narrative_layer() -> None:
     sched, cpm = high_float_fail_with_cpm()
