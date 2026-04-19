@@ -2000,3 +2000,256 @@ def missed_tasks_no_status_date_schedule() -> Schedule:
         tasks=tasks,
         calendars=[_std_cal()],
     )
+
+
+# ===========================================================================
+# M7 Block 4 — Metric 12 (Critical Path Test) fixtures
+# ===========================================================================
+
+
+def cpt_linear_pass_schedule() -> tuple[Schedule, CPMResult]:
+    """Simple linear FS chain bracketed by Start/Finish milestones,
+    every task on critical path (TS=0). CPT should PASS."""
+    tasks: list[Task] = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+        )
+    ]
+    for i in range(1, 5):
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+            )
+        )
+    tasks.append(
+        Task(
+            unique_id=200,
+            task_id=200,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        )
+    )
+    relations: list[Relation] = [
+        Relation(predecessor_unique_id=100, successor_unique_id=1),
+        Relation(predecessor_unique_id=1, successor_unique_id=2),
+        Relation(predecessor_unique_id=2, successor_unique_id=3),
+        Relation(predecessor_unique_id=3, successor_unique_id=4),
+        Relation(predecessor_unique_id=4, successor_unique_id=200),
+    ]
+    sched = Schedule(
+        name="cpt_linear_pass",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+    cpm_tasks = {
+        uid: TaskCPMResult(
+            unique_id=uid,
+            total_slack_minutes=0,
+            on_critical_path=True,
+        )
+        for uid in (100, 1, 2, 3, 4, 200)
+    }
+    cpm = CPMResult(
+        tasks=cpm_tasks,
+        critical_path_uids=frozenset(cpm_tasks.keys()),
+    )
+    return sched, cpm
+
+
+def cpt_gap_fail_schedule() -> tuple[Schedule, CPMResult]:
+    """Linear chain with a float break in the middle — T3 has TS>0,
+    so the backward walk from Finish halts at T4 (whose only
+    predecessor is the non-critical T3). CPT FAIL with T4 as gap."""
+    tasks: list[Task] = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+        )
+    ]
+    for i in range(1, 5):
+        tasks.append(
+            Task(
+                unique_id=i,
+                task_id=i,
+                name=f"T{i}",
+                duration_minutes=480,
+            )
+        )
+    tasks.append(
+        Task(
+            unique_id=200,
+            task_id=200,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        )
+    )
+    relations: list[Relation] = [
+        Relation(predecessor_unique_id=100, successor_unique_id=1),
+        Relation(predecessor_unique_id=1, successor_unique_id=2),
+        Relation(predecessor_unique_id=2, successor_unique_id=3),
+        Relation(predecessor_unique_id=3, successor_unique_id=4),
+        Relation(predecessor_unique_id=4, successor_unique_id=200),
+    ]
+    sched = Schedule(
+        name="cpt_gap_fail",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+    # T3 carries 480 min of slack — the break. T4 and downstream
+    # tasks are still critical, but cannot reach Start via a
+    # zero-slack predecessor because T3 is in the way.
+    tfs = {100: 0, 1: 0, 2: 0, 3: 480, 4: 0, 200: 0}
+    cpm_tasks = {
+        uid: TaskCPMResult(
+            unique_id=uid,
+            total_slack_minutes=tf,
+            on_critical_path=tf <= 0,
+        )
+        for uid, tf in tfs.items()
+    }
+    cpm = CPMResult(
+        tasks=cpm_tasks,
+        critical_path_uids=frozenset(
+            uid for uid, tf in tfs.items() if tf <= 0
+        ),
+    )
+    return sched, cpm
+
+
+def cpt_parallel_critical_paths_schedule() -> tuple[Schedule, CPMResult]:
+    """Two parallel zero-slack branches from Start merge at Finish.
+    Either branch suffices — CPT PASS."""
+    tasks: list[Task] = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
+        Task(unique_id=1, task_id=1, name="A1", duration_minutes=480),
+        Task(unique_id=2, task_id=2, name="A2", duration_minutes=480),
+        Task(unique_id=3, task_id=3, name="B1", duration_minutes=480),
+        Task(unique_id=4, task_id=4, name="B2", duration_minutes=480),
+        Task(
+            unique_id=200,
+            task_id=200,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
+    ]
+    relations: list[Relation] = [
+        Relation(predecessor_unique_id=100, successor_unique_id=1),
+        Relation(predecessor_unique_id=1, successor_unique_id=2),
+        Relation(predecessor_unique_id=2, successor_unique_id=200),
+        Relation(predecessor_unique_id=100, successor_unique_id=3),
+        Relation(predecessor_unique_id=3, successor_unique_id=4),
+        Relation(predecessor_unique_id=4, successor_unique_id=200),
+    ]
+    sched = Schedule(
+        name="cpt_parallel",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+    cpm_tasks = {
+        uid: TaskCPMResult(
+            unique_id=uid,
+            total_slack_minutes=0,
+            on_critical_path=True,
+        )
+        for uid in (100, 1, 2, 3, 4, 200)
+    }
+    cpm = CPMResult(
+        tasks=cpm_tasks,
+        critical_path_uids=frozenset(cpm_tasks.keys()),
+    )
+    return sched, cpm
+
+
+def cpt_no_endpoints_schedule() -> tuple[Schedule, CPMResult]:
+    """Schedule has no bracketing milestones — endpoint detection
+    returns None for both; result is indicator-only WARN."""
+    tasks = [
+        Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
+        Task(unique_id=2, task_id=2, name="B", duration_minutes=480),
+    ]
+    relations = [Relation(predecessor_unique_id=1, successor_unique_id=2)]
+    sched = Schedule(
+        name="cpt_no_endpoints",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+    cpm = CPMResult(
+        tasks={
+            uid: TaskCPMResult(unique_id=uid, total_slack_minutes=0)
+            for uid in (1, 2)
+        },
+        critical_path_uids=frozenset({1, 2}),
+    )
+    return sched, cpm
+
+
+def cpt_finish_not_critical_schedule() -> tuple[Schedule, CPMResult]:
+    """Project finish milestone has positive total_slack → CPT FAIL
+    at the top; evidence records the finish as the gap."""
+    tasks = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
+        Task(unique_id=1, task_id=1, name="T1", duration_minutes=480),
+        Task(
+            unique_id=200,
+            task_id=200,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
+    ]
+    relations = [
+        Relation(predecessor_unique_id=100, successor_unique_id=1),
+        Relation(predecessor_unique_id=1, successor_unique_id=200),
+    ]
+    sched = Schedule(
+        name="cpt_finish_not_critical",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+    cpm_tasks = {
+        100: TaskCPMResult(unique_id=100, total_slack_minutes=0),
+        1: TaskCPMResult(unique_id=1, total_slack_minutes=0),
+        # Finish has high slack — float exists to contract finish,
+        # which in this synthetic case violates CPT.
+        200: TaskCPMResult(unique_id=200, total_slack_minutes=2400),
+    }
+    cpm = CPMResult(
+        tasks=cpm_tasks,
+        critical_path_uids=frozenset({100, 1}),
+    )
+    return sched, cpm
