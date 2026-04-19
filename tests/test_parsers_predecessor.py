@@ -20,7 +20,6 @@ from app.parsers._predecessor_parser import (
 )
 from app.parsers.exceptions import CorruptScheduleError
 
-
 # A baseline id_map matching the most common test scenarios. The
 # audit Minor #6 hand-trace example uses Task ID 5 → UniqueID 4217 to
 # exercise P6 (renumbered tasks across versions).
@@ -291,3 +290,34 @@ class TestUnparseableToken:
             parse_predecessor_string(
                 raw, successor_unique_id=999, id_map=ID_MAP
             )
+
+
+class TestMoreLagUnits:
+    """Coverage for the less-common lag-unit branches."""
+
+    def test_months(self) -> None:
+        """Working months = 20 working days."""
+        rels = parse_predecessor_string(
+            "1FS+1mo", successor_unique_id=999, id_map=ID_MAP
+        )
+        # 20 * 8 * 60 = 9600
+        assert rels[0].lag_minutes == 9600
+
+    def test_elapsed_minutes(self) -> None:
+        rels = parse_predecessor_string(
+            "1FS+15em", successor_unique_id=999, id_map=ID_MAP
+        )
+        assert rels[0].lag_minutes == 15
+
+    def test_elapsed_hours(self) -> None:
+        rels = parse_predecessor_string(
+            "1FS+2eh", successor_unique_id=999, id_map=ID_MAP
+        )
+        assert rels[0].lag_minutes == 120
+
+    def test_elapsed_months(self) -> None:
+        rels = parse_predecessor_string(
+            "1FS+1emo", successor_unique_id=999, id_map=ID_MAP
+        )
+        # 30 * 24 * 60 = 43200
+        assert rels[0].lag_minutes == 43200

@@ -66,8 +66,8 @@ from types import TracebackType
 from typing import Any
 
 from app.models import (
-    Calendar,
     DATE_BEARING_CONSTRAINTS,
+    Calendar,
     Relation,
     Resource,
     ResourceAssignment,

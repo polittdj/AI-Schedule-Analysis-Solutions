@@ -74,7 +74,7 @@ class FakeTask(_ComObject):
         critical: bool = False,
         active: bool = True,
         predecessors: str = "",
-        assignments: list["FakeAssignment"] | None = None,
+        assignments: list[FakeAssignment] | None = None,
     ) -> None:
         super().__init__(
             UniqueID=unique_id,

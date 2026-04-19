@@ -747,3 +747,84 @@ class TestParseMppConvenience:
 
 
 _UNUSED = (ConstraintType, MagicMock)
+
+
+# ---------------------------------------------------------------------------
+# Extra coverage — rare branches that are safely testable on Linux
+# ---------------------------------------------------------------------------
+
+
+class TestRareBranches:
+    def test_project_with_no_tasks_collection(self, tmp_path) -> None:
+        """Defensive: project.Tasks is None → empty schedule."""
+        project = FakeProject()
+        project.Tasks = None  # type: ignore[assignment]
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        assert schedule.tasks == []
+
+    def test_project_with_no_calendars_synthesizes_default(self, tmp_path) -> None:
+        """Defensive: project.Calendars is None → synthesized default."""
+        project = make_minimal_project()
+        project.Calendars = None  # type: ignore[assignment]
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        assert len(schedule.calendars) >= 1
+        assert schedule.calendars[0].name == "Standard"
+
+    def test_project_with_empty_calendars_synthesizes_default(self, tmp_path) -> None:
+        """Defensive: project.Calendars is an empty iterable → default."""
+        project = make_minimal_project()
+        project.Calendars = []  # type: ignore[assignment]
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        assert len(schedule.calendars) >= 1
+
+    def test_invalid_task_type_defaults_to_fixed_units(self, tmp_path) -> None:
+        """A garbage Task.Type falls back to FIXED_UNITS (model default)."""
+        t = FakeTask(unique_id=1, task_id=1, name="T")
+        t.Type = "garbage"  # type: ignore[attr-defined]
+        project = FakeProject(tasks=[t])
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        # FIXED_UNITS is the MSP default; we do not crash on bad input.
+        assert schedule.tasks[0].task_type.value == 0
+
+    def test_task_with_no_assignments_collection(self, tmp_path) -> None:
+        t = FakeTask(unique_id=1, task_id=1, name="T")
+        t.Assignments = None  # type: ignore[attr-defined]
+        project = FakeProject(tasks=[t])
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        assert schedule.tasks[0].resource_count == 0
+
+    def test_assignment_with_null_resource_uid_skipped(self, tmp_path) -> None:
+        """Unassigned placeholders (ResourceUniqueID null) are skipped."""
+        t = FakeTask(
+            unique_id=1,
+            task_id=1,
+            name="T",
+            assignments=[FakeAssignment(resource_unique_id=0, task_unique_id=1)],
+        )
+        project = FakeProject(tasks=[t])
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        # Assignment with resource_uid == 0 is treated as a placeholder
+        # and does NOT land in schedule.assignments.
+        assert schedule.assignments == []
+
+    def test_resource_with_null_unique_id_skipped(self, tmp_path) -> None:
+        r = FakeResource(unique_id=0, resource_id=1, name="ghost")
+        r.UniqueID = None  # type: ignore[attr-defined]
+        project = make_minimal_project()
+        project.Resources = [r]  # type: ignore[assignment]
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        assert schedule.resources == []

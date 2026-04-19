@@ -213,3 +213,11 @@ class TestSafeGet:
 
     def test_default_is_none_by_default(self) -> None:
         assert safe_get(object(), "missing") is None
+
+
+class TestMapResourceTypeEdgeCases:
+    """Exercise the defensive branches of map_resource_type."""
+
+    def test_unparseable_defaults_to_work(self) -> None:
+        assert map_resource_type("garbage") is ResourceType.WORK
+        assert map_resource_type(object()) is ResourceType.WORK
