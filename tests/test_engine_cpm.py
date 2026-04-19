@@ -368,6 +368,70 @@ def test_mfo_override_predecessor_emits_violation() -> None:
     assert v.computed_date > v.constraint_date
 
 
+def test_mso_override_successor_emits_backward_violation() -> None:
+    """E8 backward symmetric: MSO lock later than successor-required LS
+    creates negative slack on the task's forward-logic chain. Engine
+    emits MSO_OVERRIDE_SUCCESSOR while honoring the MSO lock."""
+    # Chain: P (MSO=Thu 4/23 08) -> S (FNLT=Wed 4/22 16, 1d). Successor
+    # pulls its LS/LF earlier than MSO allows, so backward pass sees
+    # succ_driven_ls < MSO date.
+    p_mso = datetime(2026, 4, 23, 8, tzinfo=UTC)
+    s_fnlt = datetime(2026, 4, 22, 16, tzinfo=UTC)
+    s = Schedule(
+        name="mso-succ",
+        project_start=ANCHOR,
+        tasks=[
+            Task(
+                unique_id=1, task_id=1, name="P", duration_minutes=480,
+                constraint_type=ConstraintType.MUST_START_ON,
+                constraint_date=p_mso,
+            ),
+            Task(
+                unique_id=2, task_id=2, name="S", duration_minutes=480,
+                constraint_type=ConstraintType.FINISH_NO_LATER_THAN,
+                constraint_date=s_fnlt,
+            ),
+        ],
+        relations=[Relation(predecessor_unique_id=1, successor_unique_id=2)],
+        calendars=[Calendar(name="Standard")],
+    )
+    result = compute_cpm(s)
+    overrides = [v for v in result.violations if v.kind == "MSO_OVERRIDE_SUCCESSOR"]
+    assert overrides
+    assert overrides[0].unique_id == 1
+    assert overrides[0].constraint_date == p_mso
+
+
+def test_mfo_override_successor_emits_backward_violation() -> None:
+    """E8 backward symmetric: MFO lock later than successor-required LF
+    triggers MFO_OVERRIDE_SUCCESSOR."""
+    p_mfo = datetime(2026, 4, 24, 16, tzinfo=UTC)
+    s_fnlt = datetime(2026, 4, 22, 16, tzinfo=UTC)
+    s = Schedule(
+        name="mfo-succ",
+        project_start=ANCHOR,
+        tasks=[
+            Task(
+                unique_id=1, task_id=1, name="P", duration_minutes=480,
+                constraint_type=ConstraintType.MUST_FINISH_ON,
+                constraint_date=p_mfo,
+            ),
+            Task(
+                unique_id=2, task_id=2, name="S", duration_minutes=480,
+                constraint_type=ConstraintType.FINISH_NO_LATER_THAN,
+                constraint_date=s_fnlt,
+            ),
+        ],
+        relations=[Relation(predecessor_unique_id=1, successor_unique_id=2)],
+        calendars=[Calendar(name="Standard")],
+    )
+    result = compute_cpm(s)
+    overrides = [v for v in result.violations if v.kind == "MFO_OVERRIDE_SUCCESSOR"]
+    assert overrides
+    assert overrides[0].unique_id == 1
+    assert overrides[0].constraint_date == p_mfo
+
+
 def test_fnlt_breach_emits_violation_not_exception() -> None:
     """E11: FNLT breach is a recorded violation."""
     fnlt = datetime(2026, 4, 20, 16, tzinfo=UTC)
