@@ -22,6 +22,7 @@ Authority:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 
 class EngineError(Exception):
@@ -97,16 +98,36 @@ class ConstraintViolation:
 
     Emitted — not raised — when a predecessor chain forces a successor
     past a soft-backward constraint (SNLT, FNLT) or when a hard date-
-    bearing constraint is inconsistent with the rest of the network.
-    BUILD-PLAN §5 M4 E8 / E11 call for the violation to surface on the
-    task, not as a crash.
+    bearing constraint (MSO, MFO) overrides a predecessor-driven
+    position. BUILD-PLAN §5 M4 E8 / E11 call for the violation to
+    surface on the task, not as a crash.
+
+    Structured fields (``constraint_date`` / ``computed_date``) exist
+    so the M12 delay-claim exporter can render "X days late vs.
+    constraint Y" directly without re-parsing the ``detail`` prose.
+    ``driving-slack-and-paths §8`` (CPM discipline) requires the
+    engine to report date mismatches in a form that can be audited
+    field-for-field against MSP output.
 
     Attributes:
         unique_id: ``Task.unique_id`` of the offending task.
-        kind: Human-readable classification (e.g. ``"FNLT_BREACHED"``).
-        detail: Additional context (dates, offending predecessor UIDs).
+        kind: Classification code, e.g. ``"SNLT_BREACHED"``,
+            ``"MSO_OVERRIDE_PREDECESSOR"``, ``"MFO_OVERRIDE_PREDECESSOR"``,
+            ``"MFO_OVERRIDE_SUCCESSOR"``.
+        constraint_date: The constraint date on the task (MSO / MFO
+            lock date, SNLT / FNLT deadline). ``None`` when the
+            violation kind does not carry a constraint date.
+        computed_date: The date the engine computed before the
+            constraint was applied — the predecessor-driven ES/EF or
+            the successor-driven LS/LF that conflicted with the
+            constraint. ``None`` when the violation does not refer to
+            a specific computed date.
+        detail: Human-readable summary retained for existing
+            consumers and log lines.
     """
 
     unique_id: int
     kind: str
+    constraint_date: datetime | None = None
+    computed_date: datetime | None = None
     detail: str = field(default="")

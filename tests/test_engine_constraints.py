@@ -133,6 +133,10 @@ def test_snlt_forward_breach_emits_violation(cal: Calendar) -> None:
     out = apply_forward_constraint(t, _dt(25, 10), _dt(25, 16), cal)
     assert out.violation is not None
     assert out.violation.kind == "SNLT_BREACHED"
+    # Structured fields — not just the prose detail.
+    assert out.violation.constraint_date is not None
+    assert out.violation.computed_date == _dt(25, 10)
+    assert out.violation.computed_date > out.violation.constraint_date
 
 
 def test_snlt_forward_no_breach(cal: Calendar) -> None:
@@ -146,6 +150,8 @@ def test_fnlt_forward_breach_emits_violation(cal: Calendar) -> None:
     out = apply_forward_constraint(t, _dt(25, 8), _dt(25, 16), cal)
     assert out.violation is not None
     assert out.violation.kind == "FNLT_BREACHED"
+    assert out.violation.constraint_date is not None
+    assert out.violation.computed_date == _dt(25, 16)
 
 
 def test_snlt_backward_narrows_ls(cal: Calendar) -> None:
@@ -166,12 +172,17 @@ def test_snet_backward_breach_emits_violation(cal: Calendar) -> None:
     out = apply_backward_constraint(t, _dt(20), _dt(20, 16), cal)
     assert out.violation is not None
     assert out.violation.kind == "SNET_BREACHED_BACKWARD"
+    assert out.violation.constraint_date is not None
+    assert out.violation.computed_date == _dt(20)
 
 
 def test_fnet_backward_breach_emits_violation(cal: Calendar) -> None:
     t = _task(ConstraintType.FINISH_NO_EARLIER_THAN, _dt(25, 16))
     out = apply_backward_constraint(t, _dt(20), _dt(20, 16), cal)
     assert out.violation is not None
+    assert out.violation.kind == "FNET_BREACHED_BACKWARD"
+    assert out.violation.constraint_date is not None
+    assert out.violation.computed_date == _dt(20, 16)
 
 
 # ---- Malformed inputs ------------------------------------------

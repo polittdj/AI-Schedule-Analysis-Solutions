@@ -140,19 +140,27 @@ def apply_forward_constraint(
         d = snap_backward(_require_date(task), cal)
         if es > d:
             violation = ConstraintViolation(
-                task.unique_id,
-                "SNLT_BREACHED",
-                f"forward pass forced start to {es.isoformat()} past "
-                f"SNLT {d.isoformat()}",
+                unique_id=task.unique_id,
+                kind="SNLT_BREACHED",
+                constraint_date=d,
+                computed_date=es,
+                detail=(
+                    f"forward pass forced start to {es.isoformat()} past "
+                    f"SNLT {d.isoformat()}"
+                ),
             )
     elif ct == ConstraintType.FINISH_NO_LATER_THAN:
         d = snap_backward(_require_date(task), cal)
         if ef > d:
             violation = ConstraintViolation(
-                task.unique_id,
-                "FNLT_BREACHED",
-                f"forward pass forced finish to {ef.isoformat()} past "
-                f"FNLT {d.isoformat()}",
+                unique_id=task.unique_id,
+                kind="FNLT_BREACHED",
+                constraint_date=d,
+                computed_date=ef,
+                detail=(
+                    f"forward pass forced finish to {ef.isoformat()} past "
+                    f"FNLT {d.isoformat()}"
+                ),
             )
     else:
         raise InvalidConstraintError(task.unique_id, f"unknown constraint {ct!r}")
@@ -205,19 +213,27 @@ def apply_backward_constraint(
         d = snap_forward(_require_date(task), cal)
         if ls < d:
             violation = ConstraintViolation(
-                task.unique_id,
-                "SNET_BREACHED_BACKWARD",
-                f"backward pass late start {ls.isoformat()} earlier than "
-                f"SNET {d.isoformat()}",
+                unique_id=task.unique_id,
+                kind="SNET_BREACHED_BACKWARD",
+                constraint_date=d,
+                computed_date=ls,
+                detail=(
+                    f"backward pass late start {ls.isoformat()} earlier than "
+                    f"SNET {d.isoformat()}"
+                ),
             )
     elif ct == ConstraintType.FINISH_NO_EARLIER_THAN:
         d = snap_forward(_require_date(task), cal)
         if lf < d:
             violation = ConstraintViolation(
-                task.unique_id,
-                "FNET_BREACHED_BACKWARD",
-                f"backward pass late finish {lf.isoformat()} earlier than "
-                f"FNET {d.isoformat()}",
+                unique_id=task.unique_id,
+                kind="FNET_BREACHED_BACKWARD",
+                constraint_date=d,
+                computed_date=lf,
+                detail=(
+                    f"backward pass late finish {lf.isoformat()} earlier than "
+                    f"FNET {d.isoformat()}"
+                ),
             )
     else:
         raise InvalidConstraintError(task.unique_id, f"unknown constraint {ct!r}")

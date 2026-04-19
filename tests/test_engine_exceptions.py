@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from app.engine.exceptions import (
@@ -52,11 +54,32 @@ def test_constraint_violation_is_data_only_not_raised() -> None:
     assert v.unique_id == 5
     assert v.kind == "FNLT_BREACHED"
     assert v.detail == "pushed 3d late"
+    # New structured fields default to None when not supplied.
+    assert v.constraint_date is None
+    assert v.computed_date is None
     # frozen dataclass — attempting to mutate raises FrozenInstanceError.
     import dataclasses
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         v.unique_id = 99  # type: ignore[misc]
+
+
+def test_constraint_violation_carries_structured_dates() -> None:
+    """Structured fields feed the M12 delay-claim exporter directly."""
+    constraint_dt = datetime(2026, 4, 20, 16, tzinfo=UTC)
+    computed_dt = datetime(2026, 4, 25, 16, tzinfo=UTC)
+    v = ConstraintViolation(
+        unique_id=42,
+        kind="MFO_OVERRIDE_PREDECESSOR",
+        constraint_date=constraint_dt,
+        computed_date=computed_dt,
+        detail="predecessor chain finished 5d past MFO",
+    )
+    assert v.unique_id == 42
+    assert v.kind == "MFO_OVERRIDE_PREDECESSOR"
+    assert v.constraint_date == constraint_dt
+    assert v.computed_date == computed_dt
+    assert v.detail.startswith("predecessor")
 
 
 def test_engine_error_base_is_catchable() -> None:
