@@ -92,6 +92,7 @@ from app.parsers.exceptions import (
     MPOpenError,
     ParserError,
 )
+from app.parsers.zombie_cleanup import sweep_orphan_msproject
 
 _logger = logging.getLogger(__name__)
 
@@ -174,10 +175,12 @@ class MPProjectParser(AbstractContextManager["MPProjectParser"]):
         dispatch: Any = None,
         co_initialize: Any = None,
         co_uninitialize: Any = None,
+        sweep: Any = None,
     ) -> None:
         self._dispatch = dispatch or _default_dispatch
         self._co_initialize = co_initialize or _default_co_initialize
         self._co_uninitialize = co_uninitialize or _default_co_uninitialize
+        self._sweep = sweep or sweep_orphan_msproject
         self._app: Any = None
         self._co_initialized: bool = False
 
@@ -248,6 +251,11 @@ class MPProjectParser(AbstractContextManager["MPProjectParser"]):
         abs_path = os.path.abspath(os.fspath(path))
         started_at = time.monotonic()
         _logger.info("mpp.parse.begin path=%s", abs_path)
+
+        # Skill §6 ordering invariant #1: orphan MSPROJECT.EXE sweep
+        # runs BEFORE CoInitialize. No-op on non-Windows; secondary
+        # defense to the mandatory finally-Quit() in close().
+        self._sweep()
 
         # ------------------------------------------------------------
         # P1 — COM unavailable: dispatch raises COMUnavailableError.
