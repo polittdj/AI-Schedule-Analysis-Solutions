@@ -102,3 +102,77 @@ class TestBaseMetricWrapper:
     def test_class_form_matches_functional(self) -> None:
         sched, cpm = cpli_on_track_schedule()
         assert run_cpli(sched, cpm) == CPLIMetric().run(sched, cpm_result=cpm)
+
+
+class TestEdgeCases:
+    def test_missing_project_finish_returns_indicator_only(self) -> None:
+        # Build a schedule with valid baselines but project_finish=None.
+        sched, cpm = cpli_on_track_schedule()
+        mutated = sched.model_copy(update={"project_finish": None})
+        r = run_cpli(mutated, cpm)
+        assert r.severity is Severity.WARN
+        assert "project_finish unavailable" in r.notes
+
+    def test_cp_length_none_when_critical_milestone_has_no_baseline(
+        self,
+    ) -> None:
+        # A critical milestone without a baseline makes
+        # baseline_critical_path_length_minutes return None even
+        # though has_baseline_coverage (which exempts milestones)
+        # returns True.
+        from datetime import timedelta
+
+        from app.engine.result import CPMResult, TaskCPMResult
+        from app.models.calendar import Calendar
+        from app.models.schedule import Schedule
+        from app.models.task import Task
+        from tests.fixtures.metric_schedules import ANCHOR
+
+        tasks = [
+            Task(
+                unique_id=100,
+                task_id=100,
+                name="Start",
+                duration_minutes=0,
+                is_milestone=True,
+            ),
+            Task(
+                unique_id=1,
+                task_id=1,
+                name="Only",
+                duration_minutes=480,
+                baseline_start=ANCHOR,
+                baseline_finish=ANCHOR + timedelta(days=1),
+                baseline_duration_minutes=480,
+            ),
+        ]
+        sched = Schedule(
+            name="cp_none_edge",
+            status_date=ANCHOR,
+            project_start=ANCHOR,
+            project_finish=ANCHOR + timedelta(days=5),
+            tasks=tasks,
+            calendars=[Calendar(name="Standard")],
+        )
+        cpm = CPMResult(
+            tasks={
+                100: TaskCPMResult(unique_id=100, total_slack_minutes=0),
+                1: TaskCPMResult(unique_id=1, total_slack_minutes=0),
+            },
+            critical_path_uids=frozenset({100, 1}),
+        )
+        r = run_cpli(sched, cpm)
+        assert r.severity is Severity.WARN
+        assert "baseline critical-path length" in r.notes
+
+    def test_calendar_fallback_when_name_mismatches(self) -> None:
+        # Schedule.default_calendar_name points at a calendar that
+        # doesn't exist → helper falls back to the first calendar.
+        sched, cpm = cpli_on_track_schedule()
+        mutated = sched.model_copy(
+            update={"default_calendar_name": "Nonexistent"}
+        )
+        r = run_cpli(mutated, cpm)
+        # Result still computed; calendar fallback lands on the first.
+        assert r.computed_value == pytest.approx(1.0)
+

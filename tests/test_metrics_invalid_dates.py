@@ -53,6 +53,36 @@ class TestRuleA_ActualAfterStatus:
         value = r.offenders[0].value
         assert InvalidDateKind.ACTUAL_AFTER_STATUS.value in value
 
+    def test_actual_start_after_status_also_flags(self) -> None:
+        # A task with actual_start after status_date (rare but
+        # possible — data-entry error on a not-yet-started task).
+        from datetime import timedelta
+
+        from app.models.calendar import Calendar
+        from app.models.schedule import Schedule
+        from app.models.task import Task
+        from tests.fixtures.metric_schedules import STATUS_DATE
+
+        tasks = [
+            Task(
+                unique_id=1,
+                task_id=1,
+                name="FutureActualStart",
+                duration_minutes=480,
+                actual_start=STATUS_DATE + timedelta(days=2),  # after
+            ),
+        ]
+        sched = Schedule(
+            name="rule_a_start",
+            status_date=STATUS_DATE,
+            project_start=STATUS_DATE - timedelta(days=30),
+            tasks=tasks,
+            calendars=[Calendar(name="Standard")],
+        )
+        r = run_invalid_dates(sched)
+        assert r.severity is Severity.FAIL
+        assert 1 in {o.unique_id for o in r.offenders}
+
 
 class TestRuleB_ForecastBeforeStatus:
     def test_stale_forecast_flags(self) -> None:

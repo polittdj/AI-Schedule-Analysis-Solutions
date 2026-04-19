@@ -84,3 +84,50 @@ class TestOverrideValues:
     def test_loe_pattern_persists(self) -> None:
         opt = MetricOptions(loe_name_patterns=("loe", "level of effort"))
         assert opt.loe_name_patterns == ("loe", "level of effort")
+
+
+class TestM7Thresholds:
+    def test_invalid_dates_default_zero(self) -> None:
+        assert MetricOptions().invalid_dates_threshold_pct == 0.0
+
+    def test_missed_tasks_default_five(self) -> None:
+        assert MetricOptions().missed_tasks_threshold_pct == 5.0
+
+    def test_cpli_default_0_95(self) -> None:
+        assert MetricOptions().cpli_threshold_value == 0.95
+
+    def test_bei_default_0_95(self) -> None:
+        assert MetricOptions().bei_threshold_value == 0.95
+
+    def test_cpli_non_numeric_rejected(self) -> None:
+        with pytest.raises(InvalidThresholdError):
+            MetricOptions(cpli_threshold_value="nope")  # type: ignore[arg-type]
+
+    def test_cpli_zero_rejected(self) -> None:
+        # 0.0 is outside the permissible (0, 2.0] range.
+        with pytest.raises(InvalidThresholdError):
+            MetricOptions(cpli_threshold_value=0.0)
+
+    def test_cpli_above_range_rejected(self) -> None:
+        with pytest.raises(InvalidThresholdError):
+            MetricOptions(cpli_threshold_value=2.5)
+
+    def test_bei_non_numeric_rejected(self) -> None:
+        with pytest.raises(InvalidThresholdError):
+            MetricOptions(bei_threshold_value="nope")  # type: ignore[arg-type]
+
+    def test_bei_negative_rejected(self) -> None:
+        with pytest.raises(InvalidThresholdError):
+            MetricOptions(bei_threshold_value=-0.1)
+
+    def test_bei_above_range_rejected(self) -> None:
+        with pytest.raises(InvalidThresholdError):
+            MetricOptions(bei_threshold_value=2.5)
+
+    def test_invalid_dates_above_100_rejected(self) -> None:
+        with pytest.raises(InvalidThresholdError):
+            MetricOptions(invalid_dates_threshold_pct=150.0)
+
+    def test_missed_tasks_negative_rejected(self) -> None:
+        with pytest.raises(InvalidThresholdError):
+            MetricOptions(missed_tasks_threshold_pct=-1.0)

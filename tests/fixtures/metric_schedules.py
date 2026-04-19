@@ -2696,3 +2696,265 @@ def bei_edwards_worked_example_schedule() -> Schedule:
         tasks=tasks,
         calendars=[_std_cal()],
     )
+
+
+# ===========================================================================
+# M7 Block 7 — All-14-metric integration fixture
+# ===========================================================================
+
+
+def m7_integration_schedule() -> tuple[Schedule, CPMResult]:
+    """Fourteen-metric end-to-end integration fixture.
+
+    Extends the ``m6_integration_schedule`` shape with baseline
+    coverage, a valid ``status_date``, bracketing start/finish
+    milestones, and known offender injections for each M7 metric.
+    Every hand-calculable expectation is asserted in
+    :class:`tests.test_metrics_integration.TestFourteenMetricIntegration`.
+
+    Layout:
+
+    * UID 100 — project Start milestone (no predecessor).
+    * UID 1..8 — eight working tasks, all baselined.
+      * UID 1, 2 — completed on or before status_date (counted in
+        BEI numerator).
+      * UID 3 — baseline due, NOT completed → missed / BEI numerator
+        drag.
+      * UID 4 — rolling-wave baseline-due, not completed → BEI
+        numerator exemption.
+      * UID 5 — actual-after-status invalid-date offender (Metric 9).
+      * UID 6 — baseline after status; completed before status →
+        Edwards §5.1 early-finisher (excluded from BEI).
+      * UID 7, 8 — baseline after status, incomplete (future work).
+    * UID 200 — project Finish milestone.
+
+    All eight working tasks lie on the critical path (TS=0) so
+    Metric 12 PASSes. The relation chain is a single FS line:
+    Start → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → Finish. Baselines make
+    CPLI approximately 1.0 (no major slip). Denominators /
+    numerators hand-calc in the integration test.
+    """
+    status = STATUS_DATE
+    # Work tasks spec: (uid, offset_bf_days, actual_finish_offset, is_rw, is_loe,
+    #                   actual_start_offset, is_invalid_actual_after)
+    # Baselines arranged so UIDs 1-5 have baseline ≤ status; 6-8 have
+    # baseline after status.
+    start_baseline = status - timedelta(days=10)
+    tasks: list[Task] = [
+        Task(
+            unique_id=100,
+            task_id=100,
+            name="Start",
+            duration_minutes=0,
+            is_milestone=True,
+            baseline_start=start_baseline,
+            baseline_finish=start_baseline,
+            baseline_duration_minutes=0,
+            actual_start=start_baseline,
+            actual_finish=start_baseline,
+            finish=start_baseline,
+            resource_count=1,
+        )
+    ]
+
+    # UID 1 — completed on baseline, on time
+    bf1 = status - timedelta(days=5)
+    tasks.append(
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="T1 done",
+            duration_minutes=480,
+            baseline_start=bf1 - timedelta(days=1),
+            baseline_finish=bf1,
+            baseline_duration_minutes=480,
+            actual_start=bf1 - timedelta(days=1),
+            actual_finish=bf1,
+            percent_complete=100.0,
+            start=bf1 - timedelta(days=1),
+            finish=bf1,
+            resource_count=1,
+        )
+    )
+
+    # UID 2 — completed on baseline, on time
+    bf2 = status - timedelta(days=4)
+    tasks.append(
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="T2 done",
+            duration_minutes=480,
+            baseline_start=bf2 - timedelta(days=1),
+            baseline_finish=bf2,
+            baseline_duration_minutes=480,
+            actual_start=bf2 - timedelta(days=1),
+            actual_finish=bf2,
+            percent_complete=100.0,
+            start=bf2 - timedelta(days=1),
+            finish=bf2,
+            resource_count=1,
+        )
+    )
+
+    # UID 3 — baseline ≤ status, NOT completed (missed / BEI drag)
+    bf3 = status - timedelta(days=3)
+    tasks.append(
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="T3 missed",
+            duration_minutes=480,
+            baseline_start=bf3 - timedelta(days=1),
+            baseline_finish=bf3,
+            baseline_duration_minutes=480,
+            actual_start=bf3 - timedelta(days=1),
+            percent_complete=50.0,
+            start=bf3 - timedelta(days=1),
+            finish=status + timedelta(days=2),
+            resource_count=1,
+        )
+    )
+
+    # UID 4 — rolling-wave baseline-due, not actualized
+    bf4 = status - timedelta(days=2)
+    tasks.append(
+        Task(
+            unique_id=4,
+            task_id=4,
+            name="T4 rolling-wave",
+            duration_minutes=480,
+            is_rolling_wave=True,
+            baseline_start=bf4 - timedelta(days=1),
+            baseline_finish=bf4,
+            baseline_duration_minutes=480,
+            start=bf4 - timedelta(days=1),
+            finish=status + timedelta(days=3),
+            resource_count=1,
+        )
+    )
+
+    # UID 5 — actual after status (invalid date rule A)
+    bf5 = status - timedelta(days=1)
+    tasks.append(
+        Task(
+            unique_id=5,
+            task_id=5,
+            name="T5 bad actual",
+            duration_minutes=480,
+            baseline_start=bf5 - timedelta(days=1),
+            baseline_finish=bf5,
+            baseline_duration_minutes=480,
+            actual_start=bf5 - timedelta(days=1),
+            actual_finish=status + timedelta(days=1),  # after status!
+            percent_complete=100.0,
+            start=bf5 - timedelta(days=1),
+            finish=status + timedelta(days=1),
+            resource_count=1,
+        )
+    )
+
+    # UID 6 — Edwards early-finisher (baseline after status, finished
+    # before status). Excluded from BEI window on both ends.
+    bf6 = status + timedelta(days=5)
+    tasks.append(
+        Task(
+            unique_id=6,
+            task_id=6,
+            name="T6 early",
+            duration_minutes=480,
+            baseline_start=bf6 - timedelta(days=1),
+            baseline_finish=bf6,
+            baseline_duration_minutes=480,
+            actual_start=status - timedelta(days=2),
+            actual_finish=status - timedelta(hours=1),
+            percent_complete=100.0,
+            start=status - timedelta(days=2),
+            finish=status - timedelta(hours=1),
+            resource_count=1,
+        )
+    )
+
+    # UID 7 — baseline after status, incomplete (future work)
+    bf7 = status + timedelta(days=7)
+    tasks.append(
+        Task(
+            unique_id=7,
+            task_id=7,
+            name="T7 future",
+            duration_minutes=480,
+            baseline_start=bf7 - timedelta(days=1),
+            baseline_finish=bf7,
+            baseline_duration_minutes=480,
+            start=status + timedelta(days=6),
+            finish=bf7,
+            resource_count=1,
+        )
+    )
+
+    # UID 8 — baseline after status, incomplete (future work)
+    bf8 = status + timedelta(days=9)
+    tasks.append(
+        Task(
+            unique_id=8,
+            task_id=8,
+            name="T8 future",
+            duration_minutes=480,
+            baseline_start=bf8 - timedelta(days=1),
+            baseline_finish=bf8,
+            baseline_duration_minutes=480,
+            start=status + timedelta(days=8),
+            finish=bf8,
+            resource_count=1,
+        )
+    )
+
+    tasks.append(
+        Task(
+            unique_id=200,
+            task_id=200,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+            baseline_start=bf8,
+            baseline_finish=bf8,
+            baseline_duration_minutes=0,
+            finish=bf8,
+            resource_count=1,
+        )
+    )
+
+    relations: list[Relation] = [
+        Relation(predecessor_unique_id=100, successor_unique_id=1),
+    ]
+    for i in range(1, 8):
+        relations.append(
+            Relation(predecessor_unique_id=i, successor_unique_id=i + 1)
+        )
+    relations.append(Relation(predecessor_unique_id=8, successor_unique_id=200))
+
+    sched = Schedule(
+        name="m7_integration",
+        status_date=status,
+        project_start=status - timedelta(days=30),
+        project_finish=bf8,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+
+    # All tasks on critical path for M12 / M13 fixture expectations.
+    cpm_tasks: dict[int, TaskCPMResult] = {
+        uid: TaskCPMResult(
+            unique_id=uid,
+            total_slack_minutes=0,
+            on_critical_path=True,
+        )
+        for uid in (100, 1, 2, 3, 4, 5, 6, 7, 8, 200)
+    }
+    cpm = CPMResult(
+        tasks=cpm_tasks,
+        critical_path_uids=frozenset(cpm_tasks.keys()),
+        project_finish=bf8,
+    )
+    return sched, cpm
