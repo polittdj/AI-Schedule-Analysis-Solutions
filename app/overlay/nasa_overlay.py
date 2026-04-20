@@ -1,0 +1,194 @@
+"""NASA SMH overlay — frozen contract and rule orchestrator.
+
+The overlay layers NASA Schedule Management Handbook expectations on
+top of the frozen DCMA :class:`~app.metrics.base.MetricResult`
+contract without mutating upstream metric output. Every rule takes
+the original ``MetricResult``, the source :class:`~app.models.
+schedule.Schedule`, and :class:`~app.metrics.options.MetricOptions`
+read-only, and returns a new :class:`OverlayResult` that carries
+adjusted numerator / denominator / ratio / severity alongside
+informational notes the downstream consumer (M11 manipulation
+engine) will read.
+
+Architectural position. The overlay sits above the metrics layer and
+reads its outputs; it does not sit inside the engine (which is
+pure-CPM, :mod:`app.engine`) and is not itself a DCMA metric (which
+would live in :mod:`app.metrics`). See BUILD-PLAN §5 M8 AM5 for the
+package-placement rationale.
+
+Non-mutation invariant. :attr:`OverlayResult.original_result` is the
+exact ``MetricResult`` the upstream metric produced. The overlay
+never rebinds it, never rewrites its ``offenders`` tuple, and never
+alters its ``computed_value``. Adjusted fields live on
+``OverlayResult``. Mutation-invariance is asserted in the overlay
+tests via a deterministic snapshot helper.
+
+Authority:
+
+* Schedule margin is not float — ``nasa-schedule-management §3``;
+  High-Float denominator exclusion — ``§6`` and
+  ``dcma-14-point-assessment §4.6 / §8``.
+* Governance-milestone constraints — ``nasa-schedule-management §6``
+  and ``nasa-program-project-governance §§4, 5``.
+* Rolling-wave 6–12 month window — ``nasa-schedule-management §4``;
+  interaction with DCMA Metric 8 — ``dcma-14-point-assessment §4.8``.
+* Indicator-not-verdict framing — ``dcma-14-point-assessment §6
+  Rule 1`` and BUILD-PLAN §6 AC bar #3.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import StrEnum
+
+from app.metrics.base import MetricResult, Severity
+
+
+class OverlayNoteKind(StrEnum):
+    """Structured label for each informational note kind the overlay
+    emits. Stringly-typed so the note survives JSON / JSONLines
+    export without bespoke encoders; the M11 manipulation engine
+    routes on the exact values below.
+
+    Values:
+
+    * ``GOVERNANCE_MILESTONE_TRIAGE`` — a task whose name matches a
+      NASA governance-milestone pattern (KDP, SRR, MDR, PDR, CDR,
+      SIR, ORR, MCR, FRR) carries a hard-constraint (MSO / MFO /
+      SNLT / FNLT). The constraint is governance-driven and the
+      downstream manipulation engine should not raise it as a
+      constraint-injection finding.
+    * ``ROLLING_WAVE_NEAR_TERM_WARNING`` — a task flagged
+      ``is_rolling_wave = True`` whose forecast window is inside the
+      SMH 6–12-month near-term boundary. SMH §4 expects near-term
+      work to be planned to discrete detail, so a near-term
+      rolling-wave tag is a BoE / decomposition concern rather than
+      an exemption.
+    * ``ROLLING_WAVE_OUT_OF_WINDOW`` — an ``is_rolling_wave = True``
+      task whose forecast window is outside the SMH 12-month
+      rolling-wave band (informational; commonly benign for far-out
+      planning packages that should be refined as they approach).
+    """
+
+    GOVERNANCE_MILESTONE_TRIAGE = "GOVERNANCE_MILESTONE_TRIAGE"
+    ROLLING_WAVE_NEAR_TERM_WARNING = "ROLLING_WAVE_NEAR_TERM_WARNING"
+    ROLLING_WAVE_OUT_OF_WINDOW = "ROLLING_WAVE_OUT_OF_WINDOW"
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayNote:
+    """A single informational note emitted by an overlay rule.
+
+    Consumer-agnostic structure: the note carries enough context for
+    a drill-down UI to render the row without joining back to the
+    schedule, and for the M11 manipulation engine to route on the
+    note kind without re-deriving it. The ``detail`` string is
+    free-form and is the only field the narrative layer should
+    render verbatim.
+    """
+
+    note_kind: OverlayNoteKind
+    """Structured label — ``OverlayNoteKind`` value."""
+
+    unique_id: int
+    """``Task.unique_id`` — the task the note is about."""
+
+    task_name: str
+    """Task name, captured for drill-down rendering."""
+
+    detail: str
+    """Free-form detail string, e.g. ``"MFO constraint on governance
+    milestone CDR"`` or ``"rolling-wave tag on a forecast 4 months
+    out (SMH §4 near-term window)"``."""
+
+
+@dataclass(frozen=True, slots=True)
+class ExclusionRecord:
+    """A single denominator-exclusion row.
+
+    Emitted by rules that adjust a metric's denominator. The
+    :attr:`OverlayResult.tasks_excluded_from_denominator` tuple lets
+    the narrative / export layer render "7 / 10 after NASA overlay
+    (3 schedule-margin tasks excluded from the denominator per SMH
+    §3)" without re-deriving which tasks were dropped.
+    """
+
+    unique_id: int
+    """``Task.unique_id`` — the task excluded from the denominator."""
+
+    task_name: str
+    """Task name, captured for drill-down rendering."""
+
+    exclusion_reason: str
+    """Free-form reason, e.g. ``"is_schedule_margin = True (NASA SMH
+    §3)"``. The M11 consumer does not route on this string — it is a
+    narrative / export payload."""
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayResult:
+    """The overlay's per-metric sibling to
+    :class:`~app.metrics.base.MetricResult`.
+
+    Carries the exact upstream ``MetricResult`` in
+    :attr:`original_result` alongside the overlay's adjusted fields
+    and informational notes. Every field is immutable; the dataclass
+    is ``frozen=True, slots=True`` so rebinding raises
+    :class:`dataclasses.FrozenInstanceError`.
+
+    Adjusted-field semantics:
+
+    * :attr:`adjusted_numerator` / :attr:`adjusted_denominator` —
+      computed afresh by the overlay rule; ``None`` when the rule
+      does not adjust that field.
+    * :attr:`adjusted_ratio` — ``adjusted_numerator /
+      adjusted_denominator * 100`` when both are defined and the
+      denominator is positive; ``None`` otherwise.
+    * :attr:`adjusted_severity` — recomputed against the same
+      threshold the upstream metric used; ``None`` when the overlay
+      rule is note-emission only (does not change the ratio).
+
+    Attributes are ordered to keep the dataclass stable across M9+
+    extensions — consumers should read by name.
+    """
+
+    metric_id: str
+    """Upstream metric's ``metric_id`` (e.g. ``"DCMA-06"`` or
+    ``"DCMA-6"`` as the upstream metric emits; the overlay echoes
+    whatever the upstream produced)."""
+
+    original_result: MetricResult
+    """Exact upstream :class:`MetricResult`. The overlay never
+    mutates this instance."""
+
+    adjusted_numerator: int | None = None
+    """Overlay-adjusted numerator; ``None`` when the rule is note-
+    emission only."""
+
+    adjusted_denominator: int | None = None
+    """Overlay-adjusted denominator; ``None`` when the rule is
+    note-emission only."""
+
+    adjusted_ratio: float | None = None
+    """Overlay-adjusted percentage
+    (``adjusted_numerator / adjusted_denominator * 100``); ``None``
+    when the rule is note-emission only or the adjusted denominator
+    is zero."""
+
+    adjusted_severity: Severity | None = None
+    """Overlay-adjusted severity recomputed against the original
+    metric's threshold; ``None`` when the rule is note-emission
+    only."""
+
+    informational_notes: tuple[OverlayNote, ...] = field(
+        default_factory=tuple
+    )
+    """Tuple of :class:`OverlayNote` records. Empty when the rule is
+    denominator-adjustment only (High-Float schedule-margin
+    exclusion)."""
+
+    tasks_excluded_from_denominator: tuple[ExclusionRecord, ...] = field(
+        default_factory=tuple
+    )
+    """Tuple of :class:`ExclusionRecord` rows. Empty when the rule
+    is note-emission only."""
