@@ -124,6 +124,11 @@ def test_all_three_rules_on_combined_fixture() -> None:
     m6 = run_high_float(sched, cpm)
     m8 = run_high_duration(sched)
 
+    # Snapshot the Schedule before any overlay call — the overlay
+    # reads Schedule read-only, so status_date, project_start, and
+    # every task field must be byte-equal after the three rules run.
+    schedule_snapshot_before = sched.model_dump()
+
     # Rule 1 — schedule-margin exclusion (AC #1).
     m6_overlay = apply_schedule_margin_exclusion(m6, sched)
     assert m6.denominator == 10
@@ -155,6 +160,14 @@ def test_all_three_rules_on_combined_fixture() -> None:
     assert m6_overlay.original_result is m6
     assert m5_overlay.original_result is m5
     assert m8_overlay.original_result is m8
+
+    # Schedule mutation-invariance: none of the three overlay rules
+    # may edit status_date, project_start, or any task / relation
+    # field on the source Schedule. Pydantic v2 model_dump() equality
+    # catches every field-level mutation at the root.
+    assert sched.model_dump() == schedule_snapshot_before, (
+        "Overlay mutated Schedule; non-mutation contract broken"
+    )
 
 
 def test_rules_are_independent_no_cross_contamination() -> None:
