@@ -197,3 +197,55 @@ Tests:
 | `paths.py`         | Critical-path chains, driving slack, near-critical. |
 | `result.py`        | `CPMResult` / `TaskCPMResult` wrapper dataclasses. |
 | `duration.py`      | Minutes ↔ working-days helpers (`§3.5`). |
+| `delta.py`         | M9 comparator contract — `FieldDelta`, `TaskDelta`, `RelationshipDelta`, `ComparatorResult` + `DeltaType` / `TaskPresence` / `RelationshipPresence` enums. |
+| `windowing.py`     | M9 status-date windowing predicate `is_legitimate_actual`. |
+| `comparator.py`    | M9 cross-version `compare_schedules` — UniqueID-only matching, per-field and per-relationship deltas. |
+
+## Cross-version comparator (Milestone 9)
+
+`compare_schedules(period_a: Schedule, period_b: Schedule, options:
+ComparatorOptions | None = None) -> ComparatorResult` is the M9
+diff. Mission:
+
+1. **UniqueID-only matching.** Non-negotiable per BUILD-PLAN §2.7
+   and `mpp-parsing-com-automation §5`. A regression test
+   (`test_ac4_rename_all_tasks_in_b_preserves_match`) renames every
+   task in Period B and verifies the matched-delta count is
+   unchanged. `Task.task_id` and `Task.name` are never consulted
+   for matching.
+2. **Non-mutation contract.** The comparator never writes to
+   `period_a` or `period_b`. Both inputs round-trip
+   `Schedule.model_dump()` byte-identical across a call (verified by
+   `test_mutation_invariance_both_sides` and the relationship
+   equivalent).
+3. **Legitimate-actual windowing predicate.** A matched task whose
+   Period A `finish` is less than or equal to Period B `status_date`
+   is tagged `is_legitimate_actual = True` per
+   `forensic-manipulation-patterns §3.2` and
+   `driving-slack-and-paths §10`. Either status date `None`, either
+   task missing, or Period A `finish` `None` ⇒ `False`. The
+   predicate lives in `app/engine/windowing.py` as a standalone
+   function for audit-ability.
+4. **Delta shape.** `ComparatorResult` carries tuples of
+   `TaskDelta` and `RelationshipDelta`, plus `frozenset`s of added
+   / deleted UIDs and `matched_task_count`. Every model is Pydantic
+   v2 `ConfigDict(frozen=True)`. `FieldDelta` records raw values on
+   both sides; presentation-layer unit conversion (calendar-day
+   slip, working-day duration delta) happens at render time per
+   BUILD-PLAN §2.16.
+5. **Downstream consumers.** M10 (task-specific driving path) will
+   consume `RelationshipDelta` to detect added / removed driving
+   predecessors across versions. M11 (manipulation scoring) will
+   consume the full `ComparatorResult`, filtering matched deltas
+   by `is_legitimate_actual` before scoring per
+   `forensic-manipulation-patterns §3.2`. Both consumers read the
+   result tree read-only; the frozen contract makes "show your
+   work" forensically reproducible across pipeline stages.
+
+Forensic-integrity raises:
+
+* `ComparatorError` — duplicate `Task.unique_id` within a schedule
+  (bypassed G10 validator) or duplicate relationship pair
+  `(pred_uid, succ_uid)` within a schedule (the pair-key matching
+  is ambiguous on concurrent FS + SS links; a future extension
+  could switch to the `(pred, succ, type)` triple).

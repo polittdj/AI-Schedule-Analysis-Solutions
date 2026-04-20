@@ -16,7 +16,21 @@ decision, big-O notes, and forensic-defensibility commentary.
 
 from __future__ import annotations
 
+from app.engine.comparator import (
+    ComparatorError,
+    ComparatorOptions,
+    compare_schedules,
+)
 from app.engine.cpm import CPMEngine, compute_cpm
+from app.engine.delta import (
+    ComparatorResult,
+    DeltaType,
+    FieldDelta,
+    RelationshipDelta,
+    RelationshipPresence,
+    TaskDelta,
+    TaskPresence,
+)
 from app.engine.duration import (
     minutes_to_working_days,
     working_days_to_minutes,
@@ -35,20 +49,32 @@ from app.engine.paths import (
     near_critical_chain,
 )
 from app.engine.result import CPMResult, TaskCPMResult
+from app.engine.windowing import is_legitimate_actual
 
 __all__ = [
     "CPMEngine",
     "CPMOptions",
     "CPMResult",
     "CircularDependencyError",
+    "ComparatorError",
+    "ComparatorOptions",
+    "ComparatorResult",
     "ConstraintViolation",
+    "DeltaType",
     "EngineError",
+    "FieldDelta",
     "InvalidConstraintError",
     "MissingCalendarError",
+    "RelationshipDelta",
+    "RelationshipPresence",
     "TaskCPMResult",
+    "TaskDelta",
+    "TaskPresence",
+    "compare_schedules",
     "compute_cpm",
     "critical_path_chains",
     "driving_slack_to_focus",
+    "is_legitimate_actual",
     "minutes_to_working_days",
     "near_critical_chain",
     "working_days_to_minutes",
