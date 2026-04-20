@@ -42,6 +42,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from app.metrics.base import MetricResult, Severity
+from app.metrics.options import MetricOptions
+from app.models.schedule import Schedule
+from app.models.task import Task
+from app.overlay.exceptions import MissingMetricResultError
 
 
 class OverlayNoteKind(StrEnum):
@@ -192,3 +196,160 @@ class OverlayResult:
     )
     """Tuple of :class:`ExclusionRecord` rows. Empty when the rule
     is note-emission only."""
+
+
+# --------------------------------------------------------------------
+# Helpers — DCMA §3 eligibility (mirrors app.metrics.high_float logic).
+# --------------------------------------------------------------------
+
+
+def _is_loe(task: Task, options: MetricOptions) -> bool:
+    """Return ``True`` when ``task`` should be treated as LOE.
+
+    Mirrors :func:`app.metrics.high_float._is_loe`: honour the
+    :attr:`Task.is_loe` flag and fall back to the opt-in
+    :attr:`MetricOptions.loe_name_patterns` list. The overlay must
+    apply the same eligibility filters the upstream metric did so
+    the denominator-exclusion accounting lines up exactly.
+    """
+    if task.is_loe:
+        return True
+    if not options.loe_name_patterns:
+        return False
+    name_lc = task.name.lower()
+    return any(pat.lower() in name_lc for pat in options.loe_name_patterns)
+
+
+def _is_dcma_eligible(task: Task, options: MetricOptions) -> bool:
+    """Return ``True`` iff ``task`` is in the DCMA §3 eligible set for
+    Metric 6 (High Float).
+
+    The DCMA §3 exclusions (summary, LOE, 100%-complete) match
+    :func:`app.metrics.high_float._is_excluded` exactly. The High-
+    Float metric additionally drops tasks the CPM engine skipped
+    due to cycle; the overlay cannot re-derive that set without the
+    :class:`~app.engine.result.CPMResult`, so it applies the §3
+    filters only. In practice, schedule-margin tasks are never part
+    of CPM cycles (they are carefully placed reserve activities per
+    SMH §3), so the approximation is exact for every realistic
+    schedule; a cycle-skipped margin task would surface as a
+    narrative-layer annotation.
+    """
+    if options.exclude_summary and task.is_summary:
+        return False
+    if options.exclude_loe and _is_loe(task, options):
+        return False
+    if options.exclude_completed and task.percent_complete >= 100.0:
+        return False
+    return True
+
+
+# --------------------------------------------------------------------
+# Rule 1 — High-Float denominator exclusion (Milestone 8 Block 3).
+# --------------------------------------------------------------------
+
+
+def apply_schedule_margin_exclusion(
+    original_result: MetricResult,
+    schedule: Schedule,
+    options: MetricOptions | None = None,
+) -> OverlayResult:
+    """Apply the NASA SMH schedule-margin exclusion to a DCMA Metric 6
+    (High Float) :class:`~app.metrics.base.MetricResult`.
+
+    NASA schedule margin is a deliberate, PM-owned reserve activity
+    distinct from CPM total float (``nasa-schedule-management §3``).
+    Counting it as high-float inflates Metric 6 and produces a
+    false manipulation flag. This rule recomputes the denominator
+    excluding every :attr:`Task.is_schedule_margin` task in the
+    DCMA §3 eligible set, recomputes the numerator excluding every
+    schedule-margin task that was in the original offender list,
+    and emits an :class:`ExclusionRecord` per excluded task.
+
+    The overlay reads ``original_result`` read-only and never
+    mutates it. Adjusted fields live on the returned
+    :class:`OverlayResult`; :attr:`OverlayResult.original_result`
+    carries the exact upstream instance.
+
+    Args:
+        original_result: the DCMA Metric 6 ``MetricResult`` this
+            overlay adjusts. Must not be ``None``.
+        schedule: the source ``Schedule``. Read-only.
+        options: ``MetricOptions``; defaults to a fresh
+            :class:`MetricOptions()` when ``None``. Threshold is
+            read from ``options.high_float_threshold_pct`` — not
+            hardcoded — so a client-specified override flows through.
+
+    Returns:
+        A frozen :class:`OverlayResult` with the schedule-margin
+        exclusion applied. ``informational_notes`` is empty for
+        this rule; it is a denominator correction, not a note
+        emission.
+
+    Raises:
+        :class:`MissingMetricResultError` when ``original_result``
+        is ``None``.
+    """
+    if original_result is None:
+        raise MissingMetricResultError(
+            "apply_schedule_margin_exclusion", "DCMA-6"
+        )
+
+    opts = options if options is not None else MetricOptions()
+
+    # DCMA §3 eligible set recomputed on the schedule so the
+    # exclusion accounting lines up with Metric 6's own denominator.
+    # The overlay does not re-run CPM; see _is_dcma_eligible for the
+    # cycle-skip approximation note.
+    eligible = [t for t in schedule.tasks if _is_dcma_eligible(t, opts)]
+    margin_in_eligible = [t for t in eligible if t.is_schedule_margin]
+
+    # Numerator adjustment — only the schedule-margin tasks the
+    # upstream metric actually flagged (i.e. whose UniqueIDs appear
+    # in offenders) come off the numerator.
+    offender_uids = {o.unique_id for o in original_result.offenders}
+    margin_offenders = [
+        t for t in margin_in_eligible if t.unique_id in offender_uids
+    ]
+
+    adjusted_denominator = original_result.denominator - len(margin_in_eligible)
+    adjusted_numerator = original_result.numerator - len(margin_offenders)
+
+    if adjusted_denominator > 0:
+        adjusted_ratio = (adjusted_numerator / adjusted_denominator) * 100.0
+        # Threshold recomputation against the same MetricOptions the
+        # upstream metric used — no hardcoded 4% / 5% here.
+        adjusted_severity: Severity | None = (
+            Severity.PASS
+            if adjusted_ratio <= opts.high_float_threshold_pct
+            else Severity.FAIL
+        )
+    else:
+        # Zero-denominator case after exclusion — no eligible task
+        # remains to fail against; ratio and severity are None so
+        # the narrative layer can phrase it explicitly.
+        adjusted_ratio = None
+        adjusted_severity = None
+
+    exclusions = tuple(
+        ExclusionRecord(
+            unique_id=t.unique_id,
+            task_name=t.name,
+            exclusion_reason=(
+                "is_schedule_margin = True — NASA SMH §3 "
+                "(schedule margin is not CPM total float)"
+            ),
+        )
+        for t in margin_in_eligible
+    )
+
+    return OverlayResult(
+        metric_id=original_result.metric_id,
+        original_result=original_result,
+        adjusted_numerator=adjusted_numerator,
+        adjusted_denominator=adjusted_denominator,
+        adjusted_ratio=adjusted_ratio,
+        adjusted_severity=adjusted_severity,
+        informational_notes=(),
+        tasks_excluded_from_denominator=exclusions,
+    )
