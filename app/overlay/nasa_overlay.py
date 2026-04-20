@@ -353,3 +353,110 @@ def apply_schedule_margin_exclusion(
         informational_notes=(),
         tasks_excluded_from_denominator=exclusions,
     )
+
+
+# --------------------------------------------------------------------
+# Rule 2 — Governance-milestone constraint triage (Block 4).
+# --------------------------------------------------------------------
+
+
+def apply_governance_milestone_triage(
+    original_result: MetricResult,
+    schedule: Schedule,
+    options: MetricOptions | None = None,
+) -> OverlayResult:
+    """Emit a governance-triage note for every DCMA Metric 5 offender
+    whose task name matches a NASA governance-milestone pattern.
+
+    NASA governance milestones (KDP, MCR, SRR, MDR/SDR, PDR, CDR,
+    SIR, ORR, FRR/MRR) legitimately drive MSO / MFO / SNLT / FNLT
+    constraints on IMS tasks tied to review dates per
+    ``nasa-program-project-governance §§4, 5`` and
+    ``nasa-schedule-management §6``. A rising DCMA Metric 5 rate on
+    a NASA IMS therefore requires governance triage before any
+    constraint-injection inference.
+
+    This rule is strictly emit-side for the M11 manipulation engine,
+    which is the downstream consumer. M8 does not modify Metric 5's
+    numerator or denominator — the hard-constraint count is a
+    legitimate DCMA observation; the overlay only annotates which
+    of those counts are governance-explained. M11 will later read
+    :attr:`OverlayResult.informational_notes` and suppress the
+    constraint-injection raise for flagged tasks.
+
+    Args:
+        original_result: the DCMA Metric 5 ``MetricResult`` to
+            triage. Must not be ``None``.
+        schedule: the source ``Schedule`` — used to look up the
+            task name for each offender (the metric's own offender
+            record already carries ``name``; this is a defensive
+            re-read so the overlay does not depend on offender
+            fields beyond ``unique_id``).
+        options: ``MetricOptions`` (unused by this rule; accepted
+            for signature symmetry across overlay rules so callers
+            can pass the same options object to every rule).
+
+    Returns:
+        A frozen :class:`OverlayResult` whose
+        :attr:`informational_notes` tuple carries one
+        :class:`OverlayNote` (kind
+        :attr:`OverlayNoteKind.GOVERNANCE_MILESTONE_TRIAGE`) per
+        offender whose name matches the governance-milestone
+        taxonomy. Adjusted fields are all ``None`` — this is a
+        note-emission rule only.
+
+    Raises:
+        :class:`MissingMetricResultError` when ``original_result``
+        is ``None``.
+    """
+    if original_result is None:
+        raise MissingMetricResultError(
+            "apply_governance_milestone_triage", "DCMA-5"
+        )
+
+    _ = options  # signature symmetry — this rule has no thresholds.
+
+    # Local import keeps app.overlay.nasa_milestones a leaf module
+    # (no circular-import risk with the rule orchestrator).
+    from app.overlay.nasa_milestones import match_governance_pattern
+
+    tasks_by_uid: dict[int, Task] = {t.unique_id: t for t in schedule.tasks}
+
+    notes: list[OverlayNote] = []
+    for offender in original_result.offenders:
+        task = tasks_by_uid.get(offender.unique_id)
+        task_name = task.name if task is not None else offender.name
+        matched = match_governance_pattern(task_name)
+        if matched is None:
+            continue
+        # offender.value carries the constraint type label (e.g.
+        # "MUST_FINISH_ON"), written by the M6 hard_constraints
+        # metric. Preserve it verbatim in the detail string so the
+        # narrative layer can render "{constraint} on governance
+        # milestone {acronym}: {task_name}" without re-reading the
+        # task's constraint_type.
+        constraint_label = offender.value or "hard constraint"
+        detail = (
+            f"{constraint_label} on governance milestone "
+            f"{matched}: {task_name} "
+            f"(NASA SMH §6 / nasa-program-project-governance §§4, 5)"
+        )
+        notes.append(
+            OverlayNote(
+                note_kind=OverlayNoteKind.GOVERNANCE_MILESTONE_TRIAGE,
+                unique_id=offender.unique_id,
+                task_name=task_name,
+                detail=detail,
+            )
+        )
+
+    return OverlayResult(
+        metric_id=original_result.metric_id,
+        original_result=original_result,
+        adjusted_numerator=None,
+        adjusted_denominator=None,
+        adjusted_ratio=None,
+        adjusted_severity=None,
+        informational_notes=tuple(notes),
+        tasks_excluded_from_denominator=(),
+    )

@@ -36,6 +36,7 @@ from app.overlay.nasa_overlay import (
     OverlayNote,
     OverlayNoteKind,
     OverlayResult,
+    apply_governance_milestone_triage,
     apply_schedule_margin_exclusion,
 )
 
@@ -47,6 +48,7 @@ __all__ = [
     "OverlayNote",
     "OverlayNoteKind",
     "OverlayResult",
+    "apply_governance_milestone_triage",
     "apply_schedule_margin_exclusion",
     "is_governance_milestone",
     "match_governance_pattern",
