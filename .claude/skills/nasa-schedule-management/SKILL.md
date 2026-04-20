@@ -44,6 +44,8 @@ NASA defines rolling-wave planning as a progressive-elaboration method that sche
 
 Two specific rules apply [SMH §5.5.7.3 p.95]. **Near-term window:** activities within roughly 6–12 months of the current date are planned to discrete, lower level. **Near-term duration cap:** near-term activity durations should be less than two times the status-update cycle — for a monthly cycle, less than two months — so start and finish of each near-term activity can be reported within one or two cycles. Exceptions: long-lead procurement and level-of-effort (LOE) activities.
 
+**Day-count convention (tool-specific, inferred — not sourced).** SMH states the window in month-granularity narrative ("roughly 6–12 months"). For computational purposes the forensic engine interprets the 6-month lower bound as **183 calendar days** (365 / 2, rounded up) and the 12-month upper bound as **365 calendar days**. These conventions are applied by `apply_rolling_wave_window_check` in `app/overlay/nasa_overlay.py`. The values are tool-side — SMH does not prescribe a day count — and are recorded in §11 as inferred content.
+
 Rolling-wave content beyond the near-term window must still provide enough definition to allow critical-path and driving-path identification [SMH §5.5.7.3 p.95]. Rolling-wave is not a licence to suppress detail that is already known; it is not a substitute for detail where information exists [SMH §5.5.7.3 p.95, paraphrased]. Planning packages must be periodically revisited and brought into the near-term window as they approach [SMH §5.5.7.3 pp.95–96]. Use of rolling-wave must be defensible and BoE-documented [SMH §5.5.7.3 p.95].
 
 **Interaction with DCMA §4.8 (High Duration):** the 09NOV09 revision provides a rolling-wave exemption. Mechanics in `dcma-14-point-assessment §4.8, §8` — not restated here.
@@ -120,6 +122,7 @@ SMH draws a sharp distinction between replan and rebaseline — the single most 
 | 3 | §8 Period A vs. Period B actuals rule | SMH does not name Period A / Period B; the but-for comparator rule is tool-specific. | Session 18 — formalise when comparator cycle is versioned against a named Lessons-Learned section. |
 | 4 | §9 "governance-drift fingerprint" | SMH describes replan/rebaseline decision gates but does not name the multi-cycle pattern as governance drift; label is editorial. | Session 18 — tie to empirical pattern frequencies once RAG case-history is available. |
 | 5 | §6 "NASA key-indicator list as phrasing layer" | Relationship between DCMA 14-Point (engine) and SMH key indicators (narrative layer) is a tool-side posture, not an SMH directive. | Session 18 — audit when narrative-layer presets are built. |
+| 6 | §4 rolling-wave day-count convention | 183 / 365 calendar-day interpretation of SMH's "roughly 6–12 months" narrative. SMH §5.5.7.3 states the window in months; the 183 / 365 integer interpretation is tool-side, applied by `apply_rolling_wave_window_check`. | Phase 2 — revisit if client cadence prompts a business-day interpretation or a different rounding rule. |
 
 ## 12. References
 

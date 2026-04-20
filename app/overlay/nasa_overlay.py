@@ -485,6 +485,12 @@ def apply_rolling_wave_window_check(
     wave mis-tagging is a well-known manipulation pattern — known-
     detail work flagged rolling-wave to dodge Metric 8.
 
+    Day-count convention. SMH §4 is month-granularity narrative; the
+    overlay interprets the bounds as **183 calendar days** (near,
+    365 / 2 rounded up) and **365 calendar days** (far). The
+    convention is tool-side (inferred — not sourced) and is
+    documented in ``nasa-schedule-management §4`` and ``§11`` row 6.
+
     This rule takes Metric 8's ``MetricResult``, iterates every
     rolling-wave-tagged task in the schedule, and emits one
     :class:`OverlayNote` per task whose forecast window is outside
@@ -533,9 +539,11 @@ def apply_rolling_wave_window_check(
 
     from datetime import timedelta
 
-    # SMH §4 is approximate ("roughly 6–12 months"); 183 / 365 days
-    # is the standard calendar-day interpretation. The narrative
-    # layer can adjust rendering per project cadence.
+    # Day-count convention per nasa-schedule-management §4 / §11
+    # row 6: SMH states the window in months; the tool interprets
+    # the near bound as 183 calendar days (365 / 2 rounded up) and
+    # the far bound as 365 calendar days. The narrative layer can
+    # adjust rendering per project cadence.
     _SIX_MONTHS_DAYS = 183
     _TWELVE_MONTHS_DAYS = 365
     near_term_span = timedelta(days=_SIX_MONTHS_DAYS)

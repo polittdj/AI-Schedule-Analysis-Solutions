@@ -72,8 +72,10 @@ exclusion rule recomputes severity against
 `options.high_float_threshold_pct`; the governance-triage rule is
 note-emission only and does not consume a threshold; the rolling-
 wave rule hard-codes the SMH 6/12-month calendar-day windows per
-`nasa-schedule-management §4` (183 / 365 days), noted in its
-docstring for a future narrative-layer adjustment.
+`nasa-schedule-management §4` — **183 days (near) / 365 days (far)**
+(tool-side day-count convention; 365 / 2 rounded up for the near
+bound, full calendar year for the far bound; recorded in `nasa-
+schedule-management §11` as inferred content).
 
 ## Non-mutation invariant
 
