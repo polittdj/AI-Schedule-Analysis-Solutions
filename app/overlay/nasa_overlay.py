@@ -460,3 +460,150 @@ def apply_governance_milestone_triage(
         informational_notes=tuple(notes),
         tasks_excluded_from_denominator=(),
     )
+
+
+# --------------------------------------------------------------------
+# Rule 3 — Rolling-wave window cross-check (Block 5).
+# --------------------------------------------------------------------
+
+
+def apply_rolling_wave_window_check(
+    original_result: MetricResult,
+    schedule: Schedule,
+    options: MetricOptions | None = None,
+) -> OverlayResult:
+    """Cross-check every ``is_rolling_wave = True`` task against the
+    NASA SMH 6–12 month near-term window.
+
+    DCMA Metric 8's rolling-wave exemption (``dcma-14-point-
+    assessment §4.8``) lets planning-package placeholders slip past
+    the 44-WD high-duration ceiling. ``nasa-schedule-management §4``
+    endorses rolling-wave planning but requires that near-term work
+    (inside roughly 6 months) be planned to discrete detail and
+    that far-term placeholders (beyond 12 months) still provide
+    enough definition to allow critical-path identification. Rolling-
+    wave mis-tagging is a well-known manipulation pattern — known-
+    detail work flagged rolling-wave to dodge Metric 8.
+
+    This rule takes Metric 8's ``MetricResult``, iterates every
+    rolling-wave-tagged task in the schedule, and emits one
+    :class:`OverlayNote` per task whose forecast window is outside
+    the SMH near-term band:
+
+    * Inside 6 months of the reference date →
+      :attr:`OverlayNoteKind.ROLLING_WAVE_NEAR_TERM_WARNING` (SMH
+      §4 expects near-term discrete detail).
+    * Beyond 12 months →
+      :attr:`OverlayNoteKind.ROLLING_WAVE_OUT_OF_WINDOW`
+      (informational; commonly benign for far-out planning
+      packages).
+    * 6–12 months → no note (the tag is in the SMH-endorsed band).
+
+    Reference date. Uses :attr:`Schedule.status_date` when present,
+    otherwise falls back to :attr:`Schedule.project_start`. A
+    schedule with neither date returns an ``OverlayResult`` with an
+    empty ``informational_notes`` tuple — the rule cannot evaluate
+    without a reference anchor and raises no exception (consistent
+    with the indicator-not-verdict framing of the protocol).
+
+    Task forecast. Uses :attr:`Task.start` if set; otherwise falls
+    back to :attr:`Task.early_start`. A task with neither forecast
+    date cannot be evaluated and emits no note.
+
+    Args:
+        original_result: the DCMA Metric 8 ``MetricResult``.
+        schedule: the source ``Schedule``. Read-only.
+        options: ``MetricOptions``; accepted for signature symmetry.
+
+    Returns:
+        A frozen :class:`OverlayResult` with ``informational_notes``
+        populated. Adjusted fields are all ``None`` — the rule is
+        note-emission only.
+
+    Raises:
+        :class:`MissingMetricResultError` when ``original_result``
+        is ``None``.
+    """
+    if original_result is None:
+        raise MissingMetricResultError(
+            "apply_rolling_wave_window_check", "DCMA-8"
+        )
+
+    _ = options  # signature symmetry; no threshold consumed.
+
+    from datetime import timedelta
+
+    # SMH §4 is approximate ("roughly 6–12 months"); 183 / 365 days
+    # is the standard calendar-day interpretation. The narrative
+    # layer can adjust rendering per project cadence.
+    _SIX_MONTHS_DAYS = 183
+    _TWELVE_MONTHS_DAYS = 365
+    near_term_span = timedelta(days=_SIX_MONTHS_DAYS)
+    far_term_span = timedelta(days=_TWELVE_MONTHS_DAYS)
+
+    reference_date = schedule.status_date or schedule.project_start
+    if reference_date is None:
+        return OverlayResult(
+            metric_id=original_result.metric_id,
+            original_result=original_result,
+            informational_notes=(),
+            tasks_excluded_from_denominator=(),
+        )
+
+    near_term_cutoff = reference_date + near_term_span
+    far_term_cutoff = reference_date + far_term_span
+
+    notes: list[OverlayNote] = []
+    for task in schedule.tasks:
+        if not task.is_rolling_wave:
+            continue
+        forecast = task.start or task.early_start
+        if forecast is None:
+            # No forecast — cannot evaluate without date info. The
+            # narrative layer would phrase this as "rolling-wave tag
+            # on task with no forecast start" but the overlay stays
+            # silent for now.
+            continue
+        if forecast < near_term_cutoff:
+            detail = (
+                f"rolling-wave tag on task with forecast start "
+                f"{forecast.date().isoformat()} inside the SMH 6-month "
+                f"near-term window (reference "
+                f"{reference_date.date().isoformat()}); "
+                f"NASA SMH §4 expects near-term work planned to "
+                f"discrete detail"
+            )
+            notes.append(
+                OverlayNote(
+                    note_kind=OverlayNoteKind.ROLLING_WAVE_NEAR_TERM_WARNING,
+                    unique_id=task.unique_id,
+                    task_name=task.name,
+                    detail=detail,
+                )
+            )
+        elif forecast > far_term_cutoff:
+            detail = (
+                f"rolling-wave tag on task with forecast start "
+                f"{forecast.date().isoformat()} outside the SMH "
+                f"12-month rolling-wave band "
+                f"(reference {reference_date.date().isoformat()}); "
+                f"informational — planning package to be refined as "
+                f"it approaches"
+            )
+            notes.append(
+                OverlayNote(
+                    note_kind=OverlayNoteKind.ROLLING_WAVE_OUT_OF_WINDOW,
+                    unique_id=task.unique_id,
+                    task_name=task.name,
+                    detail=detail,
+                )
+            )
+        # Forecast inside [near_term_cutoff, far_term_cutoff] — SMH-
+        # endorsed rolling-wave band; no note emitted.
+
+    return OverlayResult(
+        metric_id=original_result.metric_id,
+        original_result=original_result,
+        informational_notes=tuple(notes),
+        tasks_excluded_from_denominator=(),
+    )
