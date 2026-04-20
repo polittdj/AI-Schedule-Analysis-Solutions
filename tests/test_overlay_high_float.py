@@ -20,6 +20,11 @@ from datetime import UTC, datetime
 import pytest
 
 from app.engine.result import CPMResult, TaskCPMResult
+from app.metrics.base import (
+    MetricResult,
+    Severity,
+    ThresholdConfig,
+)
 from app.metrics.high_float import run_high_float
 from app.metrics.options import MetricOptions
 from app.models.calendar import Calendar
@@ -30,11 +35,6 @@ from app.overlay import (
     MissingMetricResultError,
     OverlayResult,
     apply_schedule_margin_exclusion,
-)
-from app.metrics.base import (
-    MetricResult,
-    Severity,
-    ThresholdConfig,
 )
 
 ANCHOR = datetime(2026, 4, 20, 8, 0, tzinfo=UTC)

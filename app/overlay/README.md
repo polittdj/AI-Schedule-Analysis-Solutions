@@ -35,17 +35,45 @@ See BUILD-PLAN §5 M8 AM5 for the package-placement rationale.
   name taxonomy in `app/overlay/nasa_milestones.py`.
 * `OverlayError`, `MissingMetricResultError` — exception hierarchy.
 
-Rule functions landing in the subsequent build blocks:
+Rule functions (one per M8 overlay rule):
 
-* `apply_schedule_margin_exclusion` — High-Float denominator
-  exclusion for `Task.is_schedule_margin` tasks (Block 3).
-* `apply_governance_milestone_triage` — emits a
-  `GOVERNANCE_MILESTONE_TRIAGE` note for every DCMA Metric 5
-  offender whose name matches a governance-milestone pattern
-  (Block 4).
-* `apply_rolling_wave_window_check` — emits a rolling-wave
-  note for each `is_rolling_wave = True` task, characterising the
-  forecast against the SMH 6–12 month window (Block 5).
+* `apply_schedule_margin_exclusion(original_result, schedule,
+  options=None)` — DCMA Metric 6 (High Float) overlay. Recomputes
+  denominator and numerator excluding `Task.is_schedule_margin`
+  tasks; returns an `OverlayResult` carrying
+  `ExclusionRecord`s per excluded task. **Denominator-adjustment
+  rule**; no notes emitted.
+* `apply_governance_milestone_triage(original_result, schedule,
+  options=None)` — DCMA Metric 5 (Hard Constraints) overlay. Emits
+  one `GOVERNANCE_MILESTONE_TRIAGE` note per offender whose task
+  name matches the NASA governance-milestone taxonomy. **Note-
+  emission rule**; adjusted fields all `None`.
+* `apply_rolling_wave_window_check(original_result, schedule,
+  options=None)` — DCMA Metric 8 (High Duration) overlay. Emits
+  `ROLLING_WAVE_NEAR_TERM_WARNING` or `ROLLING_WAVE_OUT_OF_WINDOW`
+  per rolling-wave task whose forecast window is outside the SMH
+  6–12 month band. **Note-emission rule**; adjusted fields all
+  `None`.
+
+## Rule / metric / skill-section map
+
+| Rule                                   | DCMA metric | SMH section | Authority                                      |
+|----------------------------------------|-------------|-------------|------------------------------------------------|
+| `apply_schedule_margin_exclusion`      | Metric 6    | SMH §3, §6  | `dcma-14-point-assessment §4.6`, `§8`          |
+| `apply_governance_milestone_triage`    | Metric 5    | SMH §6      | `nasa-program-project-governance §§4, 5`; DCMA `§4.5` |
+| `apply_rolling_wave_window_check`      | Metric 8    | SMH §4      | `dcma-14-point-assessment §4.8`, `§8`          |
+
+## Threshold reads
+
+Every rule reads thresholds from the `MetricOptions` instance the
+caller supplies (no hardcoded 5% / 44 WD / 6-month constants
+outside the module-private helper bands). The schedule-margin
+exclusion rule recomputes severity against
+`options.high_float_threshold_pct`; the governance-triage rule is
+note-emission only and does not consume a threshold; the rolling-
+wave rule hard-codes the SMH 6/12-month calendar-day windows per
+`nasa-schedule-management §4` (183 / 365 days), noted in its
+docstring for a future narrative-layer adjustment.
 
 ## Non-mutation invariant
 

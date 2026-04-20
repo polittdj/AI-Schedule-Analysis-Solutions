@@ -15,7 +15,6 @@ import pytest
 
 from app.metrics.base import (
     MetricResult,
-    Offender,
     Severity,
     ThresholdConfig,
 )
