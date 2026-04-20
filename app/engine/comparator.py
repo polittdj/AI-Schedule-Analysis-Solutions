@@ -40,11 +40,13 @@ from app.engine.delta import (
     DeltaType,
     FieldDelta,
     RelationshipDelta,
+    RelationshipPresence,
     TaskDelta,
     TaskPresence,
 )
 from app.engine.exceptions import EngineError
 from app.engine.windowing import is_legitimate_actual
+from app.models.relation import Relation
 from app.models.schedule import Schedule
 from app.models.task import Task
 
@@ -208,6 +210,111 @@ def _build_deleted_delta(uid: int, a_task: Task) -> TaskDelta:
     )
 
 
+# -----------------------------------------------------------------------
+# Relationship diff (Block 4)
+# -----------------------------------------------------------------------
+
+# Field names diffed on matched relationships. The M2 Relation model
+# carries a flat shape; matching is by (predecessor_unique_id,
+# successor_unique_id) — see _index_relations_by_pair for the caveat
+# on duplicate pairs with differing relation_type.
+_RELATION_FIELDS: tuple[str, ...] = ("relation_type", "lag_minutes")
+
+
+def _index_relations_by_pair(
+    relations: list[Relation], side: str
+) -> dict[tuple[int, int], Relation]:
+    """Build a ``(predecessor_uid, successor_uid) → Relation`` map.
+
+    The Relation model permits multiple links between the same pair
+    with different ``relation_type`` values (see docstring on
+    :class:`~app.models.schedule.Schedule.relations`: "A single task
+    pair may carry multiple links of different types."). The M9
+    comparator keys relationships by the pair so ``FS → SS`` edits
+    surface as ``VALUE_CHANGE`` deltas on ``relation_type`` rather
+    than as correlated delete + add pairs. Encountering two links on
+    the same pair within a schedule therefore makes the matching
+    ambiguous; the comparator raises :class:`ComparatorError` in
+    that case.
+    """
+    index: dict[tuple[int, int], Relation] = {}
+    for rel in relations:
+        key = (rel.predecessor_unique_id, rel.successor_unique_id)
+        if key in index:
+            raise ComparatorError(
+                f"duplicate relationship pair {key} in {side} schedule; "
+                "M9 matches relationships by (predecessor, successor) pair "
+                "and cannot disambiguate multiple concurrent links"
+            )
+        index[key] = rel
+    return index
+
+
+def _diff_relation_fields(
+    a_rel: Relation, b_rel: Relation
+) -> tuple[FieldDelta, ...]:
+    deltas: list[FieldDelta] = []
+    for name in _RELATION_FIELDS:
+        a_value = getattr(a_rel, name)
+        b_value = getattr(b_rel, name)
+        delta_type = _classify_delta(a_value, b_value)
+        if delta_type is None:
+            continue
+        deltas.append(
+            FieldDelta(
+                field_name=name,
+                period_a_value=a_value,
+                period_b_value=b_value,
+                delta_type=delta_type,
+            )
+        )
+    return tuple(deltas)
+
+
+def _build_relationship_deltas(
+    a_relations: list[Relation], b_relations: list[Relation]
+) -> tuple[RelationshipDelta, ...]:
+    a_by_pair = _index_relations_by_pair(a_relations, "period_a")
+    b_by_pair = _index_relations_by_pair(b_relations, "period_b")
+
+    matched_pairs = sorted(a_by_pair.keys() & b_by_pair.keys())
+    added_pairs = sorted(b_by_pair.keys() - a_by_pair.keys())
+    deleted_pairs = sorted(a_by_pair.keys() - b_by_pair.keys())
+
+    deltas: list[RelationshipDelta] = []
+
+    for key in matched_pairs:
+        field_deltas = _diff_relation_fields(a_by_pair[key], b_by_pair[key])
+        deltas.append(
+            RelationshipDelta(
+                predecessor_unique_id=key[0],
+                successor_unique_id=key[1],
+                presence=RelationshipPresence.MATCHED,
+                field_deltas=field_deltas,
+            )
+        )
+    for key in added_pairs:
+        deltas.append(
+            RelationshipDelta(
+                predecessor_unique_id=key[0],
+                successor_unique_id=key[1],
+                presence=RelationshipPresence.ADDED_IN_B,
+                field_deltas=(),
+            )
+        )
+    for key in deleted_pairs:
+        deltas.append(
+            RelationshipDelta(
+                predecessor_unique_id=key[0],
+                successor_unique_id=key[1],
+                presence=RelationshipPresence.DELETED_FROM_A,
+                field_deltas=(),
+            )
+        )
+
+    return tuple(deltas)
+
+
 def compare_schedules(
     period_a: Schedule,
     period_b: Schedule,
@@ -263,10 +370,9 @@ def compare_schedules(
     for uid in sorted(deleted_uids):
         task_deltas.append(_build_deleted_delta(uid, a_by_uid[uid]))
 
-    # Block 3: relationship deltas are Block 4's scope. Always empty
-    # here; the Block 4 extension populates them on the same
-    # ComparatorResult shape.
-    relationship_deltas: tuple[RelationshipDelta, ...] = ()
+    relationship_deltas = _build_relationship_deltas(
+        period_a.relations, period_b.relations
+    )
 
     return ComparatorResult(
         period_a_status_date=period_a.status_date,

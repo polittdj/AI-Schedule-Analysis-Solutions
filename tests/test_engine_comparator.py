@@ -21,9 +21,11 @@ from app.engine.comparator import (
 from app.engine.delta import (
     ComparatorResult,
     DeltaType,
+    RelationshipPresence,
     TaskPresence,
 )
-from app.models.enums import ConstraintType
+from app.models.enums import ConstraintType, RelationType
+from app.models.relation import Relation
 from app.models.schedule import Schedule
 from app.models.task import Task
 
@@ -69,12 +71,14 @@ def _sched(
     *tasks: Task,
     status_date: datetime | None = None,
     name: str = "sched",
+    relations: tuple[Relation, ...] = (),
 ) -> Schedule:
     return Schedule(
         name=name,
         project_start=ANCHOR,
         status_date=status_date,
         tasks=list(tasks),
+        relations=list(relations),
     )
 
 
@@ -413,3 +417,110 @@ def test_comparator_result_is_frozen() -> None:
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
         result.matched_task_count = 99  # type: ignore[misc]
+
+
+# -----------------------------------------------------------------------
+# Block 4: relationship-change comparator
+# -----------------------------------------------------------------------
+
+
+def _rel(pred: int, succ: int, *, rt: RelationType = RelationType.FS,
+         lag_minutes: int = 0) -> Relation:
+    return Relation(
+        predecessor_unique_id=pred,
+        successor_unique_id=succ,
+        relation_type=rt,
+        lag_minutes=lag_minutes,
+    )
+
+
+def test_relationship_added_in_b() -> None:
+    tasks = (_task(1), _task(2))
+    a = _sched(*tasks, relations=())
+    b = _sched(*tasks, relations=(_rel(1, 2),))
+    result = compare_schedules(a, b)
+    assert len(result.relationship_deltas) == 1
+    rd = result.relationship_deltas[0]
+    assert rd.presence is RelationshipPresence.ADDED_IN_B
+    assert rd.predecessor_unique_id == 1
+    assert rd.successor_unique_id == 2
+    assert rd.field_deltas == ()
+
+
+def test_relationship_deleted_from_a() -> None:
+    tasks = (_task(1), _task(2))
+    a = _sched(*tasks, relations=(_rel(1, 2),))
+    b = _sched(*tasks, relations=())
+    result = compare_schedules(a, b)
+    assert len(result.relationship_deltas) == 1
+    rd = result.relationship_deltas[0]
+    assert rd.presence is RelationshipPresence.DELETED_FROM_A
+    assert rd.field_deltas == ()
+
+
+def test_relationship_type_change_emits_value_change() -> None:
+    tasks = (_task(1), _task(2))
+    a = _sched(*tasks, relations=(_rel(1, 2, rt=RelationType.FS),))
+    b = _sched(*tasks, relations=(_rel(1, 2, rt=RelationType.SS),))
+    result = compare_schedules(a, b)
+    assert len(result.relationship_deltas) == 1
+    rd = result.relationship_deltas[0]
+    assert rd.presence is RelationshipPresence.MATCHED
+    assert len(rd.field_deltas) == 1
+    fd = rd.field_deltas[0]
+    assert fd.field_name == "relation_type"
+    assert fd.delta_type is DeltaType.VALUE_CHANGE
+    assert fd.period_a_value is RelationType.FS
+    assert fd.period_b_value is RelationType.SS
+
+
+def test_relationship_lag_change_emits_value_change() -> None:
+    tasks = (_task(1), _task(2))
+    a = _sched(*tasks, relations=(_rel(1, 2, lag_minutes=0),))
+    b = _sched(*tasks, relations=(_rel(1, 2, lag_minutes=3600),))
+    result = compare_schedules(a, b)
+    rd = result.relationship_deltas[0]
+    assert rd.presence is RelationshipPresence.MATCHED
+    lag_fd = next(fd for fd in rd.field_deltas if fd.field_name == "lag_minutes")
+    assert lag_fd.delta_type is DeltaType.VALUE_CHANGE
+    assert lag_fd.period_a_value == 0
+    assert lag_fd.period_b_value == 3600
+
+
+def test_relationship_no_changes_empty_deltas() -> None:
+    tasks = (_task(1), _task(2))
+    a = _sched(*tasks, relations=(_rel(1, 2, lag_minutes=120),))
+    b = _sched(*tasks, relations=(_rel(1, 2, lag_minutes=120),))
+    result = compare_schedules(a, b)
+    # Matched relationship with no field-level changes still emits
+    # a RelationshipDelta (MATCHED, empty field_deltas) so consumers
+    # can count how many relations were seen on both sides.
+    assert len(result.relationship_deltas) == 1
+    assert result.relationship_deltas[0].presence is RelationshipPresence.MATCHED
+    assert result.relationship_deltas[0].field_deltas == ()
+
+
+def test_relationship_duplicate_pair_raises() -> None:
+    tasks = (_task(1), _task(2))
+    a = _sched(*tasks, relations=(_rel(1, 2, rt=RelationType.FS),))
+    b = _sched(*tasks, relations=(_rel(1, 2, rt=RelationType.FS),))
+    # Schedule model permits multiple links for the same pair via
+    # list append; force a duplicate and verify the comparator
+    # raises.
+    b.relations.append(_rel(1, 2, rt=RelationType.SS))  # type: ignore[call-arg]
+    with pytest.raises(ComparatorError) as excinfo:
+        compare_schedules(a, b)
+    assert "duplicate relationship pair" in str(excinfo.value)
+    assert "period_b" in str(excinfo.value)
+
+
+def test_relationship_mutation_invariance() -> None:
+    tasks = (_task(1), _task(2), _task(3))
+    a = _sched(*tasks, relations=(_rel(1, 2), _rel(2, 3, lag_minutes=0)))
+    b = _sched(*tasks, relations=(_rel(1, 2, rt=RelationType.SS),
+                                   _rel(2, 3, lag_minutes=480)))
+    a_snapshot = a.model_dump()
+    b_snapshot = b.model_dump()
+    compare_schedules(a, b)
+    assert a.model_dump() == a_snapshot
+    assert b.model_dump() == b_snapshot
