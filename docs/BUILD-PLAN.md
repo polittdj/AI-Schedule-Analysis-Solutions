@@ -860,17 +860,36 @@ against the §5 values in `dcma-14-point-assessment`.
 
 **Dependencies.** Milestones 5, 6, 7.
 
-**Deliverables.** `app/engine/nasa_overlay.py` layering SMH rules on
-the DCMA metrics per `nasa-schedule-management §6`:
+**Deliverables.** (**AM5, landed 2026-04-20 in the M8 PR:** the
+overlay is packaged under `app/overlay/` rather than under
+`app/engine/`. Rationale: `app/engine/` is the pure-computation
+layer (CPM forward/backward, calendar math, constraint application,
+topology, duration helpers) and `app/metrics/` is the frozen-contract
+DCMA layer (§2.14). The NASA overlay is neither pure CPM computation
+nor a new DCMA metric — it is a governance-triage layer that reads
+existing `MetricResult`s and `Task` flags read-only and emits a
+sibling `OverlayResult` with adjusted denominators and informational
+notes. Placing it at `app/overlay/` preserves the engine-never-
+mutates and metrics-never-mutate invariants in §2.13 / §2.14 and
+gives the M11 manipulation engine a stable, single-package import
+surface for consuming governance-triage notes. The class-name
+`TaskData` in the original AC text is superseded by `Task` per AM2
+— the M8 overlay reads `Task.is_schedule_margin` and
+`Task.is_rolling_wave`, both present since M2.) The overlay layers
+NASA Schedule Management Handbook rules on top of the frozen-contract
+DCMA metrics per `nasa-schedule-management §6`:
 
 - High-Float denominator excludes tasks flagged as schedule margin
-  (`TaskData.is_schedule_margin = True`) per
+  (`Task.is_schedule_margin = True`) per
   `nasa-schedule-management §3`.
-- Governance-milestone constraint triage: tasks with MSO/FNLT whose
-  name matches a governance-milestone pattern (KDP, SRR, PDR, CDR,
-  SIR, ORR) produce a triage flag that suppresses the hard-constraint
-  manipulation raise and adds an informational note per
-  `nasa-program-project-governance §§4, 5`.
+- Governance-milestone constraint triage: tasks with MSO/FNLT/MFO/SNLT
+  whose name matches a governance-milestone pattern (KDP, SRR, MDR,
+  PDR, CDR, SIR, ORR, MCR, FRR) produce a triage note that identifies
+  the constraint as governance-driven per
+  `nasa-program-project-governance §§4, 5`. M11's manipulation engine
+  is the downstream consumer and is responsible for suppressing the
+  hard-constraint manipulation raise on flagged tasks; M8 is strictly
+  emit-side for the triage note.
 - Rolling-wave window cross-check: tasks exempted from Metric 8 via
   `is_rolling_wave` are additionally validated against the 6–12 month
   window per `nasa-schedule-management §4`; a near-term rolling-wave
@@ -880,29 +899,48 @@ the DCMA metrics per `nasa-schedule-management §6`:
 
 1. A schedule with 10 incomplete tasks, 3 of which carry
    `is_schedule_margin = True` and have `total_slack > 44 WD`, reports
-   Metric 6 denominator = 7 (not 10).
+   Metric 6 overlay-adjusted denominator = 7 (not 10). The base
+   Metric 6 `MetricResult.denominator` is unchanged; the adjusted
+   denominator lives on the `OverlayResult` sibling.
 2. A task named "CDR Review" with an MFO constraint produces a
-   governance-triage note; Milestone 11's manipulation engine reads
-   the note and does not raise the constraint as manipulation.
-3. The overlay runs after base DCMA metrics; it modifies denominators
-   and emits informational notes but does not rewrite
-   `MetricResult.flagged_tasks` — transparency per §6 below is
-   preserved.
+   governance-triage note on the `OverlayResult`. The note is
+   emitted in a consumer-agnostic structured format (named note kind,
+   `unique_id`, task name, detail string) that M11's manipulation
+   engine will later read.
+3. The overlay runs after base DCMA metrics and reads their
+   `MetricResult`s read-only; it does not mutate the original result.
+   Adjusted numerator / denominator / ratio / severity live on the
+   `OverlayResult`. The original `MetricResult.offenders` list is
+   preserved; transparency per §6 is preserved.
 4. Governance-milestone pattern list is externalized to
-   `app/engine/nasa_milestones.py` so analysts can edit without
-   touching metric code.
+   `app/overlay/nasa_milestones.py` so analysts can edit without
+   touching overlay logic or metric code.
 
 **Test strategy.** Synthetic schedule with tagged schedule-margin
 tasks, a named CDR milestone, and an out-of-window rolling-wave tag.
-Tests verify denominator exclusion, triage-note emission, and
-rolling-wave window cross-check.
+Tests verify denominator exclusion, triage-note emission, rolling-
+wave window cross-check, and mutation-invariance of the upstream
+`MetricResult`s via the `tests/_utils.py` snapshot pattern (adapted
+for `MetricResult` in this milestone).
 
 **File-by-file scope.**
 
-- `app/engine/nasa_overlay.py` — overlay orchestrator.
-- `app/engine/nasa_milestones.py` — governance-milestone name
-  patterns.
-- `tests/test_nasa_overlay.py`.
+- `app/overlay/__init__.py` — re-exports the overlay public API.
+- `app/overlay/nasa_overlay.py` — overlay orchestrator; frozen
+  `OverlayResult`, `OverlayNote`, `OverlayNoteKind`,
+  `ExclusionRecord` contract types; rule functions
+  `apply_schedule_margin_exclusion`,
+  `apply_governance_milestone_triage`,
+  `apply_rolling_wave_window_check`.
+- `app/overlay/nasa_milestones.py` — governance-milestone name-pattern
+  taxonomy (`GOVERNANCE_PATTERNS`, `is_governance_milestone`,
+  `match_governance_pattern`).
+- `app/overlay/exceptions.py` — `OverlayError`,
+  `MissingMetricResultError`.
+- `app/overlay/README.md` — rule-by-rule documentation, skill
+  citations, and M11-consumer contract.
+- `tests/test_overlay_nasa.py` — rule tests.
+- `tests/test_overlay_milestones.py` — pattern tests.
 
 **Skills referenced.** `nasa-schedule-management` (§§3, 4, 6),
 `nasa-program-project-governance` (§§4, 5), `dcma-14-point-assessment`
@@ -1425,6 +1463,7 @@ out-of-scope but none block any Phase 1 milestone from shipping.
 | DCMA Metric 3 — 09NOV09 5-day MSP/OpenPlan carve-out   | M5             | Post-Phase-1 (P6/XER ingestion work)    | Needs per-file tool-provenance detection (MSP / OpenPlan / P6). The Phase 1 parser is MPP-only, so the carve-out is latent.          |
 | `CPMOptions.auto_synthesize_calendar` default flip T→F | M4 / M5 / M6   | Post-M14 cleanup session                | Existing M6 fixtures do not universally carry explicit calendars; flipping the default at M7 time would force a wide fixture sweep.  |
 | Metric 12 CPT +600-WD `model_copy` probe               | M7             | Phase 2 cross-check                     | Phase 1 ships the structural zero-slack-traversal variant (see M7 deliverables); the +600-WD probe is available as a future check.   |
+| Metric 9 / Metric 14 offender-value narrative enrichment | M7 (audit minors) | M13 (UI) or a dedicated narrative-layer sweep | M7 shipped structurally complete offender lists (UniqueID + name + machine-parseable value). Human-readable offender narratives (date-delta phrasing for M9; baseline-vs-actual pairing for M14) are a narrative-layer concern landing with the UI drill-down. |
 
 Each entry is restated in the relevant milestone's deliverables /
 notes so a build session reading only §5 does not miss it. The
