@@ -397,3 +397,139 @@ def test_overlay_echoes_metric_id_verbatim() -> None:
     sched = _build_schedule(margin_uids=set(), total=5)
     overlay = apply_schedule_margin_exclusion(synth, sched)
     assert overlay.metric_id == "DCMA-06"
+
+
+# --------------------------------------------------------------------
+# DCMA §3 eligibility — a schedule-margin task that is also LOE
+# (via Task.is_loe flag) is dropped by §3 first, so it does NOT count
+# toward the margin-exclusion set (same no-double-count guarantee as
+# the summary case; covers the explicit is_loe branch in _is_loe and
+# the exclude_loe branch in _is_dcma_eligible).
+# --------------------------------------------------------------------
+
+
+def test_is_loe_flag_margin_task_not_double_counted() -> None:
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="LOE margin",
+            duration_minutes=480,
+            is_loe=True,
+            is_schedule_margin=True,
+        ),
+    ] + [
+        _make_task(i, is_schedule_margin=(i in {3, 7}))
+        for i in range(2, 11)
+    ]
+    sched = Schedule(
+        name="loe_flag_margin_fixture",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=[],
+        calendars=[_std_cal()],
+    )
+    cpm = _cpm_with_tf({i: 0 for i in range(1, 11)})
+
+    original = run_high_float(sched, cpm)
+    # Eligible: UIDs 2..10 (9 tasks); UID 1 dropped as LOE by §3.
+    assert original.denominator == 9
+
+    overlay = apply_schedule_margin_exclusion(original, sched)
+    # 2 schedule-margin tasks (UIDs 3, 7) survive §3 filtering;
+    # UID 1 is not counted a second time as margin-excluded.
+    assert overlay.adjusted_denominator == 7
+    assert {e.unique_id for e in overlay.tasks_excluded_from_denominator} == {
+        3, 7
+    }
+
+
+# --------------------------------------------------------------------
+# DCMA §3 eligibility — LOE detection via MetricOptions.
+# loe_name_patterns fallback. Task has is_loe=False but a name that
+# matches an opt-in pattern; the overlay must apply the same
+# name-pattern fallback the upstream metric does so the exclusion
+# accounting lines up (covers the name-pattern branch in _is_loe).
+# --------------------------------------------------------------------
+
+
+def test_loe_name_pattern_margin_task_not_double_counted() -> None:
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Level of Effort support",
+            duration_minutes=480,
+            is_loe=False,
+            is_schedule_margin=True,
+        ),
+    ] + [
+        _make_task(i, is_schedule_margin=(i in {3, 7}))
+        for i in range(2, 11)
+    ]
+    sched = Schedule(
+        name="loe_pattern_margin_fixture",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=[],
+        calendars=[_std_cal()],
+    )
+    cpm = _cpm_with_tf({i: 0 for i in range(1, 11)})
+
+    opts = MetricOptions(loe_name_patterns=("Level of Effort",))
+    original = run_high_float(sched, cpm, options=opts)
+    # Eligible: UIDs 2..10 (9 tasks); UID 1 dropped as LOE by §3
+    # via the name-pattern fallback.
+    assert original.denominator == 9
+
+    overlay = apply_schedule_margin_exclusion(original, sched, options=opts)
+    # UID 1 is not counted a second time as margin-excluded; only
+    # UIDs 3 and 7 appear in the exclusion set.
+    assert overlay.adjusted_denominator == 7
+    assert {e.unique_id for e in overlay.tasks_excluded_from_denominator} == {
+        3, 7
+    }
+
+
+# --------------------------------------------------------------------
+# DCMA §3 eligibility — a 100%-complete schedule-margin task is
+# dropped by §3 (exclude_completed) before the overlay sees it, so it
+# does NOT count toward the margin-exclusion set (covers the
+# exclude_completed branch in _is_dcma_eligible).
+# --------------------------------------------------------------------
+
+
+def test_completed_margin_task_not_double_counted() -> None:
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="Completed margin",
+            duration_minutes=480,
+            percent_complete=100.0,
+            is_schedule_margin=True,
+        ),
+    ] + [
+        _make_task(i, is_schedule_margin=(i in {3, 7}))
+        for i in range(2, 11)
+    ]
+    sched = Schedule(
+        name="completed_margin_fixture",
+        project_start=ANCHOR,
+        tasks=tasks,
+        relations=[],
+        calendars=[_std_cal()],
+    )
+    cpm = _cpm_with_tf({i: 0 for i in range(1, 11)})
+
+    original = run_high_float(sched, cpm)
+    # Eligible: UIDs 2..10 (9 tasks); UID 1 dropped as completed by §3.
+    assert original.denominator == 9
+
+    overlay = apply_schedule_margin_exclusion(original, sched)
+    # UID 1 is not counted a second time; only UIDs 3 and 7 appear
+    # in the exclusion set.
+    assert overlay.adjusted_denominator == 7
+    assert {e.unique_id for e in overlay.tasks_excluded_from_denominator} == {
+        3, 7
+    }
