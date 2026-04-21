@@ -75,6 +75,50 @@ class MissingCalendarError(EngineError):
         )
 
 
+class DrivingPathError(EngineError):
+    """Raised by the M10 driving-path tracer on irrecoverable conditions.
+
+    Distinct from :class:`ConstraintViolation` (soft CPM signal) and
+    from :class:`FocusPointError` (Focus Point resolution failure).
+    Driving-path-specific conditions that raise this exception:
+
+    * ``cpm_result`` is ``None`` on a call to
+      :func:`app.engine.driving_path.trace_driving_path` — the M4
+      engine is the sole producer of CPM output per BUILD-PLAN
+      §2.17; the trace module refuses to compute CPM on its own.
+    * Cross-version focus-point disambiguation failure — the
+      anchor (:class:`~app.engine.driving_path_types.FocusPointAnchor`)
+      resolves to different UniqueIDs in Period A and Period B, so
+      comparing the two chains would compare apples to oranges.
+    """
+
+
+class FocusPointError(EngineError):
+    """Raised when a Focus Point cannot be resolved.
+
+    Distinct from :class:`DrivingPathError`. Conditions that raise
+    :class:`FocusPointError`:
+
+    * A caller passes an integer ``focus_spec`` whose UniqueID does
+      not appear in ``Schedule.tasks``.
+    * A caller passes
+      :attr:`~app.engine.driving_path_types.FocusPointAnchor.PROJECT_FINISH`
+      on a schedule with zero tasks, or with zero candidate finish
+      milestones (every task has at least one outgoing relation —
+      unusual but legal).
+    * Symmetric failures for
+      :attr:`~app.engine.driving_path_types.FocusPointAnchor.PROJECT_START`.
+
+    The exception carries a diagnostic ``detail`` message suitable
+    for UI surfacing; callers catch :class:`FocusPointError` and
+    render the message without exposing a stack trace.
+    """
+
+    def __init__(self, detail: str) -> None:
+        self.detail = detail
+        super().__init__(detail)
+
+
 class InvalidConstraintError(EngineError):
     """Raised when a constraint is structurally impossible to apply.
 
