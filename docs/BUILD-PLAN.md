@@ -952,45 +952,100 @@ for `MetricResult` in this milestone).
 
 **Dependencies.** Milestones 2, 3.
 
-**Deliverables.** `app/engine/comparator.py` matching two
-`ScheduleData` by UniqueID, emitting `ComparatorResult` with
-per-UID field deltas. Filter per `forensic-manipulation-patterns §3.2`
-and `driving-slack-and-paths §10`: Period A finish ≤ Period B status
-date tags the delta `is_legitimate_actual = True`. Filter tags rather
-than deletes; UI separates "legitimate" from "candidate manipulation."
+**Deliverables.** (**AM6, 2026-04-20 M9 Block 0 reconciliation:** the
+M2 AM2 rename — the as-implemented container class is `Schedule`,
+not `ScheduleData` — propagates into the M9 comparator surface. The
+comparator matches two `Schedule` instances by UniqueID and emits
+`ComparatorResult` with per-UID `TaskDelta`s and per-relationship
+`RelationshipDelta`s. Field names on the `Task` model are flat
+(`constraint_type`, `total_slack_minutes`, `free_slack_minutes`,
+`duration_minutes`, etc.) per M2; the original §5 M9 AC#3 text
+`constraint.type` / `total_slack` / `free_slack` is superseded by the
+flat-field names below.) `app/engine/comparator.py` matches two
+`Schedule` instances by UniqueID and emits `ComparatorResult` with
+per-UID field deltas and per-relationship deltas. Filter per
+`forensic-manipulation-patterns §3.2` and
+`driving-slack-and-paths §10`: a matched task whose Period A `finish`
+is less than or equal to Period B `status_date` is tagged
+`is_legitimate_actual = True`. Filter tags rather than deletes; UI
+separates "legitimate" from "candidate manipulation."
+
+**Relationship-delta scope decision (Block 0 §2.3, Option A).**
+`RelationshipDelta` is a separate frozen Pydantic v2 model added to
+`app/engine/delta.py`. It carries predecessor/successor UniqueIDs,
+a `RelationshipPresence` (MATCHED / ADDED_IN_B / DELETED_FROM_A),
+and a tuple of `FieldDelta` rows for `relation_type` and
+`lag_minutes` changes on matched pairs. Rationale: M10 (driving
+path) will consume `RelationshipDelta` independently of
+`TaskDelta`, and M11 (manipulation) will score both as distinct
+Tier-2 patterns. Folding relationship changes into `TaskDelta`
+would entangle the two consumer paths and break the frozen-
+contract pattern.
 
 **Acceptance criteria.**
 
-1. Given two `ScheduleData` instances with 50 tasks each, 40 of them
-   matching by UniqueID, 5 added in B, 5 deleted from A, the
-   comparator emits 40 matched deltas + 5 additions + 5 deletions.
-   Total records: 50.
+1. Given two `Schedule` instances with 50 tasks each, 40 matching by
+   UniqueID, 5 added in B, 5 deleted from A, the comparator emits
+   40 matched `TaskDelta`s (`TaskPresence.MATCHED`) + 5
+   `ADDED_IN_B` + 5 `DELETED_FROM_A`. Total records: 50.
 2. A matched task whose Period A `finish = 2026-03-15` and Period B
    `status_date = 2026-03-31` is tagged `is_legitimate_actual = True`
-   regardless of Period B field changes.
-3. Per-field deltas include `total_slack`, `free_slack`,
-   `baseline_finish`, forecast `finish`, `constraint.type`,
-   `duration_minutes`, `actual_start`, `actual_finish`, and incident
-   relationship changes.
-4. UniqueID match only — `ID` and `name` are not used (enforce via
-   regression test that renames all tasks in Period B and verifies the
-   match count is unchanged).
-5. Calendar-day conversion for date slips happens at the presentation
-   layer; internal slip deltas are raw `timedelta`.
+   regardless of Period B field changes (the skill-anchored
+   predicate: Period A finish ≤ Period B status date; see
+   `forensic-manipulation-patterns §3.2` and
+   `driving-slack-and-paths §10`).
+3. Per-field deltas on matched tasks include (all verified
+   present on `Task` as of Block 0): `total_slack_minutes`,
+   `free_slack_minutes`, `baseline_finish`, forecast `finish`,
+   `constraint_type` (flat enum field), `duration_minutes`,
+   `actual_start`, `actual_finish`. Relationship-incident changes
+   are emitted as `RelationshipDelta` rows, not as fields on
+   `TaskDelta`.
+4. UniqueID match only — `Task.task_id` and `Task.name` are never
+   consulted (enforce via regression test that renames every task in
+   Period B and verifies the matched-delta count is unchanged).
+5. Timedelta vs. minutes convention. `FieldDelta` records
+   `period_a_value` and `period_b_value` verbatim: datetime values
+   for date fields (consumers derive the `timedelta`), integer
+   minutes for duration / slack fields (per §2.16 minutes-as-
+   canonical-internal-unit). Calendar-day conversion for date slips
+   happens at the presentation layer; no `timedelta` is pre-computed
+   on `FieldDelta`.
+6. Status-date windowing. Either status date `None` ⇒
+   `is_legitimate_actual = False` with an explanatory absence. Tasks
+   with `TaskPresence.ADDED_IN_B` or `DELETED_FROM_A` are never
+   tagged legitimate (structure change, not status-driven
+   progression).
 
 **Test strategy.** Paired synthetic schedules with known differences
 (added task, deleted task, renamed task, legitimate actuals within
-window, suspected manipulation outside window). Tests
-`tests/test_comparator.py` and `tests/test_windowing_filter.py`.
+window, suspected manipulation outside window). One test module per
+production module, following the M4–M8 `tests/test_engine_*.py`
+convention: `tests/test_engine_comparator.py`,
+`tests/test_engine_windowing.py`, `tests/test_engine_delta.py`.
+Integration test in `tests/test_engine_comparator_integration.py`.
+(Original §5 M9 test filenames `tests/test_comparator.py` /
+`tests/test_windowing_filter.py` are superseded.)
 
 **File-by-file scope.**
 
-- `app/engine/comparator.py` — UniqueID-matched diff.
-- `app/engine/windowing.py` — status-date predicate.
 - `app/engine/delta.py` — `FieldDelta`, `TaskDelta`,
-  `ComparatorResult` Pydantic models.
-- `tests/test_comparator.py`.
-- `tests/test_windowing_filter.py`.
+  `RelationshipDelta`, `ComparatorResult` Pydantic v2 models plus
+  the `DeltaType`, `TaskPresence`, `RelationshipPresence`
+  `StrEnum`s.
+- `app/engine/windowing.py` — skill-anchored status-date predicate
+  (`is_legitimate_actual`).
+- `app/engine/comparator.py` — UniqueID-matched diff (task-field
+  pass + relationship pass).
+- `app/engine/__init__.py` — public-API exports for the above.
+- `app/engine/README.md` — extended with the comparator section.
+- `tests/test_engine_delta.py` — frozen-contract tests on the
+  delta models and enums.
+- `tests/test_engine_windowing.py` — predicate edge-case table.
+- `tests/test_engine_comparator.py` — task-field diff + relationship
+  diff + matching + legitimate-actual tagging.
+- `tests/test_engine_comparator_integration.py` — paired 30-task
+  integration scenario.
 
 **Skills referenced.** `forensic-manipulation-patterns` (§3.2),
 `driving-slack-and-paths` (§10), `nasa-schedule-management` (§8),
