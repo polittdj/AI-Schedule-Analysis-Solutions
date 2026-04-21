@@ -224,7 +224,7 @@ _RELATION_FIELDS: tuple[str, ...] = ("relation_type", "lag_minutes")
 def _index_relations_by_pair(
     relations: list[Relation], side: str
 ) -> dict[tuple[int, int], Relation]:
-    """Build a ``(predecessor_uid, successor_uid) → Relation`` map.
+    """Build a ``(predecessor_unique_id, successor_unique_id) → Relation`` map.
 
     The Relation model permits multiple links between the same pair
     with different ``relation_type`` values (see docstring on
