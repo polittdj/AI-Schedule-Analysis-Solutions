@@ -1057,43 +1057,168 @@ Integration test in `tests/test_engine_comparator_integration.py`.
 
 **Dependencies.** Milestones 4, 9.
 
-**Deliverables.** `app/engine/driving_path.py` with
-`trace_driving_path(schedule, focus_uid) -> DrivingPathResult`.
-Backward walk along zero-relationship-slack edges per
-`driving-slack-and-paths §5`. Emits ordered chain + per-link slack
-table. Cross-version mode reports driving-predecessor added/removed/
-retained from Period A to B (matched by UniqueID per §2.7).
+**Deliverables.** (**AM7, 2026-04-20 M10 Block 0 reconciliation:** the
+contract / reuse / filename decisions below supersede the original
+§5 M10 scope text.) `app/engine/driving_path.py` with
+`trace_driving_path(schedule, focus_spec, cpm_result) ->
+DrivingPathResult` and `trace_driving_path_cross_version(...)
+-> DrivingPathCrossVersionResult`. Backward walk along zero-
+relationship-slack edges per `driving-slack-and-paths §5`. Emits
+ordered chain + per-link relationship-slack table + non-driving
+predecessor secondary list. Cross-version mode reports driving-
+predecessor added/removed/retained from Period A to B (matched by
+UniqueID per §2.7); Period A slack is the sole but-for reference
+per `driving-slack-and-paths §9`.
+
+**Block 0 reconciliation decisions.**
+
+- **SSI skill coverage (Block 0 §2.1).** The skill explicitly covers
+  the Y → X → Predecessor 3 → Focus Point four-node chain (§2 final
+  paragraph / SSI slide 22) with FS links and zero relationship
+  slack. The test fixture reconstructs this example from first
+  principles (zero-lag FS means predecessor EF = successor ES, so
+  working-minute gap = 0 on every link); per-tier DS values emerge
+  from the CPM forward/backward pass and are asserted in the
+  fixture test rather than taken verbatim from the skill.
+
+- **Relationship-slack source (Block 0 §2.2).** `Relation` does not
+  carry a `relationship_slack_minutes` field and will not. M10
+  reuses `app.engine.relations.link_driving_slack_minutes` (M4) to
+  compute per-link slack at query time from `CPMResult`
+  early-start / early-finish + the relation's `lag_minutes`. This
+  is the same path the M4 `driving_slack_to_focus` helper already
+  uses.
+
+- **M4 helper reuse (Block 0 §2.3).** The existing
+  `app.engine.paths.driving_slack_to_focus` helper returns a
+  `{unique_id: driving_slack_minutes}` map — useful as a CPM-level
+  primitive but insufficient for M10's ordered-chain + per-link
+  output. M10 selects **Option C**: a fresh backward-walk
+  implementation in `app/engine/driving_path.py` that reuses the
+  `link_driving_slack_minutes` primitive (M4's per-link slack
+  calculator) but produces the ordered chain + parallel link list
+  + non-driving-predecessor list that M11 and the UI consume.
+  `driving_slack_to_focus` remains untouched as a lower-level
+  primitive.
+
+- **Cross-version comparator reuse (Block 0 §2.4).** M10 selects
+  **Option B**: lightweight inline UniqueID matching on chain UID
+  sets only. The M9 comparator emits full task-level and
+  relationship-level deltas for the entire schedule, which is
+  heavier than M10 needs — driving-path cross-version reporting is
+  scoped to predecessor-chain churn, not full-schedule diff. M10
+  calls `trace_driving_path` twice (once per period) and computes
+  `A_uids − B_uids`, `B_uids − A_uids`, `A_uids ∩ B_uids` directly.
+
+- **Result contract (Block 0 §2.5).** Frozen Pydantic v2 models —
+  `DrivingPathNode`, `DrivingPathLink`, `NonDrivingPredecessor`,
+  `DrivingPathResult`, `DrivingPathCrossVersionResult` — landing in
+  `app/engine/driving_path_types.py` so the trace module stays
+  focused on logic. `FocusPointAnchor` is a `StrEnum` with
+  `PROJECT_FINISH` and `PROJECT_START`. Chain-link length invariant
+  (`len(links) == max(0, len(chain) − 1)`) is enforced by a
+  Pydantic `model_validator`.
+
+- **Test filename alignment (Block 0 §2.7).** Tests follow the
+  M4–M9 `tests/test_engine_*.py` convention:
+  `tests/test_engine_driving_path_types.py`,
+  `tests/test_engine_focus_point.py`,
+  `tests/test_engine_driving_path.py`,
+  `tests/test_engine_driving_path_ssi_example.py`,
+  `tests/test_engine_driving_path_cross_version.py`,
+  `tests/test_engine_driving_path_integration.py`. The original
+  §5 M10 filenames `tests/test_driving_path_ssi_example.py` /
+  `tests/test_driving_path_cross_version.py` are superseded.
+
+- **`cpm_result` handling.** `trace_driving_path` requires a
+  non-`None` `CPMResult` — the engine is the sole producer per
+  §2.17; the trace module is a read-only consumer. Passing `None`
+  raises `DrivingPathError` with an explanatory message.
+
+- **Multi-driving-predecessor tie-break.** When a task has two or
+  more driving predecessors (relationship slack = 0 on every
+  incoming link), the walk follows the predecessor with the lowest
+  UniqueID, and the non-followed driver(s) are appended to
+  `non_driving_predecessors` with `relationship_slack_minutes = 0`
+  so the UI can surface the multi-branch case without widening the
+  contract. Rationale: the skill (§7) does not specify a tie-break;
+  lowest-UID ordering is deterministic and audit-traceable.
+
+- **Cross-version focus-point disambiguation.** When
+  `focus_spec = FocusPointAnchor.PROJECT_FINISH` (or `PROJECT_START`)
+  resolves to different UIDs in Period A and Period B,
+  `trace_driving_path_cross_version` raises `DrivingPathError`
+  rather than silently comparing two different chains. The
+  operator must pass an explicit integer UID to proceed.
 
 **Acceptance criteria.**
 
 1. On the SSI multi-tier worked example from
-   `driving-slack-and-paths §2.4` (Y → X → Predecessor 3 → Focus
-   Point, all FS, all zero slack), `trace_driving_path` returns a
-   four-node chain terminating at Focus Point with relationship slack
-   = 0 on every link.
-2. The Focus Point is operator-configurable — the function accepts any
-   UniqueID, not just the project finish milestone. Project critical
-   path is a special case where the focus is the project finish.
-3. Non-driving predecessors (relationship slack > 0) terminate that
-   branch of the walk and are reported in a secondary list with their
-   slack values.
+   `driving-slack-and-paths §2.4` / slide 22 (Y → X → Predecessor 3
+   → Focus Point, all FS, all zero slack), `trace_driving_path`
+   returns a four-node chain terminating at Focus Point with
+   relationship slack = 0 on every link. Exercised by
+   `tests/test_engine_driving_path_ssi_example.py::test_ssi_four_tier_chain`.
+2. The Focus Point is operator-configurable — the function accepts
+   any UniqueID, not just the project finish milestone, and also
+   accepts `FocusPointAnchor.PROJECT_FINISH` / `PROJECT_START`. The
+   project critical path is the special case `focus_spec =
+   PROJECT_FINISH`. Exercised by
+   `tests/test_engine_focus_point.py` and
+   `tests/test_engine_driving_path.py::test_trace_with_int_uid`.
+3. Non-driving predecessors (relationship slack > 0) terminate
+   that branch of the walk and are reported in
+   `DrivingPathResult.non_driving_predecessors` with their slack
+   values, predecessor / successor UID+name, and relation type.
+   Exercised by
+   `tests/test_engine_driving_path_ssi_example.py::test_ssi_multi_branch_non_driving`
+   and `tests/test_engine_driving_path.py::test_branching_non_driving_predecessor`.
 4. Period A slack is used exclusively for but-for analysis per
-   `driving-slack-and-paths §9`. Cross-version call returns deltas
-   against Period A, not Period B.
-5. Every chain node carries `unique_id` and `name` for drill-down.
+   `driving-slack-and-paths §9`. The cross-version result frames
+   added / removed / retained UID sets from Period A's perspective;
+   Period B's trace is descriptive (displayed) but never
+   prescriptive. Exercised by
+   `tests/test_engine_driving_path_cross_version.py::test_period_a_slack_rule`.
+5. Every chain node carries `unique_id` and `name`; every link
+   carries predecessor / successor UIDs, `relation_type`,
+   `lag_minutes`, and `relationship_slack_minutes` for drill-down.
+   Exercised by
+   `tests/test_engine_driving_path_types.py` and
+   `tests/test_engine_driving_path.py::test_linear_fs_chain`.
 
-**Test strategy.** SSI-anchored tests reconstruct the slide 14–22
-example exactly and assert DS values at each tier. Multi-branch test
-verifies non-driving predecessors terminate correctly. Cross-version
-test verifies Period A slack is used.
+**Test strategy.** SSI-anchored tests reconstruct the slide 22
+example exactly and assert the four-node chain + zero relationship
+slack on every link. Multi-branch test verifies non-driving
+predecessors terminate correctly. Cross-version tests verify the
+added / removed / retained UID sets and the Period A slack rule.
+Mutation-invariance tests snapshot `Schedule.model_dump()` and
+`cpm_result_snapshot(...)` before / after every trace call.
 
 **File-by-file scope.**
 
-- `app/engine/driving_path.py` — trace function.
-- `app/engine/focus_point.py` — Focus Point resolver (UniqueID or
-  predefined anchor).
-- `tests/test_driving_path_ssi_example.py`.
-- `tests/test_driving_path_cross_version.py`.
+- `app/engine/driving_path_types.py` — frozen Pydantic v2 result
+  contract: `DrivingPathNode`, `DrivingPathLink`,
+  `NonDrivingPredecessor`, `DrivingPathResult`,
+  `DrivingPathCrossVersionResult`, `FocusPointAnchor`.
+- `app/engine/focus_point.py` — `resolve_focus_point` and the
+  `FocusPointError` exception.
+- `app/engine/driving_path.py` — `trace_driving_path`,
+  `trace_driving_path_cross_version`, and the `DrivingPathError`
+  exception.
+- `app/engine/__init__.py` — additive re-exports of the M10
+  public API.
+- `app/engine/README.md` — extended with a "Driving path analysis
+  (Milestone 10)" section.
+- `tests/test_engine_driving_path_types.py` — frozen-contract
+  tests.
+- `tests/test_engine_focus_point.py` — resolver edge cases.
+- `tests/test_engine_driving_path.py` — unit tests for the trace.
+- `tests/test_engine_driving_path_ssi_example.py` — the AC #1
+  SSI fixture reconstruction.
+- `tests/test_engine_driving_path_cross_version.py` — cross-
+  version mode + Period A slack rule.
+- `tests/test_engine_driving_path_integration.py` — paired-
+  schedule end-to-end integration.
 
 **Skills referenced.** `driving-slack-and-paths` (§§2, 3, 5, 7, 9),
 `mpp-parsing-com-automation` (§5).
