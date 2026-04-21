@@ -211,9 +211,13 @@ class ComparatorResult(BaseModel):
     """UniqueIDs present in Period A but not Period B."""
 
     matched_task_count: int
-    """Count of UniqueIDs present in both periods. Equivalent to
-    ``len([d for d in task_deltas if d.presence ==
-    TaskPresence.MATCHED])``; pre-computed for O(1) access."""
+    """Count of UniqueIDs present in both schedules (structural
+    intersection of A ∩ B). Reported independently of
+    :attr:`~app.engine.comparator.ComparatorOptions.include_unchanged_matched_tasks`:
+    when that option is ``False``, quiet matches (zero
+    ``field_deltas``) are dropped from ``task_deltas`` for UI
+    ergonomics, but ``matched_task_count`` still reports the full
+    intersection size. Pre-computed for O(1) access."""
 
 
 __all__ = [
