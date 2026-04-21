@@ -31,6 +31,18 @@ from app.engine.delta import (
     TaskDelta,
     TaskPresence,
 )
+from app.engine.driving_path import (
+    trace_driving_path,
+    trace_driving_path_cross_version,
+)
+from app.engine.driving_path_types import (
+    DrivingPathCrossVersionResult,
+    DrivingPathLink,
+    DrivingPathNode,
+    DrivingPathResult,
+    FocusPointAnchor,
+    NonDrivingPredecessor,
+)
 from app.engine.duration import (
     minutes_to_working_days,
     working_days_to_minutes,
@@ -38,10 +50,13 @@ from app.engine.duration import (
 from app.engine.exceptions import (
     CircularDependencyError,
     ConstraintViolation,
+    DrivingPathError,
     EngineError,
+    FocusPointError,
     InvalidConstraintError,
     MissingCalendarError,
 )
+from app.engine.focus_point import resolve_focus_point
 from app.engine.options import CPMOptions
 from app.engine.paths import (
     critical_path_chains,
@@ -61,10 +76,18 @@ __all__ = [
     "ComparatorResult",
     "ConstraintViolation",
     "DeltaType",
+    "DrivingPathCrossVersionResult",
+    "DrivingPathError",
+    "DrivingPathLink",
+    "DrivingPathNode",
+    "DrivingPathResult",
     "EngineError",
     "FieldDelta",
+    "FocusPointAnchor",
+    "FocusPointError",
     "InvalidConstraintError",
     "MissingCalendarError",
+    "NonDrivingPredecessor",
     "RelationshipDelta",
     "RelationshipPresence",
     "TaskCPMResult",
@@ -77,5 +100,8 @@ __all__ = [
     "is_legitimate_actual",
     "minutes_to_working_days",
     "near_critical_chain",
+    "resolve_focus_point",
+    "trace_driving_path",
+    "trace_driving_path_cross_version",
     "working_days_to_minutes",
 ]

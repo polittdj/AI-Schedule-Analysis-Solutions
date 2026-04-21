@@ -200,6 +200,9 @@ Tests:
 | `delta.py`         | M9 comparator contract — `FieldDelta`, `TaskDelta`, `RelationshipDelta`, `ComparatorResult` + `DeltaType` / `TaskPresence` / `RelationshipPresence` enums. |
 | `windowing.py`     | M9 status-date windowing predicate `is_legitimate_actual`. |
 | `comparator.py`    | M9 cross-version `compare_schedules` — UniqueID-only matching, per-field and per-relationship deltas. |
+| `driving_path_types.py` | M10 frozen contract — `DrivingPathNode`, `DrivingPathLink`, `NonDrivingPredecessor`, `DrivingPathResult`, `DrivingPathCrossVersionResult`, `FocusPointAnchor`. |
+| `focus_point.py`   | M10 Focus Point resolver — maps an int UID or `FocusPointAnchor` to a concrete `Task.unique_id`. |
+| `driving_path.py`  | M10 backward-walk tracer — `trace_driving_path` + `trace_driving_path_cross_version`. |
 
 ## Cross-version comparator (Milestone 9)
 
@@ -249,3 +252,89 @@ Forensic-integrity raises:
   `(pred_uid, succ_uid)` within a schedule (the pair-key matching
   is ambiguous on concurrent FS + SS links; a future extension
   could switch to the `(pred, succ, type)` triple).
+
+## Driving path analysis (Milestone 10)
+
+`trace_driving_path(schedule, focus_spec, cpm_result) ->
+DrivingPathResult` and
+`trace_driving_path_cross_version(period_a, period_b, focus_spec,
+period_a_cpm_result, period_b_cpm_result) ->
+DrivingPathCrossVersionResult` are the M10 task-specific driving
+path tracers.
+
+Mission:
+
+1. **Operator-nominated Focus Point.** The analyst picks a Focus
+   Point — either a specific `Task.unique_id` or a predefined
+   `FocusPointAnchor` (`PROJECT_FINISH` / `PROJECT_START`). The
+   project critical path is a special case of the driving path
+   with `focus_spec = FocusPointAnchor.PROJECT_FINISH` per
+   `driving-slack-and-paths §1`. The resolver lives in
+   `app/engine/focus_point.py` and is read-only.
+2. **Backward walk on zero-relationship-slack edges.** Per
+   `driving-slack-and-paths §5`, the trace starts at the Focus
+   Point and walks incoming relations. An edge with relationship
+   slack = 0 is a driving edge (followed); an edge with
+   relationship slack > 0 is non-driving (recorded and terminates
+   that branch). Per-link slack is computed via
+   `app.engine.relations.link_driving_slack_minutes` (the M4
+   per-relation-type formulas from
+   `driving-slack-and-paths §3`), not recomputed locally.
+3. **Non-mutation contract.** Neither `Schedule` nor `CPMResult`
+   is written to. `cpm_result_snapshot(...)` + `model_dump()`
+   byte-equality is asserted around every trace call in the unit
+   tests. `cpm_result=None` raises `DrivingPathError` rather than
+   running CPM internally — the engine is the sole producer of
+   CPM data per BUILD-PLAN §2.17.
+4. **Period A slack rule.** Per `driving-slack-and-paths §9`,
+   cross-version but-for analysis uses Period A slack
+   exclusively. The cross-version result stores both periods'
+   traces (`period_a_result` and `period_b_result`) for UI
+   display, but the `added_predecessor_uids` /
+   `removed_predecessor_uids` / `retained_predecessor_uids` sets
+   are framed from Period A's perspective. Period B slack is
+   descriptive, never prescriptive — using it would be circular
+   (a task that became a driver *because* of the Period B change
+   will read zero slack in Period B).
+5. **Forensic drill-down.** Every `DrivingPathNode` carries
+   `unique_id` + `name`; every `DrivingPathLink` carries
+   predecessor / successor UIDs + `relation_type` + `lag_minutes`
+   + `relationship_slack_minutes`; every
+   `NonDrivingPredecessor` carries both endpoints' UIDs and
+   names + the slack value that terminated the branch. No
+   black-box output per BUILD-PLAN §6 AC bar #3.
+6. **Multi-driver tie-break.** When a chain task has two or more
+   zero-slack incoming edges, the walk follows the predecessor
+   with the lowest `Task.unique_id`. The non-followed driver(s)
+   land on `non_driving_predecessors` with
+   `relationship_slack_minutes = 0` so the UI can surface the
+   parallel-driver case without widening the contract. This
+   tie-break is deterministic and audit-traceable.
+7. **Cross-version anchor disambiguation.** When a
+   `FocusPointAnchor` resolves to different UIDs in Period A and
+   Period B, `trace_driving_path_cross_version` raises
+   `DrivingPathError` rather than silently comparing different
+   chains. The operator must pass an explicit integer UID to
+   compare two different focus milestones.
+
+Downstream consumption convention:
+
+* **M11 (manipulation scoring)** will consume
+  `DrivingPathCrossVersionResult.added_predecessor_uids` /
+  `removed_predecessor_uids` / `retained_predecessor_uids` for
+  its driving-predecessor churn detector per
+  `forensic-manipulation-patterns §7` and §9. The frozen-contract
+  posture of the result tree means the manipulation engine reads
+  predecessor churn without widening the M10 API.
+* **M12 / M13 (AI narrative and UI)** will render the chain,
+  the per-link slack table, the non-driving-predecessor
+  secondary list, and the cross-version delta sets with
+  UniqueID + name citations throughout.
+
+Forensic-integrity raises:
+
+* `DrivingPathError` — `cpm_result=None` or cross-version anchor
+  divergence.
+* `FocusPointError` — unresolvable `focus_spec` (integer UID not
+  in schedule, `PROJECT_FINISH` / `PROJECT_START` on empty or
+  cyclic-only schedules).
