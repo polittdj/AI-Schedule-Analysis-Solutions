@@ -359,16 +359,10 @@ def test_schedule_with_no_status_date_matched_is_not_legitimate() -> None:
 
 
 def test_duplicate_unique_id_raises_comparator_error() -> None:
-    # Bypass the Schedule G10 validator by constructing via model_copy
-    # with an update that forces a duplicate. The M2 validator
-    # short-circuits duplicate task lists, so we build a direct-
-    # construct schedule without validators — model_validate skips
-    # the model-validator by default? No, model_validate still runs
-    # validators. The only way to smuggle duplicates is to directly
-    # mutate tasks after construction, which Pydantic v2 rejects on
-    # frozen models but Schedule is not frozen. Test it.
+    # Bypass the Schedule G10 validator (which rejects duplicate UIDs
+    # at construction) by appending to Schedule.tasks post-construction
+    # to exercise the comparator's runtime duplicate-UID defense path.
     a = _sched(_task(1), _task(2))
-    # Force a duplicate via list mutation (Schedule.tasks is a list).
     a.tasks.append(_task(1, name="dup"))  # type: ignore[call-arg]
     b = _sched(_task(1))
     with pytest.raises(ComparatorError) as excinfo:
