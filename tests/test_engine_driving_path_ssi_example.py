@@ -39,7 +39,6 @@ from app.models.schedule import Schedule
 from app.models.task import Task
 from tests._utils import cpm_result_snapshot
 
-
 ANCHOR = datetime(2026, 4, 20, 8, 0, tzinfo=UTC)
 
 

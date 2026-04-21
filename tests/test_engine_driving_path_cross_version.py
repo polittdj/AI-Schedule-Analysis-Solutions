@@ -17,12 +17,10 @@ from app.engine.driving_path import trace_driving_path_cross_version
 from app.engine.driving_path_types import FocusPointAnchor
 from app.engine.exceptions import DrivingPathError, FocusPointError
 from app.models.calendar import Calendar
-from app.models.enums import RelationType
 from app.models.relation import Relation
 from app.models.schedule import Schedule
 from app.models.task import Task
 from tests._utils import cpm_result_snapshot
-
 
 ANCHOR = datetime(2026, 4, 20, 8, 0, tzinfo=UTC)
 

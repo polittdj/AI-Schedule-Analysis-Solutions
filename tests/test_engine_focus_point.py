@@ -20,7 +20,6 @@ from app.models.relation import Relation
 from app.models.schedule import Schedule
 from app.models.task import Task
 
-
 ANCHOR = datetime(2026, 4, 20, 8, 0, tzinfo=UTC)
 
 

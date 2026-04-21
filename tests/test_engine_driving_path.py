@@ -24,7 +24,6 @@ from app.models.schedule import Schedule
 from app.models.task import Task
 from tests._utils import cpm_result_snapshot
 
-
 ANCHOR = datetime(2026, 4, 20, 8, 0, tzinfo=UTC)
 
 
@@ -396,6 +395,79 @@ def test_trace_with_int_uid() -> None:
 # ----------------------------------------------------------------------
 # Mutation-invariance
 # ----------------------------------------------------------------------
+
+
+# ----------------------------------------------------------------------
+# Calendar fallback and cycle-edge handling
+# ----------------------------------------------------------------------
+
+
+def test_trace_with_default_calendar_name_mismatch_uses_first_calendar() -> None:
+    """Default calendar name pointing to a non-existent calendar falls
+    back to the first calendar in ``schedule.calendars``.
+
+    Exercises the fallback branch in the private
+    ``_schedule_calendar`` helper.
+    """
+    tasks = [
+        Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
+        Task(unique_id=2, task_id=2, name="B", duration_minutes=480),
+    ]
+    relations = [Relation(predecessor_unique_id=1, successor_unique_id=2)]
+    s = Schedule(
+        name="mismatch_cal", project_start=ANCHOR, tasks=tasks,
+        relations=relations,
+        default_calendar_name="NonExistent",
+        calendars=[Calendar(name="Alt")],
+    )
+    cpm = compute_cpm(s)
+    result = trace_driving_path(s, 2, cpm)
+    assert [n.unique_id for n in result.chain] == [1, 2]
+
+
+def test_trace_on_schedule_with_cycle_skips_cyclic_edges() -> None:
+    """A schedule with a cycle: tasks on the cycle are skipped by
+    the CPM pass, and the driving-path walk treats edges into them
+    as non-traversable (slack = None) and terminates cleanly.
+
+    Topology: Focus ← D ← A → Focus, where A ↔ X form a 2-cycle.
+    The M4 CPM engine in lenient mode marks A and X as
+    skipped_due_to_cycle; trace_driving_path stops the walk when
+    it hits the non-traversable edge.
+    """
+    tasks = [
+        Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
+        Task(unique_id=2, task_id=2, name="X", duration_minutes=480),
+        Task(unique_id=3, task_id=3, name="D", duration_minutes=480),
+        Task(unique_id=4, task_id=4, name="Focus",
+             duration_minutes=0, is_milestone=True),
+    ]
+    relations = [
+        # Cycle between A and X.
+        Relation(predecessor_unique_id=1, successor_unique_id=2),
+        Relation(predecessor_unique_id=2, successor_unique_id=1),
+        # D feeds Focus via A (but A is cyclic, so edge A→D is
+        # non-traversable).
+        Relation(predecessor_unique_id=1, successor_unique_id=3),
+        Relation(predecessor_unique_id=3, successor_unique_id=4),
+    ]
+    s = Schedule(
+        name="cyclic", project_start=ANCHOR, tasks=tasks,
+        relations=relations, calendars=[_std_cal()],
+    )
+    cpm = compute_cpm(s)
+    # A and X are cyclic; D and Focus receive CPM dates.
+    assert 1 in cpm.cycles_detected
+    assert 2 in cpm.cycles_detected
+    result = trace_driving_path(s, 4, cpm)
+    # Focus's incoming edge (D → Focus) is traversable — D drives
+    # Focus directly — but D's incoming edge (A → D) is non-
+    # traversable because A is skipped. Walk terminates at D.
+    assert [n.unique_id for n in result.chain] == [3, 4]
+    # No non-driving predecessors were recorded on the cyclic
+    # edge (slack = None is treated as not-a-driver and not-a-
+    # non-driver; that is the forensically honest answer).
+    assert result.non_driving_predecessors == ()
 
 
 def test_trace_does_not_mutate_schedule_or_cpm_result() -> None:

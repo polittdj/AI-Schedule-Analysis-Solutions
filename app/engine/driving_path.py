@@ -46,7 +46,6 @@ from app.models.relation import Relation
 from app.models.schedule import Schedule
 from app.models.task import Task
 
-
 # ----------------------------------------------------------------------
 # Internal helpers
 # ----------------------------------------------------------------------
@@ -81,22 +80,24 @@ def _incoming_relations(relations: list[Relation]) -> dict[int, list[Relation]]:
 
 def _link_slack(
     rel: Relation,
-    tasks: dict[int, Task],
     cpm_result: CPMResult,
     cal: Calendar,
 ) -> int | None:
     """Compute relationship slack for a single relation.
 
-    Returns ``None`` when slack cannot be computed — e.g. either end
-    of the link is in a cycle and was skipped by the CPM pass
-    (``skipped_due_to_cycle=True`` or the early dates are ``None``).
-    The caller treats ``None`` as a non-traversable edge; the
-    driving-path walk cannot rely on an undefined slack.
+    Returns ``None`` when slack cannot be computed because either
+    end of the link was skipped by the CPM pass due to a cycle
+    (``skipped_due_to_cycle=True`` or a ``None`` early date). The
+    caller treats ``None`` as a non-traversable edge; the driving-
+    path walk cannot rely on an undefined slack.
+
+    The relation's UID pair is guaranteed present in ``cpm_result``
+    because Schedule construction validates G11 (every Relation
+    references tasks that exist) and the CPM engine produces a
+    :class:`TaskCPMResult` for every task in the schedule.
     """
-    pred_result = cpm_result.tasks.get(rel.predecessor_unique_id)
-    succ_result = cpm_result.tasks.get(rel.successor_unique_id)
-    if pred_result is None or succ_result is None:
-        return None
+    pred_result = cpm_result.tasks[rel.predecessor_unique_id]
+    succ_result = cpm_result.tasks[rel.successor_unique_id]
     if pred_result.skipped_due_to_cycle or succ_result.skipped_due_to_cycle:
         return None
     if (
@@ -104,11 +105,6 @@ def _link_slack(
         or pred_result.early_finish is None
         or succ_result.early_start is None
         or succ_result.early_finish is None
-    ):
-        return None
-    if (
-        rel.predecessor_unique_id not in tasks
-        or rel.successor_unique_id not in tasks
     ):
         return None
     return link_driving_slack_minutes(
@@ -180,15 +176,7 @@ def trace_driving_path(
     focus_uid = resolve_focus_point(schedule, focus_spec)
 
     tasks = _tasks_by_uid(schedule)
-    focus_task = tasks.get(focus_uid)
-    if focus_task is None:
-        # Defensive — resolve_focus_point already validated
-        # membership, but cross-version reuse calls this with a UID
-        # derived from the other period's resolver; the per-period
-        # membership check lands here.
-        raise DrivingPathError(
-            f"focus_uid={focus_uid} is not a task in this schedule"
-        )
+    focus_task = tasks[focus_uid]  # resolve_focus_point validated membership.
 
     cal = _schedule_calendar(schedule)
     incoming = _incoming_relations(schedule.relations)
@@ -213,18 +201,17 @@ def trace_driving_path(
 
         drivers: list[tuple[Relation, int]] = []
         for rel in incoming_rels:
-            slack = _link_slack(rel, tasks, cpm_result, cal)
+            slack = _link_slack(rel, cpm_result, cal)
             if slack is None:
-                # Non-traversable edge — treat as not a driver and
-                # do NOT record on non_driving_predecessors (the
-                # slack value would be meaningless there).
+                # Non-traversable edge (cycle participant) — treat
+                # as not a driver and do NOT record on
+                # non_driving_predecessors (the slack value would
+                # be meaningless there).
                 continue
             if slack == 0:
                 drivers.append((rel, slack))
             else:
-                pred_task = tasks.get(rel.predecessor_unique_id)
-                if pred_task is None:
-                    continue
+                pred_task = tasks[rel.predecessor_unique_id]
                 non_driving.append(
                     NonDrivingPredecessor(
                         predecessor_unique_id=rel.predecessor_unique_id,
@@ -247,9 +234,7 @@ def trace_driving_path(
         followed_rel, followed_slack = drivers[0]
         alternates = drivers[1:]
         for alt_rel, alt_slack in alternates:
-            alt_pred = tasks.get(alt_rel.predecessor_unique_id)
-            if alt_pred is None:
-                continue
+            alt_pred = tasks[alt_rel.predecessor_unique_id]
             non_driving.append(
                 NonDrivingPredecessor(
                     predecessor_unique_id=alt_rel.predecessor_unique_id,
