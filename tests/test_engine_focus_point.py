@@ -47,7 +47,7 @@ def _linear_schedule() -> Schedule:
         Relation(predecessor_unique_id=2, successor_unique_id=3,
                  relation_type=RelationType.FS),
     ]
-    return Schedule(
+    return Schedule(project_calendar_hours_per_day=8.0,
         name="linear", project_start=ANCHOR, tasks=tasks,
         relations=relations, calendars=[_std_cal()],
     )
@@ -114,7 +114,7 @@ def test_project_finish_prefers_milestone_over_non_milestone_sink() -> None:
         Relation(predecessor_unique_id=1, successor_unique_id=2),
         Relation(predecessor_unique_id=1, successor_unique_id=3),
     ]
-    s = Schedule(
+    s = Schedule(project_calendar_hours_per_day=8.0,
         name="two_sinks", project_start=ANCHOR, tasks=tasks,
         relations=relations, calendars=[_std_cal()],
     )
@@ -144,7 +144,7 @@ def test_project_finish_prefers_latest_finish_among_milestones() -> None:
         Relation(predecessor_unique_id=1, successor_unique_id=2),
         Relation(predecessor_unique_id=1, successor_unique_id=3),
     ]
-    s = Schedule(
+    s = Schedule(project_calendar_hours_per_day=8.0,
         name="two_milestone_sinks", project_start=ANCHOR, tasks=tasks,
         relations=relations, calendars=[_std_cal()],
     )
@@ -172,7 +172,7 @@ def test_project_finish_tiebreak_uses_higher_uid_when_finish_equal() -> None:
         Relation(predecessor_unique_id=1, successor_unique_id=2),
         Relation(predecessor_unique_id=1, successor_unique_id=3),
     ]
-    s = Schedule(
+    s = Schedule(project_calendar_hours_per_day=8.0,
         name="tie_sinks", project_start=ANCHOR, tasks=tasks,
         relations=relations, calendars=[_std_cal()],
     )
@@ -183,7 +183,7 @@ def test_project_finish_tiebreak_uses_higher_uid_when_finish_equal() -> None:
 
 
 def test_project_finish_on_empty_schedule_raises() -> None:
-    s = Schedule(name="empty", calendars=[_std_cal()])
+    s = Schedule(name="empty", project_calendar_hours_per_day=8.0, calendars=[_std_cal()])
     with pytest.raises(FocusPointError, match="empty schedule"):
         resolve_focus_point(s, FocusPointAnchor.PROJECT_FINISH)
 
@@ -203,7 +203,7 @@ def test_project_finish_with_no_sink_raises() -> None:
         Relation(predecessor_unique_id=1, successor_unique_id=2),
         Relation(predecessor_unique_id=2, successor_unique_id=1),
     ]
-    s = Schedule(
+    s = Schedule(project_calendar_hours_per_day=8.0,
         name="cyclic", project_start=ANCHOR, tasks=tasks,
         relations=relations, calendars=[_std_cal()],
     )
@@ -239,7 +239,7 @@ def test_project_start_prefers_milestone_over_non_milestone_source() -> None:
         Relation(predecessor_unique_id=1, successor_unique_id=3),
         Relation(predecessor_unique_id=2, successor_unique_id=3),
     ]
-    s = Schedule(
+    s = Schedule(project_calendar_hours_per_day=8.0,
         name="two_sources", project_start=ANCHOR, tasks=tasks,
         relations=relations, calendars=[_std_cal()],
     )
@@ -268,7 +268,7 @@ def test_project_start_prefers_earliest_start_among_milestones() -> None:
         Relation(predecessor_unique_id=1, successor_unique_id=3),
         Relation(predecessor_unique_id=2, successor_unique_id=3),
     ]
-    s = Schedule(
+    s = Schedule(project_calendar_hours_per_day=8.0,
         name="two_milestone_sources", project_start=ANCHOR, tasks=tasks,
         relations=relations, calendars=[_std_cal()],
     )
@@ -279,7 +279,7 @@ def test_project_start_prefers_earliest_start_among_milestones() -> None:
 
 
 def test_project_start_on_empty_schedule_raises() -> None:
-    s = Schedule(name="empty", calendars=[_std_cal()])
+    s = Schedule(name="empty", project_calendar_hours_per_day=8.0, calendars=[_std_cal()])
     with pytest.raises(FocusPointError, match="empty schedule"):
         resolve_focus_point(s, FocusPointAnchor.PROJECT_START)
 
@@ -293,7 +293,7 @@ def test_project_start_with_no_source_raises() -> None:
         Relation(predecessor_unique_id=1, successor_unique_id=2),
         Relation(predecessor_unique_id=2, successor_unique_id=1),
     ]
-    s = Schedule(
+    s = Schedule(project_calendar_hours_per_day=8.0,
         name="cyclic", project_start=ANCHOR, tasks=tasks,
         relations=relations, calendars=[_std_cal()],
     )

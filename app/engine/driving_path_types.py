@@ -1,20 +1,27 @@
 """Frozen result contract for task-specific driving-path analysis.
 
-Milestone 10. Consumed read-only by the M11 manipulation engine, the
-M12 AI narrative layer, and the M13 drill-down UI. Every model carries
-``ConfigDict(frozen=True)`` and every collection field is declared as a
-``tuple``/``frozenset`` so the contract is immutable end-to-end per
-BUILD-PLAN §2.13 mutation-vs-wrap and §5 M10 Block 0 reconciliation.
+Milestone 10, reshaped in Block 7 (2026-04-22) per BUILD-PLAN AM8 and
+the three-session audit findings (F1, F3). The chain + parallel-links
+contract is replaced with an adjacency map so that multi-branch
+backward walks per ``driving-slack-and-paths §4`` ("No path is
+dropped.") and §5 ("Walking every relationship-slack-zero link
+backward … walks recursively until every driving predecessor is
+exhausted.") are representable without lossy serialisation.
+
+Every public model is ``ConfigDict(frozen=True)``; every duration
+field is denominated in **days** (float) with a companion
+``calendar_hours_per_day`` factor so the audit trail back to minutes
+is preserved (BUILD-PLAN §2.18).
 
 Authority:
 
 * SSI driving-slack definition — ``driving-slack-and-paths §2``.
 * Per-link relationship-slack semantics —
   ``driving-slack-and-paths §3``.
-* Backward walk from a Focus Point —
-  ``driving-slack-and-paths §5``.
-* Multi-branch (non-driving predecessor) termination —
-  ``driving-slack-and-paths §7``.
+* "No path is dropped." — ``driving-slack-and-paths §4`` verbatim.
+* "Walking every relationship-slack-zero link backward … walks
+  recursively until every driving predecessor is exhausted." —
+  ``driving-slack-and-paths §5`` verbatim.
 * Period A slack but-for rule — ``driving-slack-and-paths §9``.
 * UniqueID-only matching —
   BUILD-PLAN §2.7; ``mpp-parsing-com-automation §5``.
@@ -22,11 +29,29 @@ Authority:
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import RelationType
+
+# One-second tolerance on "zero" relationship slack in days. Minutes
+# arithmetic uses integer minutes internally, so any non-zero slack
+# will be at least 1 minute; the only time a days-denominated slack
+# lands in a (−1/86_400, +1/86_400) band is rounding on a non-8h/day
+# calendar conversion via units.minutes_to_days. One second in days
+# is ``1 / 86_400`` ≈ 1.1574e-5.
+_ZERO_SLACK_TOLERANCE_DAYS: float = 1.0 / 86_400.0
+
+# §4 and §5 quotes that appear in validator error messages. The
+# verbatim form is intentional — future debuggers need the authority
+# inline without opening a second file.
+_SKILL_S4_QUOTE = '§4: "No path is dropped."'
+_SKILL_S5_QUOTE = (
+    '§5: "Walking every relationship-slack-zero link backward … '
+    "walks recursively until every driving predecessor is exhausted.\""
+)
 
 
 class FocusPointAnchor(StrEnum):
@@ -48,11 +73,16 @@ class FocusPointAnchor(StrEnum):
 
 
 class DrivingPathNode(BaseModel):
-    """A single node on the driving chain.
+    """A task in the driving-path subgraph.
 
-    Carries ``unique_id`` + ``name`` for forensic drill-down per
-    BUILD-PLAN §6 AC bar #3 (every output record cites the UniqueID
-    that drove it).
+    Appears exactly once per UniqueID in
+    :attr:`DrivingPathResult.nodes` regardless of how many driving
+    paths reach it — shared ancestors are deduplicated (``§4``). The
+    model carries both UID and name per BUILD-PLAN §6 AC bar #3
+    (every output record cites the UniqueID that drove it) and the
+    calendar-bearing fields needed to reconstruct minute durations
+    from the days-denominated contract (§0.4 of the Block 7 write-
+    session prompt; BUILD-PLAN §2.18).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -65,212 +95,241 @@ class DrivingPathNode(BaseModel):
     """``Task.name`` — captured for UI drill-down; CUI-bearing per
     ``cui-compliance-constraints §2d`` and never used for matching."""
 
+    early_start: datetime
+    """CPM-computed early start (``TaskCPMResult.early_start``)."""
 
-class DrivingPathLink(BaseModel):
-    """A single link on the driving chain.
+    early_finish: datetime
+    """CPM-computed early finish (``TaskCPMResult.early_finish``)."""
 
-    The chain is materialised as a parallel pair: ``chain[i]`` is the
-    predecessor of ``chain[i+1]``, and ``links[i]`` records the edge
-    between them. ``relationship_slack_minutes == 0`` on every driving
-    link by definition — the driving-path walk only follows zero-slack
-    edges per ``driving-slack-and-paths §5``.
+    late_start: datetime
+    """CPM-computed late start (``TaskCPMResult.late_start``)."""
+
+    late_finish: datetime
+    """CPM-computed late finish (``TaskCPMResult.late_finish``)."""
+
+    total_float_days: float
+    """Total float in days (``TaskCPMResult.total_float_minutes``
+    converted via :func:`app.engine.units.minutes_to_days` with
+    ``calendar_hours_per_day``)."""
+
+    calendar_hours_per_day: float = Field(gt=0)
+    """Hours-per-day factor used for this node's minute→day
+    conversions. Populated from
+    ``Task.calendar_hours_per_day`` when non-``None`` or
+    ``Schedule.project_calendar_hours_per_day`` otherwise (M1.1
+    denormalised fields). The forensic audit trail: any reviewer can
+    reconstruct minutes via
+    ``total_float_days * calendar_hours_per_day * 60``."""
+
+
+class DrivingPathEdge(BaseModel):
+    """A zero-relationship-slack relationship driving its successor.
+
+    Every such relationship found during backward walk appears
+    exactly once on :attr:`DrivingPathResult.edges` — no tie-break,
+    no deduplication loss, per ``driving-slack-and-paths §4``. The
+    model validator enforces ``relationship_slack_days ≈ 0`` (one-
+    second tolerance expressed in days). Non-driving (positive-
+    slack) relationships belong on :class:`NonDrivingPredecessor`.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    predecessor_unique_id: int
+    predecessor_uid: int
     """``Relation.predecessor_unique_id``."""
 
-    successor_unique_id: int
+    predecessor_name: str
+    """``Task.name`` of the predecessor."""
+
+    successor_uid: int
     """``Relation.successor_unique_id``."""
+
+    successor_name: str
+    """``Task.name`` of the successor."""
 
     relation_type: RelationType
     """FS / SS / FF / SF per ``driving-slack-and-paths §3``."""
 
-    lag_minutes: int
-    """Working-minute lag on the link. May be negative (a "lead")
-    per ``dcma-14-point-assessment §4.2``. A positive or negative
-    lag with zero resulting relationship slack still counts as a
-    driving link — the slack, not the lag, is what defines
-    drivership (``driving-slack-and-paths §5``)."""
+    lag_days: float
+    """Working-day lag on the link. May be negative ("lead") per
+    ``dcma-14-point-assessment §4.2``. Converted from
+    ``Relation.lag_minutes`` via
+    :func:`app.engine.units.minutes_to_days`."""
 
-    relationship_slack_minutes: int
-    """Per-link driving slack in working minutes computed via
-    :func:`app.engine.relations.link_driving_slack_minutes`.
-    Always ``0`` on a :class:`DrivingPathLink`; non-driving edges
-    land on :class:`NonDrivingPredecessor` instead."""
+    relationship_slack_days: float
+    """Per-link driving slack in working days. Always ~0 on a
+    driving edge (validator-enforced). Zero slack is the definition
+    of drivership (``driving-slack-and-paths §5``); non-zero slack
+    lands on :class:`NonDrivingPredecessor`."""
+
+    calendar_hours_per_day: float = Field(gt=0)
+    """Hours-per-day factor used to compute ``lag_days`` and
+    ``relationship_slack_days``. Forensic audit trail per
+    BUILD-PLAN §2.18."""
+
+    @model_validator(mode="after")
+    def _check_slack_is_zero(self) -> DrivingPathEdge:
+        if abs(self.relationship_slack_days) > _ZERO_SLACK_TOLERANCE_DAYS:
+            raise ValueError(
+                "DrivingPathEdge.relationship_slack_days must be ~0 "
+                f"(got {self.relationship_slack_days!r}). Non-zero "
+                "slack relationships belong on NonDrivingPredecessor. "
+                "Skill authority: "
+                f"{_SKILL_S4_QUOTE} {_SKILL_S5_QUOTE}"
+            )
+        return self
 
 
 class NonDrivingPredecessor(BaseModel):
-    """A predecessor whose relationship slack to its successor is > 0.
+    """A positive-slack relationship that terminates a backward walk.
 
-    The backward walk enumerates every incoming edge on each chain
-    task; edges with ``relationship_slack_minutes == 0`` drive the
-    chain, edges with ``> 0`` terminate that branch and land here.
-    Consumers render the secondary list alongside the chain so the
-    analyst can see "this predecessor would have driven if its slack
-    had eroded by N working days" — the forensic signal for
-    manipulation detection (``forensic-manipulation-patterns §9``).
+    F3 fix (Block 7, 2026-04-22): ``slack_days`` is strictly > 0.
+    The prior M10 contract admitted zero-slack alternates from the
+    lowest-UID tie-break rule, which made
+    :class:`NonDrivingPredecessor` and :class:`DrivingPathEdge` share
+    the ``slack = 0`` regime and hid true multi-branch paths. Under
+    AM8 that escape hatch is removed — slack regimes on the two
+    types are mutually exclusive.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    predecessor_unique_id: int
+    predecessor_uid: int
     """``Relation.predecessor_unique_id`` of the non-driving edge."""
 
     predecessor_name: str
     """``Task.name`` of the predecessor."""
 
-    successor_unique_id: int
+    successor_uid: int
     """``Relation.successor_unique_id`` of the non-driving edge — a
-    task on the driving chain."""
+    task in the driving sub-graph."""
 
     successor_name: str
-    """``Task.name`` of the successor (a chain node)."""
+    """``Task.name`` of the successor."""
 
     relation_type: RelationType
     """FS / SS / FF / SF."""
 
-    relationship_slack_minutes: int
-    """Working-minute slack on this edge. Strictly ``> 0`` for a
-    non-driving predecessor; zero-slack alternates from the multi-
-    driver tie-break rule also land here with slack = 0 so the UI
-    can surface the parallel-driver case (BUILD-PLAN §5 M10 Block 0
-    tie-break reconciliation)."""
+    lag_days: float
+    """Working-day lag on the link."""
 
+    slack_days: float
+    """Working-day driving slack on this edge. Strictly > 0 —
+    enforced by ``_check_slack_is_positive``. Zero-slack edges are
+    driving edges and land on :class:`DrivingPathEdge`."""
 
-class DrivingPathResult(BaseModel):
-    """Result of :func:`app.engine.driving_path.trace_driving_path`.
-
-    Structure invariants:
-
-    * ``chain[-1].unique_id == focus_unique_id`` — the chain
-      terminates at the Focus Point.
-    * ``len(links) == max(0, len(chain) - 1)`` — the links list is
-      parallel-indexed with the edges between consecutive chain
-      nodes. A single-node chain (focus task with no driving
-      predecessors) has ``links = ()``.
-    * Chain order runs earliest-ancestor → focus, i.e. topological
-      order on the driving sub-graph.
-
-    Both invariants are validated at model construction.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    focus_unique_id: int
-    """UniqueID of the Focus Point."""
-
-    focus_name: str
-    """``Task.name`` of the Focus Point."""
-
-    chain: tuple[DrivingPathNode, ...]
-    """Ordered driving chain, earliest-ancestor → focus. Always
-    non-empty; the focus task itself is always the last element."""
-
-    links: tuple[DrivingPathLink, ...]
-    """Links between consecutive chain nodes. ``links[i]`` is the
-    edge from ``chain[i]`` to ``chain[i+1]``."""
-
-    non_driving_predecessors: tuple[NonDrivingPredecessor, ...]
-    """Every incoming non-driving edge observed during the walk, for
-    every chain node. Deterministic ordering: iterated in chain
-    order (focus → earliest ancestor), and within each node ordered
-    by ``(predecessor_unique_id, relation_type)`` ascending."""
+    calendar_hours_per_day: float = Field(gt=0)
+    """Hours-per-day factor used to compute ``lag_days`` and
+    ``slack_days``. Forensic audit trail per BUILD-PLAN §2.18."""
 
     @model_validator(mode="after")
-    def _check_structure(self) -> DrivingPathResult:
-        if not self.chain:
-            raise ValueError("DrivingPathResult.chain must be non-empty")
-        if self.chain[-1].unique_id != self.focus_unique_id:
+    def _check_slack_is_positive(self) -> NonDrivingPredecessor:
+        if self.slack_days <= _ZERO_SLACK_TOLERANCE_DAYS:
             raise ValueError(
-                "DrivingPathResult.chain must terminate at focus_unique_id "
-                f"(got chain[-1].unique_id={self.chain[-1].unique_id}, "
-                f"focus_unique_id={self.focus_unique_id})"
+                "NonDrivingPredecessor.slack_days must be strictly "
+                f"positive (got {self.slack_days!r}). Zero or "
+                "negative slack would overlap with the driving-edge "
+                "regime and reintroduce the F3 escape hatch. Skill "
+                f"authority: {_SKILL_S4_QUOTE} {_SKILL_S5_QUOTE}"
             )
-        expected_link_count = max(0, len(self.chain) - 1)
-        if len(self.links) != expected_link_count:
-            raise ValueError(
-                "DrivingPathResult.links must be parallel-indexed with "
-                f"chain edges (expected {expected_link_count}, "
-                f"got {len(self.links)})"
-            )
-        for i, link in enumerate(self.links):
-            pred = self.chain[i]
-            succ = self.chain[i + 1]
-            if link.predecessor_unique_id != pred.unique_id:
-                raise ValueError(
-                    f"links[{i}].predecessor_unique_id "
-                    f"({link.predecessor_unique_id}) does not match "
-                    f"chain[{i}].unique_id ({pred.unique_id})"
-                )
-            if link.successor_unique_id != succ.unique_id:
-                raise ValueError(
-                    f"links[{i}].successor_unique_id "
-                    f"({link.successor_unique_id}) does not match "
-                    f"chain[{i + 1}].unique_id ({succ.unique_id})"
-                )
         return self
 
 
-class DrivingPathCrossVersionResult(BaseModel):
-    """Result of
-    :func:`app.engine.driving_path.trace_driving_path_cross_version`.
+class DrivingPathResult(BaseModel):
+    """Adjacency-map representation of the driving-path subgraph.
 
-    Period A is the sole but-for reference per
-    ``driving-slack-and-paths §9``. The ``added_predecessor_uids`` /
-    ``removed_predecessor_uids`` / ``retained_predecessor_uids``
-    semantics are framed from Period A's perspective:
+    Replaces the M10 chain + parallel-links contract (F1) per
+    BUILD-PLAN AM8. ``nodes`` is keyed by UniqueID (ancestor sharing
+    is automatic); ``edges`` is a flat list of every zero-slack
+    driving relationship found on the backward walk; any non-driving
+    incoming relationship that terminated a branch lands on
+    ``non_driving_predecessors``.
 
-    * ``added`` — UniqueIDs present in Period B's driving chain but
-      not in Period A's.
-    * ``removed`` — UniqueIDs present in Period A's driving chain
-      but not in Period B's.
-    * ``retained`` — UniqueIDs present in both chains.
-
-    The focus UID itself is excluded from all three sets
-    (structurally it is always "retained" — the walk terminates at
-    it by definition).
-
-    Period B's trace is stored on ``period_b_result`` for display /
-    drill-down, but Period B's slack values are **never** used to
-    derive the delta semantics. Doing so would be circular per
-    ``driving-slack-and-paths §9``: a task that became a driver
-    *because* of the Period B change will read zero slack in Period
-    B, which proves nothing about what the schedule would have done
-    absent the change.
+    Consumed read-only by the M11 manipulation engine, the M12 AI
+    narrative layer, and the M13 drill-down UI.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    focus_unique_id: int
-    """UniqueID of the Focus Point, shared across both periods. The
-    trace function raises :class:`DrivingPathError` when anchor
-    resolution disagrees between Period A and Period B."""
+    focus_point_uid: int
+    """UniqueID of the Focus Point the walk started from."""
+
+    focus_point_name: str
+    """``Task.name`` of the Focus Point."""
+
+    nodes: dict[int, DrivingPathNode]
+    """Every task in the driving sub-graph, keyed by UniqueID. The
+    Focus Point itself is always present; every transitive driving
+    predecessor appears exactly once."""
+
+    edges: list[DrivingPathEdge]
+    """Every zero-relationship-slack driving relationship. Sorted by
+    ``(successor_uid, predecessor_uid)`` for deterministic test
+    assertions and commit diffs — semantic ordering is unordered.
+    Renderers are free to reorder for display."""
+
+    non_driving_predecessors: list[NonDrivingPredecessor]
+    """Positive-slack predecessors of nodes in the sub-graph. These
+    terminated the backward walk on their successor. Ordering
+    mirrors ``edges``: sorted by ``(successor_uid, predecessor_uid)``
+    for determinism."""
+
+
+class DrivingPathCrossVersionResult(BaseModel):
+    """Period A vs Period B driving-path comparison.
+
+    Period A slack is the sole but-for reference per
+    ``driving-slack-and-paths §9``. ``added`` / ``removed`` /
+    ``retained`` classifications are framed from Period A's
+    perspective — a UID or edge that appears in Period B but not
+    Period A is "added from A's perspective." Period B's slack
+    values are stored on :attr:`period_b_result` for display / drill-
+    down but never used to derive the diff sets (that would be
+    circular per §9).
+    """
+
+    model_config = ConfigDict(frozen=True)
 
     period_a_result: DrivingPathResult
-    """Driving path traced against Period A slack — the but-for
-    reference per ``driving-slack-and-paths §9``."""
+    """Full Period A adjacency-map result — the but-for reference."""
 
     period_b_result: DrivingPathResult
-    """Driving path traced against Period B slack — descriptive,
-    for UI display only. Not used to compute deltas."""
+    """Full Period B adjacency-map result — descriptive only."""
 
-    added_predecessor_uids: frozenset[int]
-    """UIDs in ``period_b_result``'s chain but not in
-    ``period_a_result``'s chain (focus UID excluded)."""
+    added_predecessor_uids: set[int]
+    """UniqueIDs in ``period_b_result.nodes`` but not in
+    ``period_a_result.nodes`` (Focus Point UID excluded — it is
+    structurally retained)."""
 
-    removed_predecessor_uids: frozenset[int]
-    """UIDs in ``period_a_result``'s chain but not in
-    ``period_b_result``'s chain (focus UID excluded)."""
+    removed_predecessor_uids: set[int]
+    """UniqueIDs in ``period_a_result.nodes`` but not in
+    ``period_b_result.nodes``."""
 
-    retained_predecessor_uids: frozenset[int]
-    """UIDs in both chains (focus UID excluded)."""
+    retained_predecessor_uids: set[int]
+    """UniqueIDs in both periods' ``nodes`` (Focus Point UID
+    excluded)."""
+
+    added_edges: list[DrivingPathEdge]
+    """Edges in ``period_b_result.edges`` with no identity-matched
+    counterpart in ``period_a_result.edges``. Edge identity is the
+    tuple ``(predecessor_uid, successor_uid, relation_type)``. The
+    Period B copy of the edge is carried here (Period B values for
+    lag / slack / calendar)."""
+
+    removed_edges: list[DrivingPathEdge]
+    """Edges in ``period_a_result.edges`` with no identity-matched
+    counterpart in ``period_b_result.edges``. The Period A copy is
+    carried."""
+
+    retained_edges: list[DrivingPathEdge]
+    """Edges present in both periods by identity. The Period A copy
+    is carried for forensic consistency with the Period A but-for
+    rule (§9)."""
 
 
 __all__ = [
     "DrivingPathCrossVersionResult",
-    "DrivingPathLink",
+    "DrivingPathEdge",
     "DrivingPathNode",
     "DrivingPathResult",
     "FocusPointAnchor",

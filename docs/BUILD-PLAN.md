@@ -218,6 +218,38 @@ forward-looking API for M6 / M7. The engine is the single producer
 of ``CPMResult``; the metrics layer is the sole consumer in
 Phase 1.
 
+2.18 **Driving path: no path is dropped on multi-branch backward
+walk.** (**AM8, 2026-04-22 M10 Block 7 remediation.**) The backward
+walk from a Focus Point along zero-relationship-slack edges
+enumerates **every** zero-slack incoming relationship at every node
+in the driving sub-graph — none is dropped. Authority is verbatim
+from ``driving-slack-and-paths``:
+
+* §4: "No path is dropped."
+* §5: "Walking every relationship-slack-zero link backward … walks
+  recursively until every driving predecessor is exhausted."
+
+The "lowest-UID tie-break" rule documented in the original AM7 M10
+Block 0 reconciliation (§5 M10) is **withdrawn**. Tie-break is no
+longer a concept in this codebase: every zero-slack edge is a
+driving edge and appears on ``DrivingPathResult.edges``. The prior
+chain-based contract (``chain`` + parallel ``links`` parallel list)
+is superseded by an adjacency-map contract (``nodes: dict[int,
+DrivingPathNode]``, ``edges: list[DrivingPathEdge]``,
+``non_driving_predecessors: list[NonDrivingPredecessor]``) so the
+full sub-graph is representable without lossy serialisation. See
+branch ``claude/milestone-10-block-7-remediation-2026-04-22`` and
+the §5 M10 AM8 block below for implementation scope.
+
+(Sub-item lettering note: AM8 registers a new forensic non-
+negotiable "(e) No path is dropped on multi-branch backward walk."
+as a companion to the four non-negotiables listed in the M10 Block
+7 write-session prompt §0.3 (UniqueID-only matching, Period A slack
+exclusivity, non-mutation of Schedule/CPMResult, UniqueID+name on
+every node). The original prompt referenced §2.15 for this addition
+in error; §2.15 is the indicator-only-metrics decision. The new
+non-negotiable lives here at §2.18.)
+
 ---
 
 ## 3. Starting State
@@ -1057,7 +1089,22 @@ Integration test in `tests/test_engine_comparator_integration.py`.
 
 **Dependencies.** Milestones 4, 9.
 
-**Deliverables.** (**AM7, 2026-04-20 M10 Block 0 reconciliation:** the
+**Deliverables.** (**AM8, 2026-04-22 M10 Block 7 remediation:** AM8
+supersedes AM7's multi-branch tie-break decision. The "lowest-UID
+tie-break" rule is **withdrawn**. Authority is `driving-slack-and-
+paths §4` verbatim — "No path is dropped." — and §5 verbatim —
+"Walking every relationship-slack-zero link backward … walks
+recursively until every driving predecessor is exhausted." AM7
+cited §7 of the same skill as authority for the tie-break; §7 is
+about UniqueID cross-version matching and does not address multi-
+branch walk. The AM7 §7 citation is retracted (finding F2 in the
+three-session Block 7 audit cycle, 2026-04-21). The new contract
+shape is an adjacency map (nodes keyed by UID + edges list + non-
+driving-predecessor list) rather than the AM7 chain + parallel-
+links pair. Implementation lands on branch
+`claude/milestone-10-block-7-remediation-2026-04-22` atop the
+existing M10 branch at tip `7beb4fa`; PR #31 remains the PR of
+record.) (**AM7, 2026-04-20 M10 Block 0 reconciliation:** the
 contract / reuse / filename decisions below supersede the original
 §5 M10 scope text.) `app/engine/driving_path.py` with
 `trace_driving_path(schedule, focus_spec, cpm_result) ->
@@ -1135,14 +1182,23 @@ per `driving-slack-and-paths §9`.
   §2.17; the trace module is a read-only consumer. Passing `None`
   raises `DrivingPathError` with an explanatory message.
 
-- **Multi-driving-predecessor tie-break.** When a task has two or
-  more driving predecessors (relationship slack = 0 on every
-  incoming link), the walk follows the predecessor with the lowest
-  UniqueID, and the non-followed driver(s) are appended to
-  `non_driving_predecessors` with `relationship_slack_minutes = 0`
-  so the UI can surface the multi-branch case without widening the
-  contract. Rationale: the skill (§7) does not specify a tie-break;
-  lowest-UID ordering is deterministic and audit-traceable.
+- **Multi-driving-predecessor handling (AM8, 2026-04-22).** When a
+  task has two or more driving predecessors (relationship slack = 0
+  on every incoming link), the walk follows **every** zero-slack
+  incoming edge recursively per `driving-slack-and-paths §4`
+  ("No path is dropped.") and §5 ("Walking every relationship-
+  slack-zero link backward … walks recursively until every driving
+  predecessor is exhausted."). Every such edge appears on
+  `DrivingPathResult.edges`; shared ancestors appear exactly once
+  in `DrivingPathResult.nodes` (deduplication by UID). The AM7
+  "lowest-UID tie-break" rule is withdrawn — tie-break is no longer
+  a concept. Non-driving (positive-slack) predecessors still land
+  on `non_driving_predecessors`, and the Block 7 validator enforces
+  mutually exclusive slack regimes: edges have
+  `relationship_slack_days ≈ 0`, non-driving predecessors have
+  `slack_days > 0`. Placing a zero-slack alternate on
+  `non_driving_predecessors` (the AM7 escape hatch) is structurally
+  impossible under the Block 7 contract. See §2.18.
 
 - **Cross-version focus-point disambiguation.** When
   `focus_spec = FocusPointAnchor.PROJECT_FINISH` (or `PROJECT_START`)

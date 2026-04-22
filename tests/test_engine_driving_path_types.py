@@ -1,18 +1,22 @@
 """Frozen-contract tests for the Milestone 10 driving-path types.
 
-Validates the Pydantic v2 ``ConfigDict(frozen=True)`` posture, the
-chain-link parallel-index invariant on :class:`DrivingPathResult`,
-and the ``FocusPointAnchor`` enum membership.
+Reshaped in Block 7 (2026-04-22) for the adjacency-map contract per
+BUILD-PLAN AM8 and the three-session audit findings (F1, F3). The
+chain + parallel-links contract is gone; tests here cover the new
+``nodes`` / ``edges`` / ``non_driving_predecessors`` shape and the
+validator-enforced mutually-exclusive slack regimes.
 """
 
 from __future__ import annotations
+
+from datetime import datetime
 
 import pytest
 from pydantic import ValidationError
 
 from app.engine.driving_path_types import (
     DrivingPathCrossVersionResult,
-    DrivingPathLink,
+    DrivingPathEdge,
     DrivingPathNode,
     DrivingPathResult,
     FocusPointAnchor,
@@ -20,23 +24,53 @@ from app.engine.driving_path_types import (
 )
 from app.models.enums import RelationType
 
+_T0 = datetime(2026, 1, 1, 8, 0)
+_T1 = datetime(2026, 1, 2, 16, 0)
+
 
 def _node(uid: int, name: str) -> DrivingPathNode:
-    return DrivingPathNode(unique_id=uid, name=name)
+    return DrivingPathNode(
+        unique_id=uid,
+        name=name,
+        early_start=_T0,
+        early_finish=_T1,
+        late_start=_T0,
+        late_finish=_T1,
+        total_float_days=0.0,
+        calendar_hours_per_day=8.0,
+    )
 
 
-def _link(pred: int, succ: int) -> DrivingPathLink:
-    return DrivingPathLink(
-        predecessor_unique_id=pred,
-        successor_unique_id=succ,
+def _edge(pred: int, succ: int, slack_days: float = 0.0) -> DrivingPathEdge:
+    return DrivingPathEdge(
+        predecessor_uid=pred,
+        predecessor_name=f"T{pred}",
+        successor_uid=succ,
+        successor_name=f"T{succ}",
         relation_type=RelationType.FS,
-        lag_minutes=0,
-        relationship_slack_minutes=0,
+        lag_days=0.0,
+        relationship_slack_days=slack_days,
+        calendar_hours_per_day=8.0,
+    )
+
+
+def _ndp(
+    pred: int, succ: int, slack_days: float = 1.0
+) -> NonDrivingPredecessor:
+    return NonDrivingPredecessor(
+        predecessor_uid=pred,
+        predecessor_name=f"T{pred}",
+        successor_uid=succ,
+        successor_name=f"T{succ}",
+        relation_type=RelationType.FS,
+        lag_days=0.0,
+        slack_days=slack_days,
+        calendar_hours_per_day=8.0,
     )
 
 
 # ----------------------------------------------------------------------
-# Importability and enum shape
+# FocusPointAnchor enum
 # ----------------------------------------------------------------------
 
 
@@ -51,7 +85,7 @@ def test_focus_point_anchor_is_str_enum() -> None:
 
 
 # ----------------------------------------------------------------------
-# Frozen mutation
+# Frozen-ness
 # ----------------------------------------------------------------------
 
 
@@ -61,181 +95,195 @@ def test_driving_path_node_is_frozen() -> None:
         node.unique_id = 2  # type: ignore[misc]
 
 
-def test_driving_path_link_is_frozen() -> None:
-    link = _link(1, 2)
+def test_driving_path_edge_is_frozen() -> None:
+    edge = _edge(1, 2)
     with pytest.raises(ValidationError):
-        link.lag_minutes = 999  # type: ignore[misc]
+        edge.lag_days = 99.0  # type: ignore[misc]
 
 
 def test_non_driving_predecessor_is_frozen() -> None:
-    ndp = NonDrivingPredecessor(
-        predecessor_unique_id=7,
-        predecessor_name="Q",
-        successor_unique_id=2,
-        successor_name="X",
-        relation_type=RelationType.FS,
-        relationship_slack_minutes=2880,
-    )
+    ndp = _ndp(7, 2, slack_days=2.0)
     with pytest.raises(ValidationError):
-        ndp.relationship_slack_minutes = 0  # type: ignore[misc]
+        ndp.slack_days = 0.5  # type: ignore[misc]
 
 
 def test_driving_path_result_is_frozen() -> None:
     result = DrivingPathResult(
-        focus_unique_id=2,
-        focus_name="Focus",
-        chain=(_node(1, "A"), _node(2, "Focus")),
-        links=(_link(1, 2),),
-        non_driving_predecessors=(),
+        focus_point_uid=2,
+        focus_point_name="Focus",
+        nodes={2: _node(2, "Focus"), 1: _node(1, "A")},
+        edges=[_edge(1, 2)],
+        non_driving_predecessors=[],
     )
     with pytest.raises(ValidationError):
-        result.focus_name = "different"  # type: ignore[misc]
+        result.focus_point_name = "different"  # type: ignore[misc]
 
 
 def test_driving_path_cross_version_result_is_frozen() -> None:
     base = DrivingPathResult(
-        focus_unique_id=2,
-        focus_name="Focus",
-        chain=(_node(1, "A"), _node(2, "Focus")),
-        links=(_link(1, 2),),
-        non_driving_predecessors=(),
+        focus_point_uid=2,
+        focus_point_name="Focus",
+        nodes={2: _node(2, "Focus"), 1: _node(1, "A")},
+        edges=[_edge(1, 2)],
+        non_driving_predecessors=[],
     )
     cv = DrivingPathCrossVersionResult(
-        focus_unique_id=2,
         period_a_result=base,
         period_b_result=base,
-        added_predecessor_uids=frozenset(),
-        removed_predecessor_uids=frozenset(),
-        retained_predecessor_uids=frozenset({1}),
+        added_predecessor_uids=set(),
+        removed_predecessor_uids=set(),
+        retained_predecessor_uids={1},
+        added_edges=[],
+        removed_edges=[],
+        retained_edges=[_edge(1, 2)],
     )
     with pytest.raises(ValidationError):
-        cv.focus_unique_id = 99  # type: ignore[misc]
+        cv.added_predecessor_uids = {99}  # type: ignore[misc]
 
 
 # ----------------------------------------------------------------------
-# Tuple-only collections
+# Calendar audit-trail fields
 # ----------------------------------------------------------------------
 
 
-def test_chain_rejects_list_input() -> None:
-    # Pydantic v2 coerces lists to tuples for tuple[...] fields by
-    # default. Asserts that the stored value is a tuple regardless
-    # of the input container.
+def test_node_rejects_zero_hours_per_day() -> None:
+    with pytest.raises(ValidationError):
+        DrivingPathNode(
+            unique_id=1,
+            name="A",
+            early_start=_T0,
+            early_finish=_T1,
+            late_start=_T0,
+            late_finish=_T1,
+            total_float_days=0.0,
+            calendar_hours_per_day=0.0,
+        )
+
+
+def test_edge_rejects_zero_hours_per_day() -> None:
+    with pytest.raises(ValidationError):
+        DrivingPathEdge(
+            predecessor_uid=1,
+            predecessor_name="A",
+            successor_uid=2,
+            successor_name="B",
+            relation_type=RelationType.FS,
+            lag_days=0.0,
+            relationship_slack_days=0.0,
+            calendar_hours_per_day=0.0,
+        )
+
+
+def test_non_driving_predecessor_rejects_zero_hours_per_day() -> None:
+    with pytest.raises(ValidationError):
+        NonDrivingPredecessor(
+            predecessor_uid=1,
+            predecessor_name="A",
+            successor_uid=2,
+            successor_name="B",
+            relation_type=RelationType.FS,
+            lag_days=0.0,
+            slack_days=1.0,
+            calendar_hours_per_day=0.0,
+        )
+
+
+# ----------------------------------------------------------------------
+# Adjacency-map minimal result
+# ----------------------------------------------------------------------
+
+
+def test_minimal_result_with_single_focus_node() -> None:
+    # Focus point with no driving predecessors — valid single-node
+    # sub-graph, zero edges.
     result = DrivingPathResult(
-        focus_unique_id=2,
-        focus_name="Focus",
-        chain=[_node(1, "A"), _node(2, "Focus")],  # type: ignore[arg-type]
-        links=[_link(1, 2)],  # type: ignore[arg-type]
-        non_driving_predecessors=[],  # type: ignore[arg-type]
+        focus_point_uid=42,
+        focus_point_name="Alone",
+        nodes={42: _node(42, "Alone")},
+        edges=[],
+        non_driving_predecessors=[],
     )
-    assert isinstance(result.chain, tuple)
-    assert isinstance(result.links, tuple)
-    assert isinstance(result.non_driving_predecessors, tuple)
+    assert result.nodes.keys() == {42}
+    assert result.edges == []
 
 
-def test_frozenset_fields_are_frozensets() -> None:
-    base = DrivingPathResult(
-        focus_unique_id=2,
-        focus_name="Focus",
-        chain=(_node(2, "Focus"),),
-        links=(),
-        non_driving_predecessors=(),
+def test_three_node_linear_chain_as_adjacency_map() -> None:
+    # Y → X → Focus linear chain, expressed as an adjacency map.
+    result = DrivingPathResult(
+        focus_point_uid=3,
+        focus_point_name="Focus",
+        nodes={
+            1: _node(1, "Y"),
+            2: _node(2, "X"),
+            3: _node(3, "Focus"),
+        },
+        edges=[_edge(1, 2), _edge(2, 3)],
+        non_driving_predecessors=[],
     )
-    cv = DrivingPathCrossVersionResult(
-        focus_unique_id=2,
-        period_a_result=base,
-        period_b_result=base,
-        added_predecessor_uids={1, 3},  # type: ignore[arg-type]
-        removed_predecessor_uids=[],  # type: ignore[arg-type]
-        retained_predecessor_uids=frozenset(),
-    )
-    assert isinstance(cv.added_predecessor_uids, frozenset)
-    assert isinstance(cv.removed_predecessor_uids, frozenset)
-    assert isinstance(cv.retained_predecessor_uids, frozenset)
-    assert cv.added_predecessor_uids == frozenset({1, 3})
+    assert len(result.nodes) == 3
+    assert len(result.edges) == 2
 
 
 # ----------------------------------------------------------------------
-# Structural invariants on DrivingPathResult
+# Validator: slack regimes on Edge and NonDrivingPredecessor
+#
+# These four tests address F4 — the Block 7 audit found that no test
+# exercised the mutually-exclusive slack regime. See
+# ``tests/test_engine_driving_path_true_multi_branch.py`` for the
+# multi-branch scenario coverage (also F4).
 # ----------------------------------------------------------------------
 
 
-def test_chain_must_be_non_empty() -> None:
-    with pytest.raises(ValidationError, match="chain must be non-empty"):
-        DrivingPathResult(
-            focus_unique_id=2,
-            focus_name="Focus",
-            chain=(),
-            links=(),
-            non_driving_predecessors=(),
-        )
+def test_driving_path_edge_rejects_positive_slack() -> None:
+    with pytest.raises(
+        ValidationError, match="must be ~0"
+    ):
+        _edge(1, 2, slack_days=0.1)
 
 
-def test_chain_must_terminate_at_focus_uid() -> None:
-    with pytest.raises(ValidationError, match="terminate at focus_unique_id"):
-        DrivingPathResult(
-            focus_unique_id=99,
-            focus_name="Focus",
-            chain=(_node(1, "A"), _node(2, "B")),
-            links=(_link(1, 2),),
-            non_driving_predecessors=(),
-        )
+def test_driving_path_edge_accepts_sub_second_tolerance() -> None:
+    # One second in days is ~1.157e-5. The validator accepts values
+    # up to that magnitude so a non-8h/day calendar conversion can
+    # round without triggering a false negative.
+    edge = _edge(1, 2, slack_days=1.0 / 86_400.0)
+    assert edge.relationship_slack_days == pytest.approx(1.0 / 86_400.0)
 
 
-def test_links_parallel_index_with_chain() -> None:
-    with pytest.raises(ValidationError, match="parallel-indexed"):
-        DrivingPathResult(
-            focus_unique_id=2,
-            focus_name="Focus",
-            chain=(_node(1, "A"), _node(2, "Focus")),
-            links=(),
-            non_driving_predecessors=(),
-        )
+def test_driving_path_edge_rejects_just_over_tolerance() -> None:
+    # Slightly over one second — should reject.
+    with pytest.raises(ValidationError, match="must be ~0"):
+        _edge(1, 2, slack_days=1.0 / 86_400.0 * 2.0)
 
 
-def test_links_predecessor_uid_must_match_chain_predecessor() -> None:
-    with pytest.raises(ValidationError, match="predecessor_unique_id"):
-        DrivingPathResult(
-            focus_unique_id=2,
-            focus_name="Focus",
-            chain=(_node(1, "A"), _node(2, "Focus")),
-            links=(_link(99, 2),),  # wrong predecessor
-            non_driving_predecessors=(),
-        )
+def test_non_driving_predecessor_rejects_zero_slack() -> None:
+    with pytest.raises(ValidationError, match="strictly.*positive"):
+        _ndp(1, 2, slack_days=0.0)
 
 
-def test_links_successor_uid_must_match_chain_successor() -> None:
-    with pytest.raises(ValidationError, match="successor_unique_id"):
-        DrivingPathResult(
-            focus_unique_id=2,
-            focus_name="Focus",
-            chain=(_node(1, "A"), _node(2, "Focus")),
-            links=(_link(1, 99),),  # wrong successor
-            non_driving_predecessors=(),
-        )
+def test_non_driving_predecessor_rejects_negative_slack() -> None:
+    with pytest.raises(ValidationError, match="strictly.*positive"):
+        _ndp(1, 2, slack_days=-0.5)
 
 
-def test_single_node_chain_has_empty_links() -> None:
-    # Valid case: focus task with no driving predecessors.
-    result = DrivingPathResult(
-        focus_unique_id=42,
-        focus_name="Alone",
-        chain=(_node(42, "Alone"),),
-        links=(),
-        non_driving_predecessors=(),
-    )
-    assert len(result.chain) == 1
-    assert result.links == ()
+def test_non_driving_predecessor_rejects_sub_second_slack() -> None:
+    # Slack that would round to zero under the Edge tolerance must
+    # also be rejected here — the two regimes are mutually exclusive
+    # and together cover the real line.
+    with pytest.raises(ValidationError, match="strictly.*positive"):
+        _ndp(1, 2, slack_days=1.0 / 86_400.0 / 2.0)
 
 
-def test_three_tier_chain_links_validate() -> None:
-    # Valid case: Y → X → Focus.
-    result = DrivingPathResult(
-        focus_unique_id=3,
-        focus_name="Focus",
-        chain=(_node(1, "Y"), _node(2, "X"), _node(3, "Focus")),
-        links=(_link(1, 2), _link(2, 3)),
-        non_driving_predecessors=(),
-    )
-    assert len(result.chain) == 3
-    assert len(result.links) == 2
+def test_validator_error_messages_cite_skill_sections() -> None:
+    # Per Block 7 §3.4 the validator error messages must cite §4 and
+    # §5 verbatim so future debuggers see the authority inline.
+    with pytest.raises(ValidationError) as exc_info:
+        _edge(1, 2, slack_days=1.0)
+    message = str(exc_info.value)
+    assert "No path is dropped" in message
+    assert "walks recursively" in message
+
+    with pytest.raises(ValidationError) as exc_info:
+        _ndp(1, 2, slack_days=0.0)
+    message = str(exc_info.value)
+    assert "No path is dropped" in message
+    assert "walks recursively" in message
