@@ -63,6 +63,19 @@ class Schedule(BaseModel):
     working-days conversion (G5,
     ``mpp-parsing-com-automation §3.5``)."""
 
+    project_calendar_hours_per_day: float = Field(
+        ...,
+        gt=0,
+        description=(
+            "Hours-per-day factor from the project's default calendar. "
+            "Required on every Schedule. Populated at parse time by the "
+            "COM parser by reading MS Project's Options.HoursPerDay on "
+            "the project's default calendar. Forensic audit trail for "
+            "downstream days-denominated contract output. Used when a "
+            "task has no task-specific calendar override."
+        ),
+    )
+
     tasks: list[Task] = Field(default_factory=list)
     """All detail and summary tasks, keyed internally by
     ``Task.unique_id``."""
