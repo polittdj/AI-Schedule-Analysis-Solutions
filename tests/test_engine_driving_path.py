@@ -398,6 +398,33 @@ def test_trace_with_default_calendar_name_mismatch_uses_first_calendar() -> None
     assert set(result.nodes.keys()) == {1, 2}
 
 
+def test_trace_synthesises_calendar_when_schedule_has_none() -> None:
+    """Empty schedule.calendars: helper synthesises a default Standard.
+
+    Defensive branch — parser-generated schedules always carry at
+    least one calendar, but the helper tolerates an empty list so
+    unit-test fixtures don't have to supply one. CPM is called
+    directly with the synthesised calendar path; the driving-path
+    walk on a single-node focus schedule exercises line 87.
+    """
+    tasks = [Task(unique_id=1, task_id=1, name="A", duration_minutes=480)]
+    s = Schedule(
+        name="no_cals",
+        project_start=ANCHOR,
+        project_calendar_hours_per_day=8.0,
+        tasks=tasks,
+        relations=[],
+        default_calendar_name="",  # falsy → helper falls through to "Standard"
+        calendars=[Calendar(name="Standard")],
+    )
+    cpm = compute_cpm(s)
+    # Now strip calendars from a copy (Pydantic model_copy) so the
+    # tracer sees an empty list but CPM ran against a valid calendar.
+    s_no_cal = s.model_copy(update={"calendars": []})
+    result = trace_driving_path(s_no_cal, 1, cpm)
+    assert set(result.nodes.keys()) == {1}
+
+
 def test_trace_on_schedule_with_cycle_skips_cyclic_edges() -> None:
     """Cycle participants are skipped by CPM; walk stops cleanly."""
     tasks = [
