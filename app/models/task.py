@@ -174,6 +174,22 @@ class Task(BaseModel):
     resources. DCMA Metric 10 (``§4.10``) flags incomplete tasks
     where this is zero."""
 
+    # ---- Calendar (forensic audit trail) -----------------------------
+
+    calendar_hours_per_day: float | None = Field(
+        default=None,
+        description=(
+            "Hours-per-day factor from this task's assigned task "
+            "calendar, if the task has a task-specific calendar. "
+            "None means the task uses the project's default calendar "
+            "(see Schedule.project_calendar_hours_per_day). Populated "
+            "at parse time by the COM parser by resolving the task's "
+            "calendar_name against the project's Calendar collection. "
+            "Forensic audit trail for downstream days-denominated "
+            "contract output."
+        ),
+    )
+
     # ---- Validators --------------------------------------------------
 
     @field_validator(
@@ -194,6 +210,16 @@ class Task(BaseModel):
     def _tz_aware(cls, v: datetime | None) -> datetime | None:
         """G1: every date field, when present, must be timezone-aware."""
         return require_tz_aware(v)
+
+    @model_validator(mode="after")
+    def _check_calendar_hours_positive(self) -> Task:
+        """calendar_hours_per_day, when non-None, must be strictly positive."""
+        if self.calendar_hours_per_day is not None and self.calendar_hours_per_day <= 0:
+            raise ValueError(
+                "calendar_hours_per_day must be > 0 when set "
+                f"(got {self.calendar_hours_per_day})"
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_constraint_date_rules(self) -> Task:
