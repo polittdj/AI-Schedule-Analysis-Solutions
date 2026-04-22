@@ -44,6 +44,7 @@ def small_fs_chain() -> Schedule:
         Relation(predecessor_unique_id=2, successor_unique_id=3),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="small_fs_chain",
         project_start=ANCHOR,
         tasks=tasks,
@@ -83,6 +84,7 @@ def medium_mixed_relations() -> Schedule:
                  relation_type=RelationType.FS),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="medium_mixed_relations",
         project_start=ANCHOR,
         tasks=tasks,
@@ -165,6 +167,7 @@ def complex_with_exceptions() -> Schedule:
     )
 
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="complex_with_exceptions",
         project_start=ANCHOR,
         tasks=tasks,

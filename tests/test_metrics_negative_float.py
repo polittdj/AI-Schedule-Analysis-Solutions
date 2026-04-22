@@ -122,6 +122,7 @@ class TestExclusionProtocol:
 
     def test_excluded_negative_float_task_does_not_flag(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="excluded-neg",
             tasks=[
                 Task(
@@ -190,6 +191,7 @@ class TestExclusionHelperCoverage:
 
     def test_loe_name_pattern_fallback_excludes_task(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="loe-name",
             tasks=[
                 Task(
@@ -216,6 +218,7 @@ class TestExclusionHelperCoverage:
 
     def test_completed_task_excluded_from_denominator(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="done-excluded",
             tasks=[
                 Task(
@@ -241,6 +244,7 @@ class TestExclusionHelperCoverage:
         exploding — narrative layer may annotate the mismatch."""
         from app.models.calendar import Calendar
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="mismatched-cal",
             default_calendar_name="Does Not Exist",
             tasks=[
@@ -258,6 +262,7 @@ class TestExclusionHelperCoverage:
     def test_schedule_without_calendars_falls_back_to_8h(self) -> None:
         """Final fallback — no calendars at all, helper returns 8.0."""
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="no-cal",
             tasks=[Task(unique_id=1, task_id=1, name="T", duration_minutes=480)],
             calendars=[],

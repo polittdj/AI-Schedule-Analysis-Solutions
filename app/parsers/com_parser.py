@@ -357,6 +357,14 @@ class MPProjectParser(AbstractContextManager["MPProjectParser"]):
             working_days_per_week=working_days_per_week,
         )
 
+        # Build a name→hours_per_day lookup from the project's Calendars
+        # collection so per-task calendar overrides can be resolved during
+        # the first pass without a second COM walk. Populated lazily; an
+        # empty dict means "no calendars iterable available".
+        task_calendar_hours: dict[str, float] = self._build_calendar_hours_map(
+            project
+        )
+
         # ------------------------------------------------------------
         # Pass 1 — tasks (by index per P15)
         # ------------------------------------------------------------
@@ -378,7 +386,7 @@ class MPProjectParser(AbstractContextManager["MPProjectParser"]):
                 continue
 
             try:
-                task = self._build_task(raw_task)
+                task = self._build_task(raw_task, task_calendar_hours)
             except ValueError as exc:
                 raise CorruptScheduleError(
                     f"Task UniqueID={unique_id} failed model validation: {exc}"
@@ -430,6 +438,7 @@ class MPProjectParser(AbstractContextManager["MPProjectParser"]):
                     project, "DefaultCalendarName", "Standard"
                 )
                 or "Standard",
+                project_calendar_hours_per_day=hours_per_day,
                 tasks=tasks,
                 relations=relations,
                 resources=resources,
@@ -471,11 +480,19 @@ class MPProjectParser(AbstractContextManager["MPProjectParser"]):
 
     # -- task building ---------------------------------------------------
 
-    def _build_task(self, raw: Any) -> Task:
+    def _build_task(
+        self, raw: Any, calendar_hours: dict[str, float] | None = None
+    ) -> Task:
         """Construct a validated :class:`Task` from a COM task row.
 
         Each field below cites the COM property and the skill
         section establishing the mapping (AC A6).
+
+        ``calendar_hours`` is the project-level name→hours_per_day map
+        used to resolve a task-specific calendar override into a
+        ``calendar_hours_per_day`` value. ``None`` or an empty map
+        forces every task's ``calendar_hours_per_day`` to ``None``
+        (meaning "inherit the project default").
         """
         # Identification
         unique_id = int(safe_get(raw, "UniqueID"))  # Task.UniqueID (skill §5)
@@ -560,6 +577,34 @@ class MPProjectParser(AbstractContextManager["MPProjectParser"]):
         is_rolling_wave = bool(safe_get(raw, "IsRollingWave", False))
         is_schedule_margin = bool(safe_get(raw, "IsScheduleMargin", False))
 
+        # Task-specific calendar override — COM typically exposes
+        # ``Calendar`` (a Calendar COM object) or ``CalendarName``
+        # (a string). If neither is present, the task inherits the
+        # project default and we leave calendar_hours_per_day=None.
+        task_calendar_hours_per_day: float | None = None
+        task_calendar_name: str | None = None
+        cal_obj = safe_get(raw, "Calendar")
+        if cal_obj is not None:
+            # Calendar may be a COM object with a Name property, or a
+            # string in fixture tests.
+            if isinstance(cal_obj, str):
+                task_calendar_name = cal_obj or None
+            else:
+                task_calendar_name = safe_get(cal_obj, "Name")
+        if task_calendar_name is None:
+            task_calendar_name = safe_get(raw, "CalendarName")
+        if task_calendar_name:
+            hours = (calendar_hours or {}).get(task_calendar_name)
+            if hours is None:
+                _logger.warning(
+                    "task calendar %r did not resolve for UniqueID=%s; "
+                    "falling back to project default",
+                    task_calendar_name,
+                    unique_id,
+                )
+            else:
+                task_calendar_hours_per_day = hours
+
         # Resource count — len(Task.Assignments). COM exposes Count.
         assignments = safe_get(raw, "Assignments")
         if assignments is None:
@@ -608,6 +653,7 @@ class MPProjectParser(AbstractContextManager["MPProjectParser"]):
             is_rolling_wave=is_rolling_wave,
             is_schedule_margin=is_schedule_margin,
             resource_count=resource_count,
+            calendar_hours_per_day=task_calendar_hours_per_day,
         )
 
     # -- resources + assignments -----------------------------------------
@@ -694,6 +740,39 @@ class MPProjectParser(AbstractContextManager["MPProjectParser"]):
                         ) from exc
 
         return resources, assignments
+
+    # -- calendar hours map (task-level override lookup) -----------------
+
+    def _build_calendar_hours_map(self, project: Any) -> dict[str, float]:
+        """Return a name→hours_per_day map from ``project.Calendars``.
+
+        Used by :meth:`_build_task` to resolve a task-specific calendar
+        assignment into a concrete ``calendar_hours_per_day`` value
+        without a second COM walk. Calendars that do not expose a
+        parseable ``HoursPerDay`` are omitted; the task-level resolver
+        treats omission as "override unresolved" and falls back to the
+        project default per Block 2 §4.2(3).
+        """
+        out: dict[str, float] = {}
+        raw_calendars = safe_get(project, "Calendars")
+        if raw_calendars is None:
+            return out
+        for raw in self._iter_collection(raw_calendars):
+            if raw is None:
+                continue
+            cal_name = safe_get(raw, "Name")
+            if not cal_name:
+                continue
+            hpd_raw = safe_get(raw, "HoursPerDay")
+            if hpd_raw is None:
+                continue
+            try:
+                hpd = float(hpd_raw)
+            except (TypeError, ValueError):
+                continue
+            if hpd > 0:
+                out[cal_name] = hpd
+        return out
 
     # -- calendars --------------------------------------------------------
 

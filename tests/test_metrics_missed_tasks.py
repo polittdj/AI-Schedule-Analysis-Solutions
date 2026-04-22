@@ -72,6 +72,7 @@ class TestLoeExemption:
             })
             new_tasks.append(new_t)
         new_sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name=sched.name,
             status_date=sched.status_date,
             project_start=sched.project_start,
@@ -127,6 +128,7 @@ class TestVacuousPass:
             for i in range(1, 4)
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="vacuous",
             status_date=STATUS_DATE,
             project_start=STATUS_DATE - timedelta(days=30),

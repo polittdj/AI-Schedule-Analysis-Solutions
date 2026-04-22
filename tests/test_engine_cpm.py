@@ -29,7 +29,7 @@ from tests.fixtures.schedules import (
 
 
 def test_empty_schedule_no_op() -> None:
-    s = Schedule(name="empty")
+    s = Schedule(project_calendar_hours_per_day=8.0, name="empty")
     result = compute_cpm(s)
     assert result.tasks == {}
     assert result.project_start is None
@@ -43,6 +43,7 @@ def test_empty_schedule_no_op() -> None:
 def test_independent_tasks_each_anchor_on_project_start() -> None:
     """Tasks with no relations each start at project_start."""
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="indep",
         project_start=ANCHOR,
         tasks=[
@@ -97,6 +98,7 @@ def test_small_fs_chain_backward_pass() -> None:
 
 def test_milestone_es_equals_ef() -> None:
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="ms",
         project_start=ANCHOR,
         tasks=[
@@ -124,6 +126,7 @@ def test_multiple_predecessors_successor_takes_max() -> None:
     # A (1d) EF = Tue 08:00; B (3d) EF = Thu 08:00.
     # C depends on both → ES = max = Thu 08:00.
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="multi-pred",
         project_start=ANCHOR,
         tasks=[
@@ -147,6 +150,7 @@ def test_multiple_predecessors_successor_takes_max() -> None:
 def test_disconnected_subgraphs_computed_independently() -> None:
     # Graph 1: 1→2; Graph 2: 3→4.
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="disconnected",
         project_start=ANCHOR,
         tasks=[
@@ -208,6 +212,7 @@ def test_lenient_cycle_returns_result_with_cycles_detected() -> None:
         Relation(predecessor_unique_id=3, successor_unique_id=1),
     ]
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="cycle",
         project_start=ANCHOR,
         tasks=tasks,
@@ -228,6 +233,7 @@ def test_strict_cycle_raises() -> None:
         Relation(predecessor_unique_id=2, successor_unique_id=1),
     ]
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="strict-cycle",
         project_start=ANCHOR,
         tasks=tasks,
@@ -248,6 +254,7 @@ def test_lenient_cycle_preserves_acyclic_subgraph_floats() -> None:
         Relation(predecessor_unique_id=3, successor_unique_id=4),
     ]
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="mix",
         project_start=ANCHOR,
         tasks=tasks,
@@ -267,6 +274,7 @@ def test_mso_locks_es_in_forward_pass() -> None:
     """E8: MSO locks ES regardless of predecessors."""
     mso_date = datetime(2026, 4, 24, 8, tzinfo=UTC)  # Friday
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="mso",
         project_start=ANCHOR,
         tasks=[
@@ -298,6 +306,7 @@ def test_mso_override_predecessor_emits_violation() -> None:
     # releases) so the MSO lock overrides the FS link.
     mso_date = datetime(2026, 4, 20, 8, tzinfo=UTC)
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="mso-override",
         project_start=ANCHOR,
         tasks=[
@@ -336,6 +345,7 @@ def test_mfo_override_predecessor_emits_violation() -> None:
     # Successor: 1 day, MFO = Tue 4/21 16:00 (well before pred finish).
     mfo_date = datetime(2026, 4, 21, 16, tzinfo=UTC)
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="mfo-override",
         project_start=ANCHOR,
         tasks=[
@@ -378,6 +388,7 @@ def test_mso_override_successor_emits_backward_violation() -> None:
     p_mso = datetime(2026, 4, 23, 8, tzinfo=UTC)
     s_fnlt = datetime(2026, 4, 22, 16, tzinfo=UTC)
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="mso-succ",
         project_start=ANCHOR,
         tasks=[
@@ -408,6 +419,7 @@ def test_mfo_override_successor_emits_backward_violation() -> None:
     p_mfo = datetime(2026, 4, 24, 16, tzinfo=UTC)
     s_fnlt = datetime(2026, 4, 22, 16, tzinfo=UTC)
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="mfo-succ",
         project_start=ANCHOR,
         tasks=[
@@ -436,6 +448,7 @@ def test_fnlt_breach_emits_violation_not_exception() -> None:
     """E11: FNLT breach is a recorded violation."""
     fnlt = datetime(2026, 4, 20, 16, tzinfo=UTC)
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="fnlt",
         project_start=ANCHOR,
         tasks=[
@@ -487,6 +500,7 @@ def test_backward_pass_multi_successor_uses_min() -> None:
       P LF = MIN = Tue 4/21 08  -> TS(P) = 0 (on-critical).
     """
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="multi-succ",
         project_start=ANCHOR,
         tasks=[
@@ -530,6 +544,7 @@ def test_calendar_synthesis_default_allows_empty_calendars() -> None:
     calendar lists so minimal fixtures continue to compute. The
     flip to strict mode is tracked for M5."""
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="no-cal",
         project_start=ANCHOR,
         tasks=[
@@ -548,6 +563,7 @@ def test_calendar_synthesis_off_raises_on_empty_calendars() -> None:
     fabricate a calendar — the absence is a forensic signal
     (driving-slack-and-paths §8 CPM discipline)."""
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="no-cal-strict",
         project_start=ANCHOR,
         tasks=[
@@ -616,6 +632,7 @@ def test_near_critical_uses_options_threshold() -> None:
         Relation(predecessor_unique_id=6, successor_unique_id=5),
     ]
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="nc",
         project_start=ANCHOR,
         tasks=tasks,

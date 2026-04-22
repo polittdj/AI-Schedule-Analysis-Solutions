@@ -145,6 +145,7 @@ class TestTasksWithBaselineFinishBy:
         t_after = _task(3, baseline_finish=ANCHOR + timedelta(days=11))
         t_nobl = _task(4, baseline_finish=None)
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="test",
             project_start=ANCHOR,
             tasks=[t_on, t_at, t_after, t_nobl],
@@ -156,6 +157,7 @@ class TestTasksWithBaselineFinishBy:
 
     def test_empty_schedule_returns_empty_list(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="empty", project_start=ANCHOR, calendars=[_std_cal()]
         )
         assert tasks_with_baseline_finish_by(sched, ANCHOR) == []
@@ -163,6 +165,7 @@ class TestTasksWithBaselineFinishBy:
     def test_none_baseline_tasks_excluded(self) -> None:
         t_nobl = _task(1, baseline_finish=None)
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="nobl",
             project_start=ANCHOR,
             tasks=[t_nobl],
@@ -186,6 +189,7 @@ class TestHasBaselineCoverage:
             for i in range(1, 4)
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="covered",
             project_start=ANCHOR,
             tasks=tasks,
@@ -200,6 +204,7 @@ class TestHasBaselineCoverage:
             _task(3, baseline_finish=ANCHOR + timedelta(days=3)),
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="partial",
             project_start=ANCHOR,
             tasks=tasks,
@@ -224,6 +229,7 @@ class TestHasBaselineCoverage:
             ),
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="milestones_exempt",
             project_start=ANCHOR,
             tasks=tasks,
@@ -237,6 +243,7 @@ class TestHasBaselineCoverage:
             _task(2, baseline_finish=ANCHOR + timedelta(days=2)),
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="summary_exempt",
             project_start=ANCHOR,
             tasks=tasks,
@@ -246,6 +253,7 @@ class TestHasBaselineCoverage:
 
     def test_empty_schedule_has_vacuous_coverage(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="empty", project_start=ANCHOR, calendars=[_std_cal()]
         )
         assert has_baseline_coverage(sched) is True
@@ -277,6 +285,7 @@ class TestBaselineCriticalPathLengthMinutes:
             ),
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="cpl",
             project_start=ANCHOR,
             tasks=tasks,
@@ -294,6 +303,7 @@ class TestBaselineCriticalPathLengthMinutes:
 
     def test_none_when_no_critical_path_uids(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="empty_cp", project_start=ANCHOR, calendars=[_std_cal()]
         )
         cpm = CPMResult(tasks={}, critical_path_uids=frozenset())
@@ -309,6 +319,7 @@ class TestBaselineCriticalPathLengthMinutes:
             _task(2, baseline_start=None, baseline_finish=None),
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="no_bl_on_cp",
             project_start=ANCHOR,
             tasks=tasks,
@@ -334,6 +345,7 @@ class TestBaselineCriticalPathLengthMinutes:
             )
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="negative",
             project_start=ANCHOR,
             tasks=tasks,
@@ -358,6 +370,7 @@ class TestBaselineComparison:
             _task(2, baseline_finish=None),
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="cmp",
             project_start=ANCHOR,
             tasks=tasks,
@@ -371,6 +384,7 @@ class TestBaselineComparison:
     def test_snapshot_is_immutable(self) -> None:
         tasks = [_task(1, baseline_finish=ANCHOR + timedelta(days=1))]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="imm",
             project_start=ANCHOR,
             tasks=tasks,

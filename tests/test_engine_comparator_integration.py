@@ -90,6 +90,7 @@ def _build_period_a() -> Schedule:
                  relation_type=RelationType.FS, lag_minutes=0),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="period_a",
         project_start=ANCHOR,
         status_date=STATUS_A,
@@ -158,6 +159,7 @@ def _build_period_b() -> Schedule:
                  relation_type=RelationType.FS, lag_minutes=0),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="period_b",
         project_start=ANCHOR,
         status_date=STATUS_B,

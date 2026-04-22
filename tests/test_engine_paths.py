@@ -36,6 +36,7 @@ def _r(p: int, s: int, rt: RelationType = RelationType.FS, lag: int = 0) -> Rela
 
 def _schedule(tasks: list[Task], relations: list[Relation]) -> Schedule:
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="test",
         project_start=ANCHOR,
         tasks=tasks,
@@ -188,6 +189,7 @@ def test_driving_slack_with_non_matching_calendar_name() -> None:
     tasks = [_t(1), _t(2)]
     relations = [_r(1, 2)]
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="mismatch",
         project_start=ANCHOR,
         tasks=tasks,
@@ -209,6 +211,7 @@ def test_driving_slack_with_no_calendars_synthesizes_default() -> None:
     want to exercise the code path explicitly."""
     tasks = [_t(1)]
     s = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="nocal",
         project_start=ANCHOR,
         tasks=tasks,

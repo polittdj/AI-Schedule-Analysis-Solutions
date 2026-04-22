@@ -128,7 +128,12 @@ class TestCycleSkippedExclusion:
     def test_cycle_skipped_tasks_drop_from_denominator(self) -> None:
         tasks = [Task(unique_id=i, task_id=i, name=f"T{i}", duration_minutes=480)
                  for i in range(1, 6)]
-        sched = Schedule(name="cycle-sched", tasks=tasks, relations=[])
+        sched = Schedule(
+            project_calendar_hours_per_day=8.0,
+            name="cycle-sched",
+            tasks=tasks,
+            relations=[],
+        )
         # UID 3 is skipped; give the others clean non-flagging TF.
         cpm = CPMResult(
             tasks={
@@ -157,7 +162,8 @@ class TestCalendarScaling:
         cal = Calendar(name="Ten", hours_per_day=10.0)
         tasks = [Task(unique_id=i, task_id=i, name=f"T{i}", duration_minutes=480)
                  for i in range(1, 11)]
-        sched = Schedule(name="cal10", tasks=tasks, calendars=[cal],
+        sched = Schedule(
+project_calendar_hours_per_day=8.0,name="cal10", tasks=tasks, calendars=[cal],
                          default_calendar_name="Ten")
         # 45 WD on a 10h/day calendar = 45 * 10 * 60 = 27000 min.
         # 44 WD on a 10h/day calendar = 26400 min.
@@ -215,6 +221,7 @@ class TestLoeByNameFallback:
 
     def test_loe_name_pattern_fallback_excludes_task(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="loe-name",
             tasks=[
                 Task(
@@ -254,6 +261,7 @@ class TestCalendarFallbackToFirst:
         # a task at 26401 min therefore flags.
         cal = Calendar(name="First", hours_per_day=10.0)
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="mismatched-cal",
             default_calendar_name="Does Not Exist",
             tasks=[

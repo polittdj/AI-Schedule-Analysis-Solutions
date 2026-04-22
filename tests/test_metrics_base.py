@@ -150,5 +150,5 @@ class TestBaseMetric:
                 )
 
         stub = Stub()
-        result = stub.run(Schedule())
+        result = stub.run(Schedule(project_calendar_hours_per_day=8.0))
         assert result.metric_id == "DCMA-X"

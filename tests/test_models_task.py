@@ -192,6 +192,26 @@ class TestG8PercentComplete:
         assert t.percent_complete == v
 
 
+class TestCalendarHoursPerDay:
+    """M1.1: Task.calendar_hours_per_day is nullable with gt=0 when set."""
+
+    def test_task_calendar_hours_per_day_accepts_none(self) -> None:
+        t = _minimal_task()
+        assert t.calendar_hours_per_day is None
+
+    def test_task_calendar_hours_per_day_accepts_positive_float(self) -> None:
+        t = _minimal_task(calendar_hours_per_day=8.0)
+        assert t.calendar_hours_per_day == 8.0
+
+    def test_task_calendar_hours_per_day_rejects_zero(self) -> None:
+        with pytest.raises(ValidationError):
+            _minimal_task(calendar_hours_per_day=0)
+
+    def test_task_calendar_hours_per_day_rejects_negative(self) -> None:
+        with pytest.raises(ValidationError):
+            _minimal_task(calendar_hours_per_day=-1.0)
+
+
 class TestRoundTrip:
     def test_json_roundtrip_preserves_fields(self) -> None:
         t = _minimal_task(
