@@ -113,8 +113,12 @@ class TestRollingWaveExemption:
             unique_id=1, task_id=1, name="RW-not",
             duration_minutes=28800,
         )
-        r_exempt = run_high_duration(Schedule(name="a", tasks=[exempt]))
-        r_not_exempt = run_high_duration(Schedule(name="b", tasks=[not_exempt]))
+        r_exempt = run_high_duration(
+            Schedule(project_calendar_hours_per_day=8.0, name="a", tasks=[exempt])
+        )
+        r_not_exempt = run_high_duration(
+            Schedule(project_calendar_hours_per_day=8.0, name="b", tasks=[not_exempt])
+        )
         assert r_exempt.numerator == 0
         assert r_not_exempt.numerator == 1
 
@@ -125,6 +129,7 @@ class TestRemainingDurationPreferred:
 
     def test_short_remaining_overrides_long_total(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="remaining-wins",
             tasks=[
                 Task(
@@ -175,6 +180,7 @@ class TestCalendarScaling:
                  duration_minutes=27000)
         )
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="cal10", tasks=tasks, calendars=[cal],
             default_calendar_name="Ten",
         )
@@ -228,6 +234,7 @@ class TestExclusionHelperCoverage:
 
     def test_loe_by_name_fallback_drops_offender(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="loe-name",
             tasks=[
                 Task(
@@ -246,6 +253,7 @@ class TestExclusionHelperCoverage:
 
     def test_mismatched_default_calendar_falls_back_to_first(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="mismatched",
             default_calendar_name="Missing",
             tasks=[
@@ -259,6 +267,7 @@ class TestExclusionHelperCoverage:
 
     def test_schedule_without_calendars_falls_back_to_8h(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="no-cal",
             tasks=[
                 Task(unique_id=1, task_id=1, name="T",

@@ -47,6 +47,7 @@ class TestEmptyAndExcluded:
         complete collapses to denominator 0 → vacuous PASS."""
         cd = datetime(2026, 6, 1, 8, 0, tzinfo=UTC)
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="all-excluded",
             tasks=[
                 Task(
@@ -206,6 +207,7 @@ class TestAlapAndSoftConstraintsExcluded:
         }
         cd = datetime(2026, 6, 1, 8, 0, tzinfo=UTC) if needs_date else None
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="single",
             tasks=[
                 Task(
@@ -258,6 +260,7 @@ class TestLoeByNameFallback:
     def test_loe_name_pattern_fallback_excludes_task(self) -> None:
         cd = datetime(2026, 6, 1, 8, 0, tzinfo=UTC)
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="loe-name",
             tasks=[
                 Task(

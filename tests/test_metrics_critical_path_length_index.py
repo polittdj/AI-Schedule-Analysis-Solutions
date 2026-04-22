@@ -147,6 +147,7 @@ class TestEdgeCases:
             ),
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="cp_none_edge",
             status_date=ANCHOR,
             project_start=ANCHOR,

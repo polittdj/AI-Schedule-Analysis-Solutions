@@ -67,6 +67,7 @@ def _rel(p: int, s: int) -> Relation:
 
 def _schedule() -> Schedule:
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="golden",
         project_start=ANCHOR,
         tasks=[_task(i) for i in (1, 2, 3, 4, 5)],

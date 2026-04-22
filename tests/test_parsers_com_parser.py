@@ -40,6 +40,7 @@ from app.parsers.exceptions import (
 )
 from tests.fixtures import (
     FakeAssignment,
+    FakeCalendar,
     FakeMSProjectApp,
     FakeProject,
     FakeResource,
@@ -603,6 +604,98 @@ class TestResourcesAndCalendars:
             schedule = _parse_with(parser, project)
         assert schedule.calendars[0].hours_per_day == 10.0
         assert schedule.calendars[0].working_days_per_week == 4
+
+
+# ---------------------------------------------------------------------------
+# M1.1 — calendar hours-per-day propagation (Schedule + Task denormalized)
+# ---------------------------------------------------------------------------
+
+
+class TestCalendarHoursPerDayPropagation:
+    def test_parser_populates_project_calendar_hours_per_day(self) -> None:
+        """Project HoursPerDay=8.0 → Schedule.project_calendar_hours_per_day."""
+        project = make_minimal_project()
+        assert project.HoursPerDay == 8.0
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        assert schedule.project_calendar_hours_per_day == 8.0
+
+    def test_parser_populates_project_calendar_hours_per_day_10h(self) -> None:
+        """Project HoursPerDay=10.0 propagates to the Schedule field."""
+        project = make_minimal_project()
+        project.HoursPerDay = 10.0
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        assert schedule.project_calendar_hours_per_day == 10.0
+
+    def test_parser_task_without_task_calendar_has_none(self) -> None:
+        """A task with no task-specific calendar has calendar_hours_per_day=None."""
+        project = make_minimal_project()
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        assert all(t.calendar_hours_per_day is None for t in schedule.tasks)
+
+    def test_parser_task_with_task_calendar_populates_hours(self) -> None:
+        """Task with a 24h/day elapsed-time calendar → 24.0."""
+        elapsed = FakeCalendar(name="Elapsed", hours_per_day=24.0)
+        standard = FakeCalendar(name="Standard", hours_per_day=8.0)
+        t = FakeTask(
+            unique_id=1,
+            task_id=1,
+            name="elapsed-task",
+            calendar_name="Elapsed",
+        )
+        project = FakeProject(
+            tasks=[t],
+            calendars=[standard, elapsed],
+        )
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        assert schedule.tasks[0].calendar_hours_per_day == 24.0
+
+    def test_parser_task_calendar_com_object_resolves(self) -> None:
+        """COM surface of Calendar is an object with a Name property."""
+        elapsed = FakeCalendar(name="Elapsed", hours_per_day=24.0)
+        standard = FakeCalendar(name="Standard", hours_per_day=8.0)
+        t = FakeTask(
+            unique_id=1,
+            task_id=1,
+            name="elapsed-task",
+            calendar=elapsed,
+        )
+        project = FakeProject(
+            tasks=[t],
+            calendars=[standard, elapsed],
+        )
+        app = FakeMSProjectApp(project)
+        with _parser_with(app) as parser:
+            schedule = _parse_with(parser, project)
+        assert schedule.tasks[0].calendar_hours_per_day == 24.0
+
+    def test_parser_task_with_unresolvable_calendar_name_falls_back_to_none(
+        self, caplog
+    ) -> None:
+        """Unresolvable task calendar name → None + warning log."""
+        standard = FakeCalendar(name="Standard", hours_per_day=8.0)
+        t = FakeTask(
+            unique_id=1,
+            task_id=1,
+            name="orphan-calendar",
+            calendar_name="NotInProject",
+        )
+        project = FakeProject(tasks=[t], calendars=[standard])
+        app = FakeMSProjectApp(project)
+        with caplog.at_level("WARNING", logger="app.parsers.com_parser"):
+            with _parser_with(app) as parser:
+                schedule = _parse_with(parser, project)
+        assert schedule.tasks[0].calendar_hours_per_day is None
+        assert any(
+            "NotInProject" in rec.getMessage() for rec in caplog.records
+        )
 
 
 # ---------------------------------------------------------------------------

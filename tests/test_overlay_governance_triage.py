@@ -75,6 +75,7 @@ def test_ac2_cdr_review_with_mfo_emits_triage_note() -> None:
         *(_make_task(i, f"Ordinary task {i}") for i in range(1, 20)),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="governance_triage_fixture",
         project_start=ANCHOR,
         tasks=tasks,
@@ -128,6 +129,7 @@ def test_non_governance_constrained_task_does_not_emit_note() -> None:
         *(_make_task(i, f"T{i}") for i in range(2, 12)),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="no_governance_fixture",
         project_start=ANCHOR,
         tasks=tasks,
@@ -167,6 +169,7 @@ def test_multiple_governance_offenders_emit_one_note_each() -> None:
         *(_make_task(i, f"T{i}") for i in range(1, 10)),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="multi_governance_fixture",
         project_start=ANCHOR,
         tasks=tasks,
@@ -207,6 +210,7 @@ def test_mixed_offenders_filter_by_name_match() -> None:
         *(_make_task(i, f"T{i}") for i in range(1, 10)),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="mixed_fixture",
         project_start=ANCHOR,
         tasks=tasks,
@@ -237,6 +241,7 @@ def test_original_result_preserved_after_triage() -> None:
         *(_make_task(i, f"T{i}") for i in range(1, 10)),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="mutation_check",
         project_start=ANCHOR,
         tasks=tasks,
@@ -274,6 +279,7 @@ def test_original_result_preserved_after_triage() -> None:
 
 def test_missing_metric_result_raises() -> None:
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="empty",
         project_start=ANCHOR,
         tasks=[_make_task(1, "T1")],
@@ -301,6 +307,7 @@ def test_accepts_metric_options_without_using_them() -> None:
         *(_make_task(i, f"T{i}") for i in range(1, 10)),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="options_symmetry",
         project_start=ANCHOR,
         tasks=tasks,

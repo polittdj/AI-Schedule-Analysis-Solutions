@@ -167,6 +167,7 @@ class TestGotchaCatalogueAtPackageLevel:
 
         with pytest.raises(ValidationError):
             Schedule(
+                project_calendar_hours_per_day=8.0,
                 tasks=[
                     Task(unique_id=1, task_id=1, name="a"),
                     Task(unique_id=1, task_id=2, name="b"),
@@ -180,6 +181,7 @@ class TestGotchaCatalogueAtPackageLevel:
 
         with pytest.raises(ValidationError):
             Schedule(
+                project_calendar_hours_per_day=8.0,
                 tasks=[Task(unique_id=1, task_id=1, name="a")],
                 relations=[Relation(predecessor_unique_id=1, successor_unique_id=99)],
             )
@@ -187,7 +189,7 @@ class TestGotchaCatalogueAtPackageLevel:
     def test_g12_package_level(self) -> None:
         from app.models import Schedule
 
-        assert Schedule().tasks == []
+        assert Schedule(project_calendar_hours_per_day=8.0).tasks == []
 
 
 class TestModelCopyImmutability:
@@ -197,7 +199,10 @@ class TestModelCopyImmutability:
     def test_schedule_model_copy_preserves_invariants(self) -> None:
         from app.models import Schedule, Task
 
-        s = Schedule(tasks=[Task(unique_id=1, task_id=1, name="a")])
+        s = Schedule(
+            project_calendar_hours_per_day=8.0,
+            tasks=[Task(unique_id=1, task_id=1, name="a")],
+        )
         s2 = s.model_copy(update={"name": "cloned"})
         assert s2.name == "cloned"
         assert s.name == ""

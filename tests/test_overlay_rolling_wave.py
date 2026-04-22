@@ -47,6 +47,7 @@ def _task(uid: int, *, is_rolling_wave: bool, start: datetime | None,
 def _schedule_with(tasks: list[Task], *, status_date: datetime | None = STATUS,
                    project_start: datetime | None = STATUS) -> Schedule:
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="rolling_wave_fixture",
         status_date=status_date,
         project_start=project_start,

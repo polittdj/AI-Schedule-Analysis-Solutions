@@ -118,6 +118,7 @@ class TestOffenderListDetails:
 class TestLoeByNameFallback:
     def test_loe_name_pattern_fallback_excludes_task(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="loe-name",
             tasks=[
                 Task(

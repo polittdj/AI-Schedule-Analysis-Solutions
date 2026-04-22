@@ -91,6 +91,7 @@ def _combined_fixture() -> tuple[Schedule, CPMResult]:
         Task(unique_id=10, task_id=10, name="T10", duration_minutes=480),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="m8_integration",
         status_date=STATUS,
         project_start=STATUS,

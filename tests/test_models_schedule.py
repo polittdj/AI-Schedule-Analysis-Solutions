@@ -25,7 +25,7 @@ def _task(uid: int, tid: int | None = None, name: str | None = None) -> Task:
 
 class TestG12EmptySchedule:
     def test_empty_schedule_is_valid(self) -> None:
-        s = Schedule()
+        s = Schedule(project_calendar_hours_per_day=8.0)
         assert s.tasks == []
         assert s.relations == []
         assert s.status_date is None
@@ -33,27 +33,28 @@ class TestG12EmptySchedule:
 
 class TestG9StatusDate:
     def test_tz_aware_accepted(self) -> None:
-        s = Schedule(status_date=_dt(15, 17))
+        s = Schedule(project_calendar_hours_per_day=8.0, status_date=_dt(15, 17))
         assert s.status_date is not None
         assert s.status_date.tzinfo is not None
 
     def test_naive_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            Schedule(status_date=datetime(2026, 4, 15, 17))
+            Schedule(project_calendar_hours_per_day=8.0, status_date=datetime(2026, 4, 15, 17))
 
     def test_project_start_naive_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            Schedule(project_start=datetime(2026, 4, 1, 8))
+            Schedule(project_calendar_hours_per_day=8.0, project_start=datetime(2026, 4, 1, 8))
 
     def test_project_finish_naive_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            Schedule(project_finish=datetime(2026, 4, 30, 17))
+            Schedule(project_calendar_hours_per_day=8.0, project_finish=datetime(2026, 4, 30, 17))
 
 
 class TestG10UniqueIdCollisionDetection:
     def test_duplicate_unique_ids_rejected(self) -> None:
         with pytest.raises(ValidationError, match="G10"):
             Schedule(
+                project_calendar_hours_per_day=8.0,
                 tasks=[
                     _task(1),
                     _task(uid=1, tid=2, name="dup"),
@@ -61,7 +62,7 @@ class TestG10UniqueIdCollisionDetection:
             )
 
     def test_all_unique_ok(self) -> None:
-        s = Schedule(tasks=[_task(1), _task(2), _task(3)])
+        s = Schedule(project_calendar_hours_per_day=8.0, tasks=[_task(1), _task(2), _task(3)])
         assert len(s.tasks) == 3
 
 
@@ -69,6 +70,7 @@ class TestG11RelationTaskExistence:
     def test_dangling_predecessor_rejected(self) -> None:
         with pytest.raises(ValidationError, match="G11"):
             Schedule(
+                project_calendar_hours_per_day=8.0,
                 tasks=[_task(1), _task(2)],
                 relations=[Relation(predecessor_unique_id=99, successor_unique_id=2)],
             )
@@ -76,12 +78,14 @@ class TestG11RelationTaskExistence:
     def test_dangling_successor_rejected(self) -> None:
         with pytest.raises(ValidationError, match="G11"):
             Schedule(
+                project_calendar_hours_per_day=8.0,
                 tasks=[_task(1), _task(2)],
                 relations=[Relation(predecessor_unique_id=1, successor_unique_id=99)],
             )
 
     def test_valid_relation_accepted(self) -> None:
         s = Schedule(
+            project_calendar_hours_per_day=8.0,
             tasks=[_task(1), _task(2), _task(3)],
             relations=[
                 Relation(predecessor_unique_id=1, successor_unique_id=2),
@@ -100,6 +104,7 @@ class TestResourceAssignmentsHygiene:
     def test_assignment_task_must_exist(self) -> None:
         with pytest.raises(ValidationError):
             Schedule(
+                project_calendar_hours_per_day=8.0,
                 tasks=[_task(1)],
                 resources=[Resource(unique_id=10, resource_id=1, name="R")],
                 assignments=[
@@ -110,6 +115,7 @@ class TestResourceAssignmentsHygiene:
     def test_assignment_resource_must_exist_when_resources_populated(self) -> None:
         with pytest.raises(ValidationError):
             Schedule(
+                project_calendar_hours_per_day=8.0,
                 tasks=[_task(1)],
                 resources=[Resource(unique_id=10, resource_id=1, name="R")],
                 assignments=[
@@ -122,6 +128,7 @@ class TestResourceAssignmentsHygiene:
         cross-checked — lets the M3 parser populate assignments before
         resources without crashing during incremental construction."""
         s = Schedule(
+            project_calendar_hours_per_day=8.0,
             tasks=[_task(1)],
             assignments=[ResourceAssignment(resource_unique_id=10, task_unique_id=1)],
         )
@@ -131,6 +138,7 @@ class TestResourceAssignmentsHygiene:
 class TestRoundTrip:
     def test_small_schedule_json_roundtrip(self) -> None:
         original = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="test.mpp",
             status_date=_dt(15, 17),
             project_start=_dt(1, 8),
@@ -169,4 +177,20 @@ class TestRoundTrip:
 
     def test_top_level_extra_field_forbidden(self) -> None:
         with pytest.raises(ValidationError):
-            Schedule(surprise="x")  # type: ignore[call-arg]
+            Schedule(project_calendar_hours_per_day=8.0, surprise="x")  # type: ignore[call-arg]
+
+
+class TestProjectCalendarHoursPerDay:
+    """M1.1: Schedule.project_calendar_hours_per_day is required, gt=0."""
+
+    def test_schedule_project_calendar_hours_per_day_is_required(self) -> None:
+        with pytest.raises(ValidationError):
+            Schedule()  # type: ignore[call-arg]
+
+    def test_schedule_project_calendar_hours_per_day_rejects_zero(self) -> None:
+        with pytest.raises(ValidationError):
+            Schedule(project_calendar_hours_per_day=0)
+
+    def test_schedule_project_calendar_hours_per_day_rejects_negative(self) -> None:
+        with pytest.raises(ValidationError):
+            Schedule(project_calendar_hours_per_day=-1.0)

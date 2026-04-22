@@ -74,6 +74,7 @@ def _sched(
     relations: tuple[Relation, ...] = (),
 ) -> Schedule:
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name=name,
         project_start=ANCHOR,
         status_date=status_date,
