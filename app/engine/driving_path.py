@@ -344,11 +344,110 @@ def trace_driving_path_cross_version(
     period_a_cpm_result: CPMResult,
     period_b_cpm_result: CPMResult,
 ) -> DrivingPathCrossVersionResult:
-    """Trace driving paths in both periods — stub for Block 7.3."""
-    raise NotImplementedError(
-        "trace_driving_path_cross_version: Block 7.3 rewrite pending. "
-        "Block 7.2 delivered the single-schedule backward walk; the "
-        "cross-version implementation lands in Block 7.3."
+    """Trace driving paths in both periods from a shared Focus Point.
+
+    Period A slack is the sole but-for reference per
+    ``driving-slack-and-paths §9``. Period B's trace is kept on the
+    result for UI display / drill-down but Period B slack is never
+    used to derive the added / removed / retained sets.
+
+    Added / removed / retained semantics are framed from Period A's
+    perspective:
+
+    * ``added_predecessor_uids`` — UIDs in Period B's
+      :attr:`DrivingPathResult.nodes` but not in Period A's.
+    * ``removed_predecessor_uids`` — UIDs in Period A's nodes but not
+      in Period B's.
+    * ``retained_predecessor_uids`` — UIDs in both.
+
+    Edges carry their own identity tuple
+    ``(predecessor_uid, successor_uid, relation_type)``. ``added`` /
+    ``removed`` / ``retained`` edge classifications use the same
+    set-algebra on that tuple.
+
+    The Focus Point UID is excluded from the added/removed/retained
+    UID sets — structurally it is always retained (the walk
+    terminates at it by definition in both periods).
+
+    Args:
+        period_a: Earlier schedule revision. Read-only.
+        period_b: Later schedule revision. Read-only.
+        focus_spec: Integer ``Task.unique_id`` shared across both
+            periods (UniqueID is cross-version stable per
+            BUILD-PLAN §2.7), or a :class:`FocusPointAnchor`. When
+            an anchor resolves to different UIDs in the two
+            schedules, :class:`DrivingPathError` is raised — the
+            operator must pass an explicit integer UID to compare
+            two different focus milestones.
+        period_a_cpm_result: CPM output for Period A.
+        period_b_cpm_result: CPM output for Period B.
+
+    Returns:
+        :class:`DrivingPathCrossVersionResult` — frozen, adjacency-
+        map shape.
+
+    Raises:
+        DrivingPathError: Either CPM result is ``None``, or the
+            anchor resolves to different UIDs across the two
+            schedules.
+        FocusPointError: The anchor cannot be resolved in one or
+            both schedules.
+    """
+    if period_a_cpm_result is None or period_b_cpm_result is None:
+        raise DrivingPathError(
+            "trace_driving_path_cross_version requires non-None "
+            "cpm_result objects for both periods"
+        )
+
+    a_uid = resolve_focus_point(period_a, focus_spec)
+    b_uid = resolve_focus_point(period_b, focus_spec)
+    if a_uid != b_uid:
+        raise DrivingPathError(
+            f"focus_spec {focus_spec!r} resolves to different UIDs "
+            f"across periods (period_a={a_uid}, period_b={b_uid}). "
+            "Pass an explicit integer UID to compare chains with "
+            "different anchors explicitly."
+        )
+    focus_uid = a_uid
+
+    a_result = trace_driving_path(period_a, focus_uid, period_a_cpm_result)
+    b_result = trace_driving_path(period_b, focus_uid, period_b_cpm_result)
+
+    a_uids = set(a_result.nodes.keys()) - {focus_uid}
+    b_uids = set(b_result.nodes.keys()) - {focus_uid}
+    added_uids = b_uids - a_uids
+    removed_uids = a_uids - b_uids
+    retained_uids = a_uids & b_uids
+
+    # Edge identity is (predecessor_uid, successor_uid, relation_type).
+    # Index both period's edges by identity; iterate once per period
+    # so each edge is classified exactly once.
+    a_edge_by_id = {
+        (e.predecessor_uid, e.successor_uid, e.relation_type): e
+        for e in a_result.edges
+    }
+    b_edge_by_id = {
+        (e.predecessor_uid, e.successor_uid, e.relation_type): e
+        for e in b_result.edges
+    }
+    a_ids = set(a_edge_by_id.keys())
+    b_ids = set(b_edge_by_id.keys())
+
+    # Period A copy is carried for retained / removed (§9 but-for
+    # reference); Period B copy for added.
+    retained_edges = [a_edge_by_id[k] for k in sorted(a_ids & b_ids)]
+    removed_edges = [a_edge_by_id[k] for k in sorted(a_ids - b_ids)]
+    added_edges = [b_edge_by_id[k] for k in sorted(b_ids - a_ids)]
+
+    return DrivingPathCrossVersionResult(
+        period_a_result=a_result,
+        period_b_result=b_result,
+        added_predecessor_uids=added_uids,
+        removed_predecessor_uids=removed_uids,
+        retained_predecessor_uids=retained_uids,
+        added_edges=added_edges,
+        removed_edges=removed_edges,
+        retained_edges=retained_edges,
     )
 
 

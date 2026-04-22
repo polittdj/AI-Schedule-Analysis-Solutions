@@ -1,9 +1,11 @@
 """Cross-version driving-path trace — Milestone 10 AC #4.
 
-Exercises :func:`app.engine.driving_path.trace_driving_path_cross_version`
-and enforces the Period A slack rule per ``driving-slack-and-paths §9``:
-the added / removed / retained predecessor UID sets are framed from
-Period A's perspective, and Period B slack is descriptive only.
+Reshaped in Block 7 (2026-04-22) for the adjacency-map contract per
+BUILD-PLAN AM8. Exercises
+:func:`app.engine.driving_path.trace_driving_path_cross_version` and
+enforces the Period A slack rule per ``driving-slack-and-paths §9``:
+added / removed / retained UID and edge sets are framed from Period
+A's perspective, and Period B slack is descriptive only.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from app.engine.driving_path import trace_driving_path_cross_version
 from app.engine.driving_path_types import FocusPointAnchor
 from app.engine.exceptions import DrivingPathError, FocusPointError
 from app.models.calendar import Calendar
+from app.models.enums import RelationType
 from app.models.relation import Relation
 from app.models.schedule import Schedule
 from app.models.task import Task
@@ -29,24 +32,39 @@ def _std_cal() -> Calendar:
     return Calendar(name="Standard")
 
 
+def _sched(
+    tasks: list[Task], relations: list[Relation], *, name: str
+) -> Schedule:
+    return Schedule(
+        name=name,
+        project_start=ANCHOR,
+        project_calendar_hours_per_day=8.0,
+        tasks=tasks,
+        relations=relations,
+        calendars=[_std_cal()],
+    )
+
+
 def _linear_chain(name: str) -> Schedule:
     """A → B → C → Finish milestone (FS zero-lag)."""
     tasks = [
         Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
         Task(unique_id=2, task_id=2, name="B", duration_minutes=480),
         Task(unique_id=3, task_id=3, name="C", duration_minutes=480),
-        Task(unique_id=4, task_id=4, name="Finish",
-             duration_minutes=0, is_milestone=True),
+        Task(
+            unique_id=4,
+            task_id=4,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
     ]
     relations = [
         Relation(predecessor_unique_id=1, successor_unique_id=2),
         Relation(predecessor_unique_id=2, successor_unique_id=3),
         Relation(predecessor_unique_id=3, successor_unique_id=4),
     ]
-    return Schedule(
-        name=name, project_start=ANCHOR, tasks=tasks,
-        relations=relations, calendars=[_std_cal()],
-    )
+    return _sched(tasks, relations, name=name)
 
 
 # ----------------------------------------------------------------------
@@ -55,8 +73,6 @@ def _linear_chain(name: str) -> Schedule:
 
 
 def test_identical_schedules_retained_only() -> None:
-    """Two byte-identical schedules: no added, no removed, all
-    retained."""
     a = _linear_chain("period_a")
     b = _linear_chain("period_b")
     cpm_a = compute_cpm(a)
@@ -64,19 +80,19 @@ def test_identical_schedules_retained_only() -> None:
 
     result = trace_driving_path_cross_version(a, b, 4, cpm_a, cpm_b)
 
-    assert result.focus_unique_id == 4
-    assert result.added_predecessor_uids == frozenset()
-    assert result.removed_predecessor_uids == frozenset()
-    # Chain predecessors (excluding focus): 1, 2, 3.
-    assert result.retained_predecessor_uids == frozenset({1, 2, 3})
+    assert result.period_a_result.focus_point_uid == 4
+    assert result.period_b_result.focus_point_uid == 4
+    assert result.added_predecessor_uids == set()
+    assert result.removed_predecessor_uids == set()
+    assert result.retained_predecessor_uids == {1, 2, 3}
+    # Edges are identical — three retained, zero added, zero removed.
+    assert len(result.retained_edges) == 3
+    assert result.added_edges == []
+    assert result.removed_edges == []
 
 
 def test_predecessor_added_in_b() -> None:
-    """Period B inserts a new task D in front of C.
-
-    Period A: A → B → C → Finish.
-    Period B: A → B → D → C → Finish  (D is added, with UID 10).
-    """
+    """Period B inserts D (UID 10) between B and C."""
     a = _linear_chain("period_a")
 
     b_tasks = [
@@ -84,8 +100,13 @@ def test_predecessor_added_in_b() -> None:
         Task(unique_id=2, task_id=2, name="B", duration_minutes=480),
         Task(unique_id=10, task_id=5, name="D", duration_minutes=480),
         Task(unique_id=3, task_id=3, name="C", duration_minutes=480),
-        Task(unique_id=4, task_id=4, name="Finish",
-             duration_minutes=0, is_milestone=True),
+        Task(
+            unique_id=4,
+            task_id=4,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
     ]
     b_rels = [
         Relation(predecessor_unique_id=1, successor_unique_id=2),
@@ -93,84 +114,89 @@ def test_predecessor_added_in_b() -> None:
         Relation(predecessor_unique_id=10, successor_unique_id=3),
         Relation(predecessor_unique_id=3, successor_unique_id=4),
     ]
-    b = Schedule(
-        name="period_b", project_start=ANCHOR, tasks=b_tasks,
-        relations=b_rels, calendars=[_std_cal()],
-    )
+    b = _sched(b_tasks, b_rels, name="period_b")
     cpm_a = compute_cpm(a)
     cpm_b = compute_cpm(b)
 
     result = trace_driving_path_cross_version(a, b, 4, cpm_a, cpm_b)
-    assert result.added_predecessor_uids == frozenset({10})
-    assert result.removed_predecessor_uids == frozenset()
-    assert result.retained_predecessor_uids == frozenset({1, 2, 3})
+    assert result.added_predecessor_uids == {10}
+    assert result.removed_predecessor_uids == set()
+    assert result.retained_predecessor_uids == {1, 2, 3}
+    # Edge B→C (2→3) was removed; edges B→D (2→10) and D→C (10→3)
+    # were added; edges A→B (1→2) and C→Finish (3→4) are retained.
+    added_ids = {
+        (e.predecessor_uid, e.successor_uid) for e in result.added_edges
+    }
+    removed_ids = {
+        (e.predecessor_uid, e.successor_uid) for e in result.removed_edges
+    }
+    retained_ids = {
+        (e.predecessor_uid, e.successor_uid) for e in result.retained_edges
+    }
+    assert added_ids == {(2, 10), (10, 3)}
+    assert removed_ids == {(2, 3)}
+    assert retained_ids == {(1, 2), (3, 4)}
 
 
 def test_predecessor_removed_in_b() -> None:
-    """Period B drops task B from the chain.
-
-    Period A: A → B → C → Finish.
-    Period B: A → C → Finish.
-    """
+    """Period B drops task B from the driving sub-graph."""
     a = _linear_chain("period_a")
 
     b_tasks = [
         Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
         Task(unique_id=2, task_id=2, name="B", duration_minutes=480),
         Task(unique_id=3, task_id=3, name="C", duration_minutes=480),
-        Task(unique_id=4, task_id=4, name="Finish",
-             duration_minutes=0, is_milestone=True),
+        Task(
+            unique_id=4,
+            task_id=4,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
     ]
-    # In Period B, B is an orphaned task with no relations — and
-    # A drives C directly.
     b_rels = [
         Relation(predecessor_unique_id=1, successor_unique_id=3),
         Relation(predecessor_unique_id=3, successor_unique_id=4),
     ]
-    b = Schedule(
-        name="period_b", project_start=ANCHOR, tasks=b_tasks,
-        relations=b_rels, calendars=[_std_cal()],
-    )
+    b = _sched(b_tasks, b_rels, name="period_b")
     cpm_a = compute_cpm(a)
     cpm_b = compute_cpm(b)
 
     result = trace_driving_path_cross_version(a, b, 4, cpm_a, cpm_b)
-    assert result.added_predecessor_uids == frozenset()
-    # B (UID 2) was on A's chain but is not on B's chain.
-    assert result.removed_predecessor_uids == frozenset({2})
-    assert result.retained_predecessor_uids == frozenset({1, 3})
+    assert result.added_predecessor_uids == set()
+    assert result.removed_predecessor_uids == {2}
+    assert result.retained_predecessor_uids == {1, 3}
 
 
 def test_mixed_added_and_removed() -> None:
-    """One predecessor added, one removed, the rest retained."""
     a = _linear_chain("period_a")
 
     b_tasks = [
         Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
         Task(unique_id=2, task_id=2, name="B", duration_minutes=480),
         Task(unique_id=3, task_id=3, name="C", duration_minutes=480),
-        Task(unique_id=4, task_id=4, name="Finish",
-             duration_minutes=0, is_milestone=True),
+        Task(
+            unique_id=4,
+            task_id=4,
+            name="Finish",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
         Task(unique_id=10, task_id=5, name="D", duration_minutes=480),
     ]
-    # B drops B from the chain (replaced by D between A and C).
-    # A → D → C → Finish with B orphaned.
     b_rels = [
         Relation(predecessor_unique_id=1, successor_unique_id=10),
         Relation(predecessor_unique_id=10, successor_unique_id=3),
         Relation(predecessor_unique_id=3, successor_unique_id=4),
     ]
-    b = Schedule(
-        name="period_b", project_start=ANCHOR, tasks=b_tasks,
-        relations=b_rels, calendars=[_std_cal()],
-    )
+    b = _sched(b_tasks, b_rels, name="period_b")
     cpm_a = compute_cpm(a)
     cpm_b = compute_cpm(b)
 
     result = trace_driving_path_cross_version(a, b, 4, cpm_a, cpm_b)
-    assert result.added_predecessor_uids == frozenset({10})
-    assert result.removed_predecessor_uids == frozenset({2})
-    assert result.retained_predecessor_uids == frozenset({1, 3})
+    assert result.added_predecessor_uids == {10}
+    assert result.removed_predecessor_uids == {2}
+    assert result.retained_predecessor_uids == {1, 3}
 
 
 # ----------------------------------------------------------------------
@@ -178,120 +204,166 @@ def test_mixed_added_and_removed() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_period_a_slack_rule() -> None:
-    """Construct a case where Period B slack would suggest a
-    different but-for driver; verify the added / removed UID sets
-    are computed against Period A's chain, not Period B's.
+def test_period_a_slack_rule_frames_delta_from_a_perspective() -> None:
+    """Period A drives through X only; Period B drives through X + Y.
 
-    Period A: X (2 WD) and Y (1 WD) both feed Focus via FS. X is
-    the driver (longer duration = later EF); Y is non-driving with
-    positive slack on its link to Focus.
+    Period A: X (2 WD) drives Focus; Y (1 WD) has positive slack
+    (non-driving). A's sub-graph is {X, Focus}.
+    Period B: X shortened to 1 WD. X and Y both drive Focus. B's
+    sub-graph is {X, Y, Focus}.
 
-    Period B: X's duration is reduced to 1 WD; now X and Y both
-    finish together and both drive Focus. If we used Period B
-    slack to frame the delta, we'd say "Y is now a driver" and
-    count Y as an "added" predecessor. Under the Period A rule,
-    Y was not on A's chain and is not on B's chain (the walk's
-    tie-break picks the lowest UID, which is X), so Y remains
-    in neither set — the delta correctly attributes "nothing
-    changed structurally on the chain."
-
-    The concrete assertion: X stays retained, the chain is the
-    same, and added / removed are empty despite Period B's
-    slack profile being objectively different.
+    Framed from Period A's perspective (§9): Y was added to the
+    driving sub-graph. The new Block 7.2 walk retains BOTH X and Y
+    on Period B's edges (no tie-break drop), so Y correctly surfaces
+    as added. This is the corrected F1/F4 behavior — under the AM7
+    tie-break Y would have been suppressed in Period B and the
+    delta would have been empty, which hid the forensic signal.
     """
-    # Period A: X (2 WD, UID 1) drives; Y (1 WD, UID 2) non-driving.
     a_tasks = [
         Task(unique_id=1, task_id=1, name="X", duration_minutes=960),
         Task(unique_id=2, task_id=2, name="Y", duration_minutes=480),
-        Task(unique_id=3, task_id=3, name="Focus",
-             duration_minutes=0, is_milestone=True),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="Focus",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
     ]
     a_rels = [
         Relation(predecessor_unique_id=1, successor_unique_id=3),
         Relation(predecessor_unique_id=2, successor_unique_id=3),
     ]
-    a = Schedule(
-        name="period_a", project_start=ANCHOR, tasks=a_tasks,
-        relations=a_rels, calendars=[_std_cal()],
-    )
+    a = _sched(a_tasks, a_rels, name="period_a")
 
-    # Period B: X shortened to 1 WD; X and Y both drive Focus.
     b_tasks = [
         Task(unique_id=1, task_id=1, name="X", duration_minutes=480),
         Task(unique_id=2, task_id=2, name="Y", duration_minutes=480),
-        Task(unique_id=3, task_id=3, name="Focus",
-             duration_minutes=0, is_milestone=True),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="Focus",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
     ]
     b_rels = [
         Relation(predecessor_unique_id=1, successor_unique_id=3),
         Relation(predecessor_unique_id=2, successor_unique_id=3),
     ]
-    b = Schedule(
-        name="period_b", project_start=ANCHOR, tasks=b_tasks,
-        relations=b_rels, calendars=[_std_cal()],
-    )
+    b = _sched(b_tasks, b_rels, name="period_b")
     cpm_a = compute_cpm(a)
     cpm_b = compute_cpm(b)
 
     result = trace_driving_path_cross_version(a, b, 3, cpm_a, cpm_b)
 
-    # Period A chain: X → Focus.
-    assert [n.unique_id for n in result.period_a_result.chain] == [1, 3]
-    # Period B chain: tie-break picks lowest UID (X).
-    assert [n.unique_id for n in result.period_b_result.chain] == [1, 3]
-    # Deltas: both chains have the same predecessor set {X}.
-    assert result.retained_predecessor_uids == frozenset({1})
-    assert result.added_predecessor_uids == frozenset()
-    assert result.removed_predecessor_uids == frozenset()
+    # Period A sub-graph: X drives Focus; Y is non-driving.
+    assert set(result.period_a_result.nodes.keys()) == {1, 3}
+    assert len(result.period_a_result.non_driving_predecessors) == 1
+    # Period B sub-graph: X and Y both drive Focus — per §4, both
+    # retained.
+    assert set(result.period_b_result.nodes.keys()) == {1, 2, 3}
+
+    # Deltas framed from A's perspective: Y is added.
+    assert result.retained_predecessor_uids == {1}
+    assert result.added_predecessor_uids == {2}
+    assert result.removed_predecessor_uids == set()
+
+    # Edge deltas: X→Focus retained; Y→Focus added (was non-driving
+    # in A, now driving in B).
+    retained_edge_ids = {
+        (e.predecessor_uid, e.successor_uid) for e in result.retained_edges
+    }
+    added_edge_ids = {
+        (e.predecessor_uid, e.successor_uid) for e in result.added_edges
+    }
+    assert retained_edge_ids == {(1, 3)}
+    assert added_edge_ids == {(2, 3)}
+    assert result.removed_edges == []
 
 
 def test_period_a_slack_rule_detects_driver_substitution() -> None:
-    """Period A driver X is removed by relation change in Period B.
-
-    Period A: X (driver) → Focus; Y (non-driver) → Focus.
-    Period B: The X → Focus link is deleted. Y is now the driver.
-
-    Expected:
-      - removed_predecessor_uids == {X_uid} (X was on A's chain)
-      - added_predecessor_uids == {Y_uid} (Y is on B's chain)
-      - retained_predecessor_uids == frozenset()
-    """
-    # Period A: X (UID 1) drives Focus; Y (UID 2) feeds Focus
-    # non-driving (shorter duration).
+    """Period A: X drives; Period B: X → Focus removed, Y drives."""
     a_tasks = [
         Task(unique_id=1, task_id=1, name="X", duration_minutes=960),
         Task(unique_id=2, task_id=2, name="Y", duration_minutes=480),
-        Task(unique_id=3, task_id=3, name="Focus",
-             duration_minutes=0, is_milestone=True),
+        Task(
+            unique_id=3,
+            task_id=3,
+            name="Focus",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
     ]
     a_rels = [
         Relation(predecessor_unique_id=1, successor_unique_id=3),
         Relation(predecessor_unique_id=2, successor_unique_id=3),
     ]
-    a = Schedule(
-        name="period_a", project_start=ANCHOR, tasks=a_tasks,
-        relations=a_rels, calendars=[_std_cal()],
-    )
-    # Period B: X → Focus removed; Y drives.
+    a = _sched(a_tasks, a_rels, name="period_a")
+
     b_tasks = list(a_tasks)
-    b_rels = [
-        Relation(predecessor_unique_id=2, successor_unique_id=3),
-    ]
-    b = Schedule(
-        name="period_b", project_start=ANCHOR, tasks=b_tasks,
-        relations=b_rels, calendars=[_std_cal()],
-    )
+    b_rels = [Relation(predecessor_unique_id=2, successor_unique_id=3)]
+    b = _sched(b_tasks, b_rels, name="period_b")
     cpm_a = compute_cpm(a)
     cpm_b = compute_cpm(b)
 
     result = trace_driving_path_cross_version(a, b, 3, cpm_a, cpm_b)
 
-    assert [n.unique_id for n in result.period_a_result.chain] == [1, 3]
-    assert [n.unique_id for n in result.period_b_result.chain] == [2, 3]
-    assert result.removed_predecessor_uids == frozenset({1})
-    assert result.added_predecessor_uids == frozenset({2})
-    assert result.retained_predecessor_uids == frozenset()
+    assert set(result.period_a_result.nodes.keys()) == {1, 3}
+    assert set(result.period_b_result.nodes.keys()) == {2, 3}
+    assert result.removed_predecessor_uids == {1}
+    assert result.added_predecessor_uids == {2}
+    assert result.retained_predecessor_uids == set()
+
+
+# ----------------------------------------------------------------------
+# Edge-identity diffs consider relation_type
+# ----------------------------------------------------------------------
+
+
+def test_edge_identity_considers_relation_type() -> None:
+    """Same UID pair with a changed relation_type is added+removed."""
+    a_tasks = [
+        Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="Focus",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
+    ]
+    a_rels = [
+        Relation(
+            predecessor_unique_id=1,
+            successor_unique_id=2,
+            relation_type=RelationType.FS,
+        )
+    ]
+    b_tasks = list(a_tasks)
+    b_rels = [
+        Relation(
+            predecessor_unique_id=1,
+            successor_unique_id=2,
+            relation_type=RelationType.FF,
+        )
+    ]
+    a = _sched(a_tasks, a_rels, name="period_a")
+    b = _sched(b_tasks, b_rels, name="period_b")
+    cpm_a = compute_cpm(a)
+    cpm_b = compute_cpm(b)
+
+    result = trace_driving_path_cross_version(a, b, 2, cpm_a, cpm_b)
+
+    # Same UID pair is in both sub-graphs — so UID-level retained
+    # includes 1.
+    assert result.retained_predecessor_uids == {1}
+    # But the edge identity (which includes relation_type) differs —
+    # FS is removed, FF is added.
+    assert len(result.removed_edges) == 1
+    assert result.removed_edges[0].relation_type == RelationType.FS
+    assert len(result.added_edges) == 1
+    assert result.added_edges[0].relation_type == RelationType.FF
 
 
 # ----------------------------------------------------------------------
@@ -300,47 +372,39 @@ def test_period_a_slack_rule_detects_driver_substitution() -> None:
 
 
 def test_cross_version_ignores_name_changes() -> None:
-    """Renaming every task in Period B does not change the deltas.
-
-    UniqueID is the cross-version key per BUILD-PLAN §2.7 — name
-    changes are captured on the chain nodes (for UI drill-down) but
-    never used for matching.
-    """
     a = _linear_chain("period_a")
 
     b_tasks = [
         Task(unique_id=1, task_id=1, name="Alpha", duration_minutes=480),
         Task(unique_id=2, task_id=2, name="Bravo", duration_minutes=480),
         Task(unique_id=3, task_id=3, name="Charlie", duration_minutes=480),
-        Task(unique_id=4, task_id=4, name="Delta",
-             duration_minutes=0, is_milestone=True),
+        Task(
+            unique_id=4,
+            task_id=4,
+            name="Delta",
+            duration_minutes=0,
+            is_milestone=True,
+        ),
     ]
     b_rels = [
         Relation(predecessor_unique_id=1, successor_unique_id=2),
         Relation(predecessor_unique_id=2, successor_unique_id=3),
         Relation(predecessor_unique_id=3, successor_unique_id=4),
     ]
-    b = Schedule(
-        name="period_b", project_start=ANCHOR, tasks=b_tasks,
-        relations=b_rels, calendars=[_std_cal()],
-    )
+    b = _sched(b_tasks, b_rels, name="period_b")
     cpm_a = compute_cpm(a)
     cpm_b = compute_cpm(b)
 
     result = trace_driving_path_cross_version(a, b, 4, cpm_a, cpm_b)
 
-    # All UIDs retained despite every name changing.
-    assert result.retained_predecessor_uids == frozenset({1, 2, 3})
-    assert result.added_predecessor_uids == frozenset()
-    assert result.removed_predecessor_uids == frozenset()
-    # Names are captured on the chain nodes independently per
-    # period for UI drill-down.
-    assert [n.name for n in result.period_a_result.chain] == [
-        "A", "B", "C", "Finish",
-    ]
-    assert [n.name for n in result.period_b_result.chain] == [
-        "Alpha", "Bravo", "Charlie", "Delta",
-    ]
+    assert result.retained_predecessor_uids == {1, 2, 3}
+    assert result.added_predecessor_uids == set()
+    assert result.removed_predecessor_uids == set()
+    # Names are captured per-period on the node records.
+    assert result.period_a_result.nodes[1].name == "A"
+    assert result.period_b_result.nodes[1].name == "Alpha"
+    assert result.period_a_result.nodes[4].name == "Finish"
+    assert result.period_b_result.nodes[4].name == "Delta"
 
 
 # ----------------------------------------------------------------------
@@ -359,55 +423,52 @@ def test_cross_version_rejects_none_cpm_result() -> None:
 
 
 def test_cross_version_rejects_anchor_divergence() -> None:
-    """PROJECT_FINISH resolves to different UIDs across the two
-    schedules: the trace function raises DrivingPathError rather
-    than silently comparing different chains."""
     a = _linear_chain("a")
 
-    # Period B has a different finish milestone: add a new task 99
-    # with no outgoing relations (a later finish date) so the
-    # anchor resolves differently.
     b_tasks = [
         Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
         Task(unique_id=2, task_id=2, name="B", duration_minutes=480),
         Task(unique_id=3, task_id=3, name="C", duration_minutes=480),
-        Task(unique_id=4, task_id=4, name="OldFinish",
-             duration_minutes=0, is_milestone=True,
-             finish=datetime(2026, 5, 1, 16, 0, tzinfo=UTC)),
-        Task(unique_id=99, task_id=5, name="NewFinish",
-             duration_minutes=0, is_milestone=True,
-             finish=datetime(2026, 6, 1, 16, 0, tzinfo=UTC)),
+        Task(
+            unique_id=4,
+            task_id=4,
+            name="OldFinish",
+            duration_minutes=0,
+            is_milestone=True,
+            finish=datetime(2026, 5, 1, 16, 0, tzinfo=UTC),
+        ),
+        Task(
+            unique_id=99,
+            task_id=5,
+            name="NewFinish",
+            duration_minutes=0,
+            is_milestone=True,
+            finish=datetime(2026, 6, 1, 16, 0, tzinfo=UTC),
+        ),
     ]
     b_rels = [
         Relation(predecessor_unique_id=1, successor_unique_id=2),
         Relation(predecessor_unique_id=2, successor_unique_id=3),
         Relation(predecessor_unique_id=3, successor_unique_id=99),
     ]
-    b = Schedule(
-        name="period_b", project_start=ANCHOR, tasks=b_tasks,
-        relations=b_rels, calendars=[_std_cal()],
-    )
+    b = _sched(b_tasks, b_rels, name="period_b")
     cpm_a = compute_cpm(a)
     cpm_b = compute_cpm(b)
 
     with pytest.raises(DrivingPathError, match="different UIDs"):
         trace_driving_path_cross_version(
-            a, b, FocusPointAnchor.PROJECT_FINISH, cpm_a, cpm_b,
+            a, b, FocusPointAnchor.PROJECT_FINISH, cpm_a, cpm_b
         )
 
 
 def test_cross_version_rejects_missing_focus_uid() -> None:
-    """Integer focus UID that doesn't exist in one period raises."""
     a = _linear_chain("a")
     b_tasks = [
         Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
         Task(unique_id=2, task_id=2, name="B", duration_minutes=480),
     ]
     b_rels = [Relation(predecessor_unique_id=1, successor_unique_id=2)]
-    b = Schedule(
-        name="b", project_start=ANCHOR, tasks=b_tasks,
-        relations=b_rels, calendars=[_std_cal()],
-    )
+    b = _sched(b_tasks, b_rels, name="b")
     cpm_a = compute_cpm(a)
     cpm_b = compute_cpm(b)
     with pytest.raises(FocusPointError):
@@ -432,7 +493,7 @@ def test_cross_version_does_not_mutate_schedules_or_cpm_results() -> None:
 
     trace_driving_path_cross_version(a, b, 4, cpm_a, cpm_b)
     trace_driving_path_cross_version(
-        a, b, FocusPointAnchor.PROJECT_FINISH, cpm_a, cpm_b,
+        a, b, FocusPointAnchor.PROJECT_FINISH, cpm_a, cpm_b
     )
 
     assert a.model_dump(mode="json") == a_before
