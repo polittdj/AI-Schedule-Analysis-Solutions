@@ -35,6 +35,7 @@ from app.engine.driving_path import (
     trace_driving_path,
     trace_driving_path_cross_version,
 )
+from app.engine.driving_path_render_acumen import render_acumen_table
 from app.engine.driving_path_types import (
     DrivingPathCrossVersionResult,
     DrivingPathEdge,
@@ -100,6 +101,7 @@ __all__ = [
     "is_legitimate_actual",
     "minutes_to_working_days",
     "near_critical_chain",
+    "render_acumen_table",
     "resolve_focus_point",
     "trace_driving_path",
     "trace_driving_path_cross_version",
