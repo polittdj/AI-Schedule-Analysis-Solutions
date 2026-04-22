@@ -37,7 +37,7 @@ from app.engine.driving_path import (
 )
 from app.engine.driving_path_types import (
     DrivingPathCrossVersionResult,
-    DrivingPathLink,
+    DrivingPathEdge,
     DrivingPathNode,
     DrivingPathResult,
     FocusPointAnchor,
@@ -77,8 +77,8 @@ __all__ = [
     "ConstraintViolation",
     "DeltaType",
     "DrivingPathCrossVersionResult",
+    "DrivingPathEdge",
     "DrivingPathError",
-    "DrivingPathLink",
     "DrivingPathNode",
     "DrivingPathResult",
     "EngineError",
