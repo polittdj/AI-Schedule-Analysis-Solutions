@@ -200,6 +200,11 @@ Tests:
 | `delta.py`         | M9 comparator contract — `FieldDelta`, `TaskDelta`, `RelationshipDelta`, `ComparatorResult` + `DeltaType` / `TaskPresence` / `RelationshipPresence` enums. |
 | `windowing.py`     | M9 status-date windowing predicate `is_legitimate_actual`. |
 | `comparator.py`    | M9 cross-version `compare_schedules` — UniqueID-only matching, per-field and per-relationship deltas. |
+| `driving_path_types.py` | M10 frozen contract — `DrivingPathNode`, `DrivingPathEdge`, `NonDrivingPredecessor`, `DrivingPathResult`, `DrivingPathCrossVersionResult`, `FocusPointAnchor`. (Block 7 reshape: chain + parallel-links pair replaced with an adjacency-map.) |
+| `focus_point.py`   | M10 Focus Point resolver — maps an int UID or `FocusPointAnchor` to a concrete `Task.unique_id`. |
+| `driving_path.py`  | M10 backward-walk tracer — `trace_driving_path` + `trace_driving_path_cross_version`. |
+| `driving_path_render_acumen.py` | Block 7 default Acumen-style table renderer — `render_acumen_table`. |
+| `units.py`         | Block 7 minute→day conversion helper for public contract — `minutes_to_days`. |
 
 ## Cross-version comparator (Milestone 9)
 
@@ -249,3 +254,185 @@ Forensic-integrity raises:
   `(pred_uid, succ_uid)` within a schedule (the pair-key matching
   is ambiguous on concurrent FS + SS links; a future extension
   could switch to the `(pred, succ, type)` triple).
+
+## Driving path analysis (Milestone 10)
+
+`trace_driving_path(schedule, focus_spec, cpm_result) ->
+DrivingPathResult` and
+`trace_driving_path_cross_version(period_a, period_b, focus_spec,
+period_a_cpm_result, period_b_cpm_result) ->
+DrivingPathCrossVersionResult` are the M10 task-specific driving
+path tracers.
+
+Mission:
+
+1. **Operator-nominated Focus Point.** The analyst picks a Focus
+   Point — either a specific `Task.unique_id` or a predefined
+   `FocusPointAnchor` (`PROJECT_FINISH` / `PROJECT_START`). The
+   project critical path is a special case of the driving path
+   with `focus_spec = FocusPointAnchor.PROJECT_FINISH` per
+   `driving-slack-and-paths §1`. The resolver lives in
+   `app/engine/focus_point.py` and is read-only.
+2. **Backward walk on zero-relationship-slack edges.** Per
+   `driving-slack-and-paths §5`, the trace starts at the Focus
+   Point and walks incoming relations. An edge with relationship
+   slack = 0 is a driving edge (followed); an edge with
+   relationship slack > 0 is non-driving (recorded and terminates
+   that branch). Per-link slack is computed via
+   `app.engine.relations.link_driving_slack_minutes` (the M4
+   per-relation-type formulas from
+   `driving-slack-and-paths §3`), not recomputed locally.
+3. **Non-mutation contract.** Neither `Schedule` nor `CPMResult`
+   is written to. `cpm_result_snapshot(...)` + `model_dump()`
+   byte-equality is asserted around every trace call in the unit
+   tests. `cpm_result=None` raises `DrivingPathError` rather than
+   running CPM internally — the engine is the sole producer of
+   CPM data per BUILD-PLAN §2.17.
+4. **Period A slack rule.** Per `driving-slack-and-paths §9`,
+   cross-version but-for analysis uses Period A slack
+   exclusively. The cross-version result stores both periods'
+   traces (`period_a_result` and `period_b_result`) for UI
+   display, but the `added_predecessor_uids` /
+   `removed_predecessor_uids` / `retained_predecessor_uids` sets
+   are framed from Period A's perspective. Period B slack is
+   descriptive, never prescriptive — using it would be circular
+   (a task that became a driver *because* of the Period B change
+   will read zero slack in Period B).
+5. **Forensic drill-down.** Every `DrivingPathNode` carries
+   `unique_id` + `name` + CPM dates + `total_float_days` +
+   `calendar_hours_per_day`; every `DrivingPathEdge` carries
+   predecessor / successor UIDs + names + `relation_type` +
+   `lag_days` + `relationship_slack_days` + `calendar_hours_per_day`;
+   every `NonDrivingPredecessor` carries both endpoints' UIDs +
+   names + `slack_days` + `calendar_hours_per_day`. No black-box
+   output per BUILD-PLAN §6 AC bar #3.
+6. **No path is dropped on multi-branch backward walk (Block 7,
+   AM8).** When a task has two or more zero-slack incoming edges,
+   **every** edge is retained on `DrivingPathResult.edges` per
+   `driving-slack-and-paths §4` ("No path is dropped.") and §5
+   ("Walking every relationship-slack-zero link backward … walks
+   recursively until every driving predecessor is exhausted.").
+   The AM7 "lowest-UID tie-break" rule is withdrawn — tie-break is
+   no longer a concept in this module. Shared ancestors are
+   deduplicated via the adjacency-map `nodes: dict[int, …]` shape.
+7. **Cross-version anchor disambiguation.** When a
+   `FocusPointAnchor` resolves to different UIDs in Period A and
+   Period B, `trace_driving_path_cross_version` raises
+   `DrivingPathError` rather than silently comparing different
+   chains. The operator must pass an explicit integer UID to
+   compare two different focus milestones.
+
+### Contract shape (Block 7 adjacency-map)
+
+`DrivingPathResult`:
+
+```
+DrivingPathResult(
+    focus_point_uid: int,
+    focus_point_name: str,
+    nodes: dict[int, DrivingPathNode],          # keyed by UID
+    edges: list[DrivingPathEdge],               # every zero-slack driving edge
+    non_driving_predecessors: list[NonDrivingPredecessor],
+)
+```
+
+`DrivingPathCrossVersionResult`:
+
+```
+DrivingPathCrossVersionResult(
+    period_a_result: DrivingPathResult,
+    period_b_result: DrivingPathResult,
+    added_predecessor_uids: set[int],
+    removed_predecessor_uids: set[int],
+    retained_predecessor_uids: set[int],
+    added_edges: list[DrivingPathEdge],
+    removed_edges: list[DrivingPathEdge],
+    retained_edges: list[DrivingPathEdge],
+)
+```
+
+Edge identity for the cross-version diffs is the tuple
+`(predecessor_uid, successor_uid, relation_type)`.
+
+### Units convention
+
+Public contract fields are in **days** (float). The CPM engine
+internals stay in **minutes** (`TaskCPMResult.total_slack_minutes`,
+`Relation.lag_minutes`, `link_driving_slack_minutes`) so multi-
+calendar schedules don't lose precision to premature rounding.
+Conversion happens at the contract boundary via
+`app.engine.units.minutes_to_days(minutes, hours_per_day)` —
+the single helper; inline `minutes / 480` arithmetic is forbidden.
+
+Every public model that carries a days-denominated field also
+carries `calendar_hours_per_day: float`. This is the forensic
+audit trail per BUILD-PLAN §2.18: an attorney or senior reviewer
+can reconstruct minutes via `days * hours_per_day * 60`.
+`calendar_hours_per_day` is populated at parse time by the COM
+parser (M1.1 patch session) from `Task.calendar_hours_per_day`
+when non-None or `Schedule.project_calendar_hours_per_day`
+otherwise. The driving-path tracer does not walk calendars; it
+reads the denormalised fields directly.
+
+### Migration note (Block 7)
+
+The pre-Block-7 contract exposed `result.chain: tuple[DrivingPathNode, …]`
+and `result.links: tuple[DrivingPathLink, …]`. Both are gone.
+Callers that need the chain-like linear view of a sub-graph should
+use `render_acumen_table(result)` — it returns a
+`list[dict]` sorted by `early_start` ascending, with nested
+`driving_predecessors` per row. That list is the Block 7 default
+view; an SSI gantt-style renderer and multi-view toggle arrive in
+Block 8.
+
+### Worked example
+
+```python
+from app.engine.cpm import compute_cpm
+from app.engine.driving_path import trace_driving_path
+from app.engine.driving_path_render_acumen import render_acumen_table
+
+# schedule: A → B → C, all FS zero-lag
+cpm = compute_cpm(schedule)
+result = trace_driving_path(schedule, focus_spec=3, cpm_result=cpm)
+
+result.nodes.keys()          # {1, 2, 3}
+result.nodes[1].name         # "A"
+result.nodes[1].total_float_days  # 0.0
+result.nodes[1].calendar_hours_per_day  # 8.0 (project default)
+
+len(result.edges)            # 2: (1→2) and (2→3)
+result.edges[0].relationship_slack_days  # ~0.0
+
+# Acumen-style rendering for a table view
+rows = render_acumen_table(result)
+# rows[0]["unique_id"] == 1, rows[0]["driving_predecessor_count"] == 0
+# rows[2]["unique_id"] == 3, rows[2]["driving_predecessors"][0]["predecessor_uid"] == 2
+```
+
+Downstream consumption convention:
+
+* **M11 (manipulation scoring)** will consume
+  `DrivingPathCrossVersionResult.added_predecessor_uids` /
+  `removed_predecessor_uids` / `retained_predecessor_uids` plus
+  the edge-level diffs for its driving-predecessor churn detector
+  per `forensic-manipulation-patterns §7` and §9. The frozen-
+  contract posture of the result tree means the manipulation
+  engine reads predecessor churn without widening the M10 API.
+* **M12 / M13 (AI narrative and UI)** will render the adjacency
+  map via `render_acumen_table` (default) plus the Block 8 SSI
+  gantt-style variant, with UniqueID + name citations throughout
+  and the `calendar_hours_per_day` audit trail on every row.
+
+Forensic-integrity raises:
+
+* `DrivingPathError` — `cpm_result=None` or cross-version anchor
+  divergence.
+* `FocusPointError` — unresolvable `focus_spec` (integer UID not
+  in schedule, `PROJECT_FINISH` / `PROJECT_START` on empty or
+  cyclic-only schedules).
+* `ValidationError` on `DrivingPathEdge` when
+  `relationship_slack_days > 1/86_400` (one-second tolerance).
+* `ValidationError` on `NonDrivingPredecessor` when
+  `slack_days <= 1/86_400`. The two regimes are mutually
+  exclusive — zero-slack edges are drivers by definition per §4/§5.
