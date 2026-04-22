@@ -73,6 +73,7 @@ def _build_schedule(margin_uids: set[int], total: int = 10) -> Schedule:
         for i in range(1, total + 1)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="margin_overlay_fixture",
         project_start=ANCHOR,
         tasks=tasks,
@@ -330,6 +331,7 @@ def test_summary_margin_task_not_double_counted() -> None:
         for i in range(2, 11)
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="summary_margin_fixture",
         project_start=ANCHOR,
         tasks=tasks,
@@ -423,6 +425,7 @@ def test_is_loe_flag_margin_task_not_double_counted() -> None:
         for i in range(2, 11)
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="loe_flag_margin_fixture",
         project_start=ANCHOR,
         tasks=tasks,
@@ -468,6 +471,7 @@ def test_loe_name_pattern_margin_task_not_double_counted() -> None:
         for i in range(2, 11)
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="loe_pattern_margin_fixture",
         project_start=ANCHOR,
         tasks=tasks,
@@ -514,6 +518,7 @@ def test_completed_margin_task_not_double_counted() -> None:
         for i in range(2, 11)
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="completed_margin_fixture",
         project_start=ANCHOR,
         tasks=tasks,

@@ -73,6 +73,7 @@ class TestRuleA_ActualAfterStatus:
             ),
         ]
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             name="rule_a_start",
             status_date=STATUS_DATE,
             project_start=STATUS_DATE - timedelta(days=30),

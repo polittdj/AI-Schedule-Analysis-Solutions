@@ -75,6 +75,8 @@ class FakeTask(_ComObject):
         active: bool = True,
         predecessors: str = "",
         assignments: list[FakeAssignment] | None = None,
+        calendar: Any = None,
+        calendar_name: str | None = None,
     ) -> None:
         super().__init__(
             UniqueID=unique_id,
@@ -109,6 +111,8 @@ class FakeTask(_ComObject):
             Active=active,
             Predecessors=predecessors,
             Assignments=assignments or [],
+            Calendar=calendar,
+            CalendarName=calendar_name,
         )
 
 
@@ -163,8 +167,9 @@ class FakeCalendar(_ComObject):
         self,
         *,
         name: str = "Standard",
+        hours_per_day: float = 8.0,
     ) -> None:
-        super().__init__(Name=name)
+        super().__init__(Name=name, HoursPerDay=hours_per_day)
 
 
 class FakeProject(_ComObject):

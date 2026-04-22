@@ -63,6 +63,7 @@ class TestEndpointExclusion:
         """A milestone with no predecessor and no successor is also
         an endpoint pair (degenerate single-task project)."""
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             tasks=[
                 Task(
                     unique_id=1,
@@ -174,6 +175,7 @@ class TestCrossMetricInvariants:
 
     def test_no_relations_does_not_crash(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             tasks=[
                 Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
             ],
@@ -206,6 +208,7 @@ class TestRelationDirectionality:
 
     def test_one_sided_flags_correctly(self) -> None:
         sched = Schedule(
+            project_calendar_hours_per_day=8.0,
             tasks=[
                 Task(unique_id=1, task_id=1, name="A", duration_minutes=480),
                 Task(unique_id=2, task_id=2, name="B", duration_minutes=480),

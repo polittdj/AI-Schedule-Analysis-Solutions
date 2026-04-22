@@ -33,7 +33,12 @@ def _std_cal() -> Calendar:
 
 def empty_schedule() -> Schedule:
     """Schedule with zero tasks (L5)."""
-    return Schedule(name="empty", project_start=ANCHOR, calendars=[_std_cal()])
+    return Schedule(
+        project_calendar_hours_per_day=8.0,
+        name="empty",
+        project_start=ANCHOR,
+        calendars=[_std_cal()],
+    )
 
 
 def all_complete_schedule() -> Schedule:
@@ -53,6 +58,7 @@ def all_complete_schedule() -> Schedule:
         Relation(predecessor_unique_id=2, successor_unique_id=3),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="all_complete",
         project_start=ANCHOR,
         tasks=tasks,
@@ -94,6 +100,7 @@ def logic_pass_schedule() -> Schedule:
         )
     relations.append(Relation(predecessor_unique_id=10, successor_unique_id=200))
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="logic_pass",
         project_start=ANCHOR,
         tasks=tasks,
@@ -150,6 +157,7 @@ def logic_golden_fail_schedule() -> Schedule:
         )
     relations.append(Relation(predecessor_unique_id=10, successor_unique_id=200))
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="logic_golden_fail",
         project_start=ANCHOR,
         tasks=tasks,
@@ -211,6 +219,7 @@ def logic_summary_loe_completed_schedule() -> Schedule:
         Relation(predecessor_unique_id=5, successor_unique_id=200),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="logic_summary_loe_completed",
         project_start=ANCHOR,
         tasks=tasks,
@@ -254,6 +263,7 @@ def logic_loe_by_name_schedule() -> Schedule:
         Relation(predecessor_unique_id=3, successor_unique_id=200),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="logic_loe_by_name",
         project_start=ANCHOR,
         tasks=tasks,
@@ -278,6 +288,7 @@ def leads_pass_schedule() -> Schedule:
         for i in range(1, 5)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="leads_pass",
         project_start=ANCHOR,
         tasks=tasks,
@@ -310,6 +321,7 @@ def leads_golden_fail_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="leads_golden_fail",
         project_start=ANCHOR,
         tasks=tasks,
@@ -337,6 +349,7 @@ def leads_on_completed_task_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="leads_on_completed",
         project_start=ANCHOR,
         tasks=tasks,
@@ -361,6 +374,7 @@ def lags_pass_schedule() -> Schedule:
         for i in range(1, 21)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="lags_pass",
         project_start=ANCHOR,
         tasks=tasks,
@@ -390,6 +404,7 @@ def lags_golden_fail_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="lags_golden_fail",
         project_start=ANCHOR,
         tasks=tasks,
@@ -416,6 +431,7 @@ def lags_below_threshold_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="lags_below_threshold",
         project_start=ANCHOR,
         tasks=tasks,
@@ -449,6 +465,7 @@ def lags_with_leads_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="lags_with_leads",
         project_start=ANCHOR,
         tasks=tasks,
@@ -473,6 +490,7 @@ def rel_types_all_fs_schedule() -> Schedule:
         for i in range(1, 11)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="rel_types_all_fs",
         project_start=ANCHOR,
         tasks=tasks,
@@ -500,6 +518,7 @@ def rel_types_at_threshold_schedule() -> Schedule:
         )
     )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="rel_types_at_threshold",
         project_start=ANCHOR,
         tasks=tasks,
@@ -547,6 +566,7 @@ def rel_types_below_threshold_schedule() -> Schedule:
         )
     )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="rel_types_below_threshold",
         project_start=ANCHOR,
         tasks=tasks,
@@ -584,6 +604,7 @@ def rel_types_golden_fail_schedule() -> Schedule:
         )
     )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="rel_types_golden_fail",
         project_start=ANCHOR,
         tasks=tasks,
@@ -600,6 +621,7 @@ def no_relations_schedule() -> Schedule:
         for i in range(1, 6)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="no_relations",
         project_start=ANCHOR,
         tasks=tasks,
@@ -685,6 +707,7 @@ def integration_schedule() -> Schedule:
     )
 
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="integration",
         project_start=ANCHOR,
         tasks=tasks,
@@ -707,6 +730,7 @@ def hard_constraints_pass_schedule() -> Schedule:
         for i in range(1, 21)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="hard_constraints_pass",
         project_start=ANCHOR,
         tasks=tasks,
@@ -807,6 +831,7 @@ def hard_constraints_golden_fail_schedule() -> Schedule:
             Task(unique_id=i, task_id=i, name=f"T{i}", duration_minutes=480)
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="hard_constraints_golden_fail",
         project_start=ANCHOR,
         tasks=tasks,
@@ -853,6 +878,7 @@ def hard_constraints_excluded_population_schedule() -> Schedule:
         Task(unique_id=5, task_id=5, name="Plain B", duration_minutes=480),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="hard_constraints_excluded_population",
         project_start=ANCHOR,
         tasks=tasks,
@@ -880,6 +906,7 @@ def hard_constraints_boundary_schedule() -> Schedule:
             Task(unique_id=i, task_id=i, name=f"T{i}", duration_minutes=480)
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="hard_constraints_boundary",
         project_start=ANCHOR,
         tasks=tasks,
@@ -905,6 +932,7 @@ def _schedule_with_n_tasks(n: int, name: str) -> Schedule:
         for i in range(1, n + 1)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name=name,
         project_start=ANCHOR,
         tasks=tasks,
@@ -968,6 +996,7 @@ def high_float_boundary_with_cpm() -> tuple[Schedule, CPMResult]:
 def high_float_empty_with_cpm() -> tuple[Schedule, CPMResult]:
     """Zero-task schedule, empty CPMResult. Vacuous PASS."""
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="high_float_empty",
         project_start=ANCHOR,
         tasks=[],
@@ -1007,6 +1036,7 @@ def high_float_excluded_population_with_cpm() -> tuple[Schedule, CPMResult]:
         Task(unique_id=5, task_id=5, name="Live B", duration_minutes=480),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="high_float_excluded_population",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1058,6 +1088,7 @@ def negative_float_multi_fail_with_cpm() -> tuple[Schedule, CPMResult]:
 def negative_float_empty_with_cpm() -> tuple[Schedule, CPMResult]:
     """Zero-task schedule. Vacuous PASS."""
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="negative_float_empty",
         project_start=ANCHOR,
         tasks=[],
@@ -1103,6 +1134,7 @@ def high_duration_pass_schedule() -> Schedule:
         for i in range(1, 21)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="high_duration_pass",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1134,6 +1166,7 @@ def high_duration_golden_fail_schedule() -> Schedule:
                 Task(unique_id=i, task_id=i, name=f"T{i}", duration_minutes=480)
             )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="high_duration_golden_fail",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1155,6 +1188,7 @@ def high_duration_boundary_schedule() -> Schedule:
             Task(unique_id=i, task_id=i, name=f"T{i}", duration_minutes=480)
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="high_duration_boundary",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1204,6 +1238,7 @@ def high_duration_rolling_wave_schedule() -> Schedule:
                 )
             )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="high_duration_rolling_wave",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1243,6 +1278,7 @@ def high_duration_excluded_population_schedule() -> Schedule:
         Task(unique_id=5, task_id=5, name="Live B", duration_minutes=480),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="high_duration_excluded_population",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1274,6 +1310,7 @@ def resources_all_assigned_schedule() -> Schedule:
         for i in range(1, 11)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="resources_all_assigned",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1298,6 +1335,7 @@ def resources_half_missing_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="resources_half_missing",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1321,6 +1359,7 @@ def resources_all_missing_schedule() -> Schedule:
         for i in range(1, 11)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="resources_all_missing",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1374,6 +1413,7 @@ def resources_excluded_population_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="resources_excluded_population",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1386,6 +1426,7 @@ def resources_empty_schedule() -> Schedule:
     """Zero tasks. Denominator = 0; ratio reported as 0.0 with the
     vacuous-note convention."""
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="resources_empty",
         project_start=ANCHOR,
         tasks=[],
@@ -1502,6 +1543,7 @@ def m6_integration_schedule() -> tuple[Schedule, CPMResult]:
     relations.append(Relation(predecessor_unique_id=18, successor_unique_id=200))
 
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="m6_integration",
         project_start=ANCHOR,
         tasks=tasks,
@@ -1565,6 +1607,7 @@ def invalid_dates_pass_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="invalid_dates_pass",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -1606,6 +1649,7 @@ def invalid_dates_actual_after_status_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="invalid_dates_actual_after_status",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -1647,6 +1691,7 @@ def invalid_dates_forecast_before_status_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="invalid_dates_forecast_before_status",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -1680,6 +1725,7 @@ def invalid_dates_temporal_inversion_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="invalid_dates_temporal_inversion",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -1713,6 +1759,7 @@ def invalid_dates_future_planned_task_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="invalid_dates_future_planned",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=1),
@@ -1747,6 +1794,7 @@ def invalid_dates_loe_flagged_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="invalid_dates_loe_flagged",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -1778,6 +1826,7 @@ def invalid_dates_no_status_date_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="invalid_dates_no_status",
         status_date=None,
         project_start=ANCHOR,
@@ -1819,6 +1868,7 @@ def invalid_dates_excluded_population_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="invalid_dates_excluded_population",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -1881,6 +1931,7 @@ def missed_tasks_known_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="missed_tasks_known",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -1916,6 +1967,7 @@ def missed_tasks_rolling_wave_exempt_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="missed_tasks_rolling_wave",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -1950,6 +2002,7 @@ def missed_tasks_loe_exempt_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="missed_tasks_loe",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -1972,6 +2025,7 @@ def missed_tasks_no_baseline_schedule() -> Schedule:
         for i in range(1, 4)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="missed_tasks_no_baseline",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -1994,6 +2048,7 @@ def missed_tasks_no_status_date_schedule() -> Schedule:
         )
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="missed_tasks_no_status",
         status_date=None,
         project_start=ANCHOR,
@@ -2045,6 +2100,7 @@ def cpt_linear_pass_schedule() -> tuple[Schedule, CPMResult]:
         Relation(predecessor_unique_id=4, successor_unique_id=200),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="cpt_linear_pass",
         project_start=ANCHOR,
         tasks=tasks,
@@ -2105,6 +2161,7 @@ def cpt_gap_fail_schedule() -> tuple[Schedule, CPMResult]:
         Relation(predecessor_unique_id=4, successor_unique_id=200),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="cpt_gap_fail",
         project_start=ANCHOR,
         tasks=tasks,
@@ -2164,6 +2221,7 @@ def cpt_parallel_critical_paths_schedule() -> tuple[Schedule, CPMResult]:
         Relation(predecessor_unique_id=4, successor_unique_id=200),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="cpt_parallel",
         project_start=ANCHOR,
         tasks=tasks,
@@ -2194,6 +2252,7 @@ def cpt_no_endpoints_schedule() -> tuple[Schedule, CPMResult]:
     ]
     relations = [Relation(predecessor_unique_id=1, successor_unique_id=2)]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="cpt_no_endpoints",
         project_start=ANCHOR,
         tasks=tasks,
@@ -2235,6 +2294,7 @@ def cpt_finish_not_critical_schedule() -> tuple[Schedule, CPMResult]:
         Relation(predecessor_unique_id=1, successor_unique_id=200),
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="cpt_finish_not_critical",
         project_start=ANCHOR,
         tasks=tasks,
@@ -2286,6 +2346,7 @@ def cpli_on_track_schedule() -> tuple[Schedule, CPMResult]:
         )
     project_finish = ANCHOR + timedelta(days=10)
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="cpli_on_track",
         status_date=ANCHOR,
         project_start=ANCHOR,
@@ -2331,6 +2392,7 @@ def cpli_slip_fail_schedule() -> tuple[Schedule, CPMResult]:
         )
     project_finish = ANCHOR + timedelta(days=13)  # 3 days past baseline
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="cpli_slip",
         status_date=ANCHOR + timedelta(days=5),
         project_start=ANCHOR,
@@ -2363,6 +2425,7 @@ def cpli_no_baseline_schedule() -> tuple[Schedule, CPMResult]:
         for i in range(1, 4)
     ]
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="cpli_no_baseline",
         status_date=ANCHOR,
         project_start=ANCHOR,
@@ -2409,6 +2472,7 @@ def bei_on_track_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="bei_on_track",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -2453,6 +2517,7 @@ def bei_slip_fail_schedule() -> Schedule:
             )
         )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="bei_slip",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -2507,6 +2572,7 @@ def bei_rolling_wave_exempt_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="bei_rolling_wave",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -2557,6 +2623,7 @@ def bei_loe_exempt_schedule() -> Schedule:
         ),
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="bei_loe",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -2582,6 +2649,7 @@ def bei_zero_denominator_schedule() -> Schedule:
         for i in range(1, 4)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="bei_zero_denom",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -2604,6 +2672,7 @@ def bei_no_baseline_schedule() -> Schedule:
         for i in range(1, 4)
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="bei_no_baseline",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -2626,6 +2695,7 @@ def bei_no_status_date_schedule() -> Schedule:
         )
     ]
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="bei_no_status",
         status_date=None,
         project_start=ANCHOR,
@@ -2690,6 +2760,7 @@ def bei_edwards_worked_example_schedule() -> Schedule:
         )
     )
     return Schedule(
+        project_calendar_hours_per_day=8.0,
         name="bei_edwards",
         status_date=STATUS_DATE,
         project_start=STATUS_DATE - timedelta(days=30),
@@ -2934,6 +3005,7 @@ def m7_integration_schedule() -> tuple[Schedule, CPMResult]:
     relations.append(Relation(predecessor_unique_id=8, successor_unique_id=200))
 
     sched = Schedule(
+        project_calendar_hours_per_day=8.0,
         name="m7_integration",
         status_date=status,
         project_start=status - timedelta(days=30),
