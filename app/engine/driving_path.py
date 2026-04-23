@@ -42,6 +42,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 
 from app.engine.driving_path_types import (
+    ConstraintDrivenPredecessor,
     DrivingPathCrossVersionResult,
     DrivingPathEdge,
     DrivingPathNode,
@@ -55,6 +56,7 @@ from app.engine.relations import link_driving_slack_minutes
 from app.engine.result import CPMResult, TaskCPMResult
 from app.engine.units import minutes_to_days
 from app.models.calendar import Calendar
+from app.models.enums import DATE_BEARING_CONSTRAINTS
 from app.models.relation import Relation
 from app.models.schedule import Schedule
 from app.models.task import Task
@@ -172,6 +174,50 @@ def _build_node(
     )
 
 
+def _build_constraint_driven_predecessor(
+    rel: Relation,
+    pred_task: Task,
+    succ_task: Task,
+    lag_days: float,
+    slack_days: float,
+    hours_per_day: float,
+) -> ConstraintDrivenPredecessor:
+    """Build a :class:`ConstraintDrivenPredecessor` for a negative-slack edge.
+
+    Per BUILD-PLAN §2.20: the third bucket captures edges whose
+    predecessor is held by a hard constraint or by negative-float
+    propagation from a missed deadline. The rationale string is written
+    here (Block 2) so the M12 narrative layer and the M13 UI can
+    surface it verbatim without re-deriving the semantics.
+
+    Manual M/D/YYYY date formatting avoids ``strftime("%-m/%-d/%Y")``,
+    which is POSIX-only and breaks on Windows.
+    """
+    ct = pred_task.constraint_type
+    cd = pred_task.constraint_date
+    if cd is not None and ct in DATE_BEARING_CONSTRAINTS:
+        date_clause = f" of {cd.month}/{cd.day}/{cd.year}"
+    else:
+        date_clause = ""
+    rationale = (
+        f"Predecessor has {ct.name} constraint{date_clause}, "
+        f"producing negative relationship slack of {slack_days:.2f} days."
+    )
+    return ConstraintDrivenPredecessor(
+        predecessor_uid=rel.predecessor_unique_id,
+        predecessor_name=pred_task.name,
+        successor_uid=rel.successor_unique_id,
+        successor_name=succ_task.name,
+        relation_type=rel.relation_type,
+        lag_days=lag_days,
+        slack_days=slack_days,
+        calendar_hours_per_day=hours_per_day,
+        predecessor_constraint_type=ct,
+        predecessor_constraint_date=cd,
+        rationale=rationale,
+    )
+
+
 # ----------------------------------------------------------------------
 # Single-schedule trace — adjacency-map backward walk
 # ----------------------------------------------------------------------
@@ -216,7 +262,15 @@ def trace_driving_path(
         :class:`DrivingPathResult` — frozen, adjacency-map shape.
 
     Raises:
-        DrivingPathError: ``cpm_result`` is ``None``.
+        DrivingPathError: ``cpm_result`` is ``None``, or the resolved
+            Focus Point UID is missing from ``cpm_result``, was skipped
+            by the CPM engine as a cycle participant, or has
+            ``None``-valued early/late dates — in any of these cases the
+            walk cannot materialise the focus node and refuses to
+            return an empty-nodes result (Codex P2). Non-focus tasks
+            that hit the same conditions are recorded on
+            :attr:`DrivingPathResult.skipped_cycle_participants`
+            instead.
         FocusPointError: ``focus_spec`` cannot be resolved.
     """
     if cpm_result is None:
@@ -235,6 +289,8 @@ def trace_driving_path(
     nodes: dict[int, DrivingPathNode] = {}
     edges: list[DrivingPathEdge] = []
     non_driving: list[NonDrivingPredecessor] = []
+    constraint_driven: list[ConstraintDrivenPredecessor] = []
+    skipped_cycle: list[int] = []
 
     # BFS queue of UIDs to visit; visited set guards against cyclic
     # input (CPM lenient mode already skips cycles, so this is
@@ -252,18 +308,32 @@ def trace_driving_path(
 
         current_task = tasks[current_uid]
         current_cpm = cpm_result.tasks.get(current_uid)
-        if current_cpm is None or current_cpm.skipped_due_to_cycle:
-            # Current task was excluded by the CPM pass (cycle
-            # participant in lenient mode, or missing entry on
-            # malformed input). Can't materialise a node without CPM
-            # dates; terminate this branch.
-            continue
-        if (
+        missing_cpm = current_cpm is None or current_cpm.skipped_due_to_cycle
+        missing_dates = (not missing_cpm) and (
             current_cpm.early_start is None
             or current_cpm.early_finish is None
             or current_cpm.late_start is None
             or current_cpm.late_finish is None
-        ):
+        )
+        if missing_cpm or missing_dates:
+            if current_uid == focus_uid:
+                reason = (
+                    "missing from CPM result / cycle participant"
+                    if missing_cpm
+                    else "missing early/late dates"
+                )
+                raise DrivingPathError(
+                    f"Focus Point UniqueID {focus_uid} is {reason}; the "
+                    "driving-path walk cannot materialise the focus node "
+                    "and refuses to return an empty result. Resolve the "
+                    "CPM-engine issue (cycle participation or incomplete "
+                    "forward/backward pass) or choose a different Focus "
+                    "Point."
+                )
+            # Non-focus UID — record for the forensic audit trail per
+            # BUILD-PLAN §2.20 / Block 2 skipped_cycle_participants
+            # contract, then terminate this branch.
+            skipped_cycle.append(current_uid)
             continue
 
         current_hpd = _resolve_hours_per_day(current_task, schedule)
@@ -303,7 +373,7 @@ def trace_driving_path(
                 # driving edge. Enqueue the predecessor for recursion
                 # — no tie-break, no drop.
                 queue.append(rel.predecessor_unique_id)
-            else:
+            elif slack_min > 0:
                 non_driving.append(
                     NonDrivingPredecessor(
                         predecessor_uid=rel.predecessor_unique_id,
@@ -314,6 +384,21 @@ def trace_driving_path(
                         lag_days=lag_days,
                         slack_days=slack_days,
                         calendar_hours_per_day=pred_hpd,
+                    )
+                )
+            else:
+                # Negative relationship slack — third bucket per
+                # BUILD-PLAN §2.20. Predecessor's CPM dates are held by
+                # a hard constraint or by negative-float propagation
+                # from a missed deadline.
+                constraint_driven.append(
+                    _build_constraint_driven_predecessor(
+                        rel=rel,
+                        pred_task=pred_task,
+                        succ_task=current_task,
+                        lag_days=lag_days,
+                        slack_days=slack_days,
+                        hours_per_day=pred_hpd,
                     )
                 )
 
@@ -329,6 +414,11 @@ def trace_driving_path(
         nodes=nodes,
         edges=edges,
         non_driving_predecessors=non_driving,
+        constraint_driven_predecessors=sorted(
+            constraint_driven,
+            key=lambda p: (p.successor_uid, p.predecessor_uid),
+        ),
+        skipped_cycle_participants=sorted(skipped_cycle),
     )
 
 
@@ -393,6 +483,8 @@ def trace_driving_path_cross_version(
         FocusPointError: The anchor cannot be resolved in one or
             both schedules.
     """
+    # Constraint-driven predecessor cross-version diff is deferred to M11
+    # manipulation-scoring scope per M10.1 scope cap (BUILD-PLAN §2.20).
     if period_a_cpm_result is None or period_b_cpm_result is None:
         raise DrivingPathError(
             "trace_driving_path_cross_version requires non-None "
