@@ -250,6 +250,73 @@ every node). The original prompt referenced §2.15 for this addition
 in error; §2.15 is the indicator-only-metrics decision. The new
 non-negotiable lives here at §2.18.)
 
+### 2.19 User-visible durations convention (AM9, 4/23/2026)
+
+All user-visible durations — Pydantic contract field names, renderer
+output strings, README examples, Word/Excel/HTML report bodies, and
+CLI output — are denominated in DAYS. Minutes and hours are internal
+CPM currency (§2.16) and never appear in user-facing output.
+
+Format helper: app.engine.units.format_days(days: float) -> str is the
+sole formatting point. Format rules:
+
+- 2-decimal precision maximum.
+- Ceiling rounding at 0.01 for positive values; floor rounding at -0.01
+  for negative values; exactly 0.0 preserved.
+- Trailing zeros stripped: 2.0 → "2 days", 2.10 → "2.1 days".
+- Leading zero omitted on fractional absolute values: 0.5 → ".5 days",
+  -0.5 → "-.5 days".
+- Singular / plural: "day" only for exactly +1 or exactly -1 (post-
+  rounding); "days" everywhere else including ".5 days" and "0 days".
+
+Enforcement: a schema invariant test scans every public Pydantic model
+in app.engine and asserts no field name matches /_(minutes|hours|seconds)$/.
+New public models that carry a duration MUST use the *_days convention.
+
+Authority: NASA Schedule Management Handbook §5.5.9.1 ("task durations
+should generally be assigned in workdays"); Papicito's forensic-tool
+standard dated 4/23/2026.
+
+### 2.20 Three-bucket partition for driving-path predecessors (AM10, 4/23/2026)
+
+The driving-path backward walk classifies every incoming relationship
+on a node in the driving sub-graph into exactly one of three buckets,
+keyed on per-relationship driving slack (driving-slack-and-paths §3):
+
+1. DrivingPathEdge — relationship_slack_days within ±(1/86,400) of
+   zero. §5 verbatim: "Walking every relationship-slack-zero link
+   backward … walks recursively until every driving predecessor is
+   exhausted." §4 verbatim: "No path is dropped."
+
+2. NonDrivingPredecessor — slack_days strictly greater than
+   +(1/86,400). Positive-flexibility also-ran predecessors; terminate
+   the backward walk on their successor.
+
+3. ConstraintDrivenPredecessor — slack_days strictly less than
+   -(1/86,400). Negative relationship slack indicates the predecessor's
+   CPM dates are held by a hard constraint (MSO / MFO / SNLT / FNLT)
+   or by negative-float propagation from a missed deadline.
+
+DCMA-EA Metric #7 (Edwards 2016, pp. 9-10) verbatim: "Negative float
+occurs when the project schedule is forecasting a missed deadline, or
+when a hard constraint is holding a task further to the left than it
+would otherwise be."
+
+NASA Schedule Management Handbook on hard constraints, verbatim:
+"Improper use can cause negative float to be calculated throughout
+the schedule."
+
+The three buckets are mutually exclusive and exhaustive over the
+reals. Pydantic validators enforce the partition structurally —
+no escape hatches. ConstraintDrivenPredecessor carries the
+predecessor task's constraint_type, constraint_date (if date-bearing),
+and a narrative rationale string for deposition-grade reports.
+
+Resolves: PR #31 Codex review P1 (ValidationError crash on constrained
+schedules). Authority references: driving-slack-and-paths §3, §4, §5;
+dcma-14-point-assessment §4.7; NASA Schedule Management Handbook
+§5.5.9.1 and hard-constraint sections; BUILD-PLAN §2.16, §2.18.
+
 ---
 
 ## 3. Starting State
