@@ -291,6 +291,11 @@ def trace_driving_path(
     non_driving: list[NonDrivingPredecessor] = []
     constraint_driven: list[ConstraintDrivenPredecessor] = []
     skipped_cycle: list[int] = []
+    # O(1) membership dedupe for skipped_cycle. The list is the
+    # authoritative container (preserves insertion order before the
+    # final sort); the set mirrors it for fast contains-checks across
+    # both recording paths (BUILD-PLAN §2.21 / AM11).
+    skipped_cycle_set: set[int] = set()
 
     # BFS queue of UIDs to visit; visited set guards against cyclic
     # input (CPM lenient mode already skips cycles, so this is
@@ -333,7 +338,9 @@ def trace_driving_path(
             # Non-focus UID — record for the forensic audit trail per
             # BUILD-PLAN §2.20 / Block 2 skipped_cycle_participants
             # contract, then terminate this branch.
-            skipped_cycle.append(current_uid)
+            if current_uid not in skipped_cycle_set:
+                skipped_cycle.append(current_uid)
+                skipped_cycle_set.add(current_uid)
             continue
 
         current_hpd = _resolve_hours_per_day(current_task, schedule)
@@ -342,10 +349,33 @@ def trace_driving_path(
         for rel in incoming.get(current_uid, []):
             slack_min = _link_slack_minutes(rel, cpm_result, cal)
             if slack_min is None:
-                # Non-traversable edge (cycle participant or missing
-                # CPM data). Drop without recording — a meaningless
-                # slack value on non_driving_predecessors would be
-                # forensically misleading.
+                # Non-traversable edge: _link_slack_minutes returns
+                # None when either end has skipped_due_to_cycle=True
+                # or when a required early date is missing. Edge-level
+                # cycle recording per BUILD-PLAN §2.21 (AM11) / Codex
+                # PR #33 new P2 finding: when the drop is caused by a
+                # cycle participant on either side, the predecessor
+                # UID is recorded on skipped_cycle so the forensic-
+                # visibility contract captures participants that
+                # terminate a branch at the edge level. Focus UID is
+                # handled separately by the visit-level raise; already-
+                # recorded UIDs are deduped against skipped_cycle_set.
+                # The edge itself is still dropped — no DrivingPathEdge,
+                # NonDrivingPredecessor, or ConstraintDrivenPredecessor
+                # entry is emitted for it.
+                pred_uid = rel.predecessor_unique_id
+                pred_cpm = cpm_result.tasks.get(pred_uid)
+                pred_in_cycle = (
+                    pred_cpm is not None and pred_cpm.skipped_due_to_cycle
+                )
+                succ_in_cycle = current_cpm.skipped_due_to_cycle
+                if (
+                    (pred_in_cycle or succ_in_cycle)
+                    and pred_uid != focus_uid
+                    and pred_uid not in skipped_cycle_set
+                ):
+                    skipped_cycle.append(pred_uid)
+                    skipped_cycle_set.add(pred_uid)
                 continue
 
             pred_task = tasks[rel.predecessor_unique_id]
