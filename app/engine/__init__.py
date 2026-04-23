@@ -37,6 +37,7 @@ from app.engine.driving_path import (
 )
 from app.engine.driving_path_render_acumen import render_acumen_table
 from app.engine.driving_path_types import (
+    ConstraintDrivenPredecessor,
     DrivingPathCrossVersionResult,
     DrivingPathEdge,
     DrivingPathNode,
@@ -65,6 +66,7 @@ from app.engine.paths import (
     near_critical_chain,
 )
 from app.engine.result import CPMResult, TaskCPMResult
+from app.engine.units import format_days
 from app.engine.windowing import is_legitimate_actual
 
 __all__ = [
@@ -75,6 +77,7 @@ __all__ = [
     "ComparatorError",
     "ComparatorOptions",
     "ComparatorResult",
+    "ConstraintDrivenPredecessor",
     "ConstraintViolation",
     "DeltaType",
     "DrivingPathCrossVersionResult",
@@ -98,6 +101,7 @@ __all__ = [
     "compute_cpm",
     "critical_path_chains",
     "driving_slack_to_focus",
+    "format_days",
     "is_legitimate_actual",
     "minutes_to_working_days",
     "near_critical_chain",

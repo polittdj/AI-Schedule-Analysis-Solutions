@@ -200,11 +200,11 @@ Tests:
 | `delta.py`         | M9 comparator contract — `FieldDelta`, `TaskDelta`, `RelationshipDelta`, `ComparatorResult` + `DeltaType` / `TaskPresence` / `RelationshipPresence` enums. |
 | `windowing.py`     | M9 status-date windowing predicate `is_legitimate_actual`. |
 | `comparator.py`    | M9 cross-version `compare_schedules` — UniqueID-only matching, per-field and per-relationship deltas. |
-| `driving_path_types.py` | M10 frozen contract — `DrivingPathNode`, `DrivingPathEdge`, `NonDrivingPredecessor`, `DrivingPathResult`, `DrivingPathCrossVersionResult`, `FocusPointAnchor`. (Block 7 reshape: chain + parallel-links pair replaced with an adjacency-map.) |
+| `driving_path_types.py` | M10 frozen contract — `DrivingPathNode`, `DrivingPathEdge`, `NonDrivingPredecessor`, `ConstraintDrivenPredecessor`, `DrivingPathResult`, `DrivingPathCrossVersionResult`, `FocusPointAnchor`. (Block 7 reshape: chain + parallel-links pair replaced with an adjacency-map. M10.1 addition: `ConstraintDrivenPredecessor` plus `skipped_cycle_participants` on `DrivingPathResult` per BUILD-PLAN §2.20.) |
 | `focus_point.py`   | M10 Focus Point resolver — maps an int UID or `FocusPointAnchor` to a concrete `Task.unique_id`. |
 | `driving_path.py`  | M10 backward-walk tracer — `trace_driving_path` + `trace_driving_path_cross_version`. |
 | `driving_path_render_acumen.py` | Block 7 default Acumen-style table renderer — `render_acumen_table`. |
-| `units.py`         | Block 7 minute→day conversion helper for public contract — `minutes_to_days`. |
+| `units.py`         | Block 7 minute→day conversion helper for public contract — `minutes_to_days`. M10.1 addition: `format_days` user-visible duration formatter per BUILD-PLAN §2.19. |
 
 ## Cross-version comparator (Milestone 9)
 
@@ -333,6 +333,8 @@ DrivingPathResult(
     nodes: dict[int, DrivingPathNode],          # keyed by UID
     edges: list[DrivingPathEdge],               # every zero-slack driving edge
     non_driving_predecessors: list[NonDrivingPredecessor],
+    constraint_driven_predecessors: list[ConstraintDrivenPredecessor],
+    skipped_cycle_participants: list[int],
 )
 ```
 
@@ -374,6 +376,102 @@ when non-None or `Schedule.project_calendar_hours_per_day`
 otherwise. The driving-path tracer does not walk calendars; it
 reads the denormalised fields directly.
 
+### Three-bucket partition (BUILD-PLAN §2.20)
+
+Every incoming relationship on a node in the driving sub-graph
+lands in exactly one of three mutually-exclusive, exhaustive
+buckets keyed on per-relationship driving slack
+(`driving-slack-and-paths §3`). The partition is enforced by
+Pydantic `model_validator`s on the three models below — there is
+no escape hatch and no tie-break.
+
+| Bucket | Model | Slack regime (days) |
+| ------ | ----- | ------------------- |
+| Driving | `DrivingPathEdge` | within `±(1/86,400)` of zero |
+| Also-ran | `NonDrivingPredecessor` | strictly `> +(1/86,400)` |
+| Constraint-driven | `ConstraintDrivenPredecessor` | strictly `< -(1/86,400)` |
+
+`ConstraintDrivenPredecessor` captures edges whose predecessor is
+held by a hard constraint (MSO / MFO / SNLT / FNLT per
+`dcma-14-point-assessment §4.5`) or by negative-float propagation
+from a missed deadline. DCMA-EA Metric #7 (Edwards 2016, pp. 9-10)
+verbatim: "Negative float occurs when the project schedule is
+forecasting a missed deadline, or when a hard constraint is holding
+a task further to the left than it would otherwise be." NASA
+Schedule Management Handbook on hard constraints, verbatim:
+"Improper use can cause negative float to be calculated throughout
+the schedule." See BUILD-PLAN §2.20 for the full statement.
+
+Each `ConstraintDrivenPredecessor` carries the predecessor's
+`predecessor_constraint_type` (a `ConstraintType` enum),
+`predecessor_constraint_date` (`datetime | None` — `None` on
+ASAP / ALAP), and a `rationale` string for deposition-grade reports.
+
+The renderer surfaces the third bucket on every row via
+`constraint_driven_predecessor_count: int` and
+`constraint_driven_predecessors: list[dict]` (the enum is
+serialized as its `.name` string — e.g., `"MUST_START_ON"`).
+
+### User-visible durations (`format_days`)
+
+`app.engine.format_days(days: float) -> str` is the **sole**
+formatting point for user-visible durations — Pydantic contract
+string fields, renderer output, README examples, Word / Excel /
+HTML report bodies, and CLI output all route through it per
+BUILD-PLAN §2.19 (AM9, 4/23/2026). Authority: NASA Schedule
+Management Handbook §5.5.9.1 ("task durations should generally be
+assigned in workdays"); Papicito's forensic-tool standard dated
+4/23/2026.
+
+Format rules:
+
+* 2-decimal precision maximum.
+* Positive values round by ceiling to the next `0.01`; negative
+  values round by floor to the next `-0.01`; exactly `0.0` is
+  preserved without rounding.
+* Trailing zeros and any orphan decimal point are stripped.
+* Leading zero omitted on fractional absolute values (`0.5`
+  renders as `".5"`, `-0.5` renders as `"-.5"`).
+* Singular suffix `" day"` only when the rounded value equals
+  `+1.0` or `-1.0` exactly; `" days"` everywhere else, including
+  `".5 days"` and `"0 days"`.
+
+Example inputs and outputs:
+
+| Input     | Output         |
+| --------- | -------------- |
+| `0.0`     | `"0 days"`     |
+| `1.0`     | `"1 day"`      |
+| `-1.0`    | `"-1 day"`     |
+| `0.5`     | `".5 days"`    |
+| `-2.0`    | `"-2 days"`    |
+| `0.003`   | `".01 days"`   |
+| `2.25`    | `"2.25 days"`  |
+| `100.0`   | `"100 days"`   |
+
+A schema invariant test
+(`tests/test_engine_no_minute_hour_fields_on_public_models.py`)
+scans every public Pydantic model in `app.engine.__all__` and
+asserts no `model_fields` key matches `/_(minutes|hours|seconds)$/` —
+new public models that carry a duration MUST use the `*_days`
+convention per §2.19.
+
+### Forensic-visibility field: `skipped_cycle_participants`
+
+`DrivingPathResult.skipped_cycle_participants: list[int]` captures
+**non-focus** task UniqueIDs that the backward walk encountered but
+could not materialise as `DrivingPathNode` records — cycle
+participants flagged by `TaskCPMResult.skipped_due_to_cycle` or
+tasks with `None`-valued early / late dates from an incomplete CPM
+pass. Listing these UIDs on the result (rather than silently
+dropping them) preserves forensic visibility: a reviewer can see
+which predecessors were encountered but not walked, and chase the
+underlying CPM-engine issue. Ordering is UniqueID ascending.
+
+When the FOCUS task itself is skipped / missing dates,
+`trace_driving_path` raises `DrivingPathError` instead — an empty-
+nodes result is refused (Codex P2, see `driving_path.py` contract).
+
 ### Migration note (Block 7)
 
 The pre-Block-7 contract exposed `result.chain: tuple[DrivingPathNode, …]`
@@ -388,9 +486,12 @@ Block 8.
 ### Worked example
 
 ```python
-from app.engine.cpm import compute_cpm
-from app.engine.driving_path import trace_driving_path
-from app.engine.driving_path_render_acumen import render_acumen_table
+from app.engine import (
+    compute_cpm,
+    format_days,
+    render_acumen_table,
+    trace_driving_path,
+)
 
 # schedule: A → B → C, all FS zero-lag
 cpm = compute_cpm(schedule)
@@ -398,7 +499,8 @@ result = trace_driving_path(schedule, focus_spec=3, cpm_result=cpm)
 
 result.nodes.keys()          # {1, 2, 3}
 result.nodes[1].name         # "A"
-result.nodes[1].total_float_days  # 0.0
+result.nodes[1].total_float_days  # 2.0 (internal float value)
+format_days(result.nodes[1].total_float_days)  # "2 days" (user-visible)
 result.nodes[1].calendar_hours_per_day  # 8.0 (project default)
 
 len(result.edges)            # 2: (1→2) and (2→3)
@@ -408,6 +510,8 @@ result.edges[0].relationship_slack_days  # ~0.0
 rows = render_acumen_table(result)
 # rows[0]["unique_id"] == 1, rows[0]["driving_predecessor_count"] == 0
 # rows[2]["unique_id"] == 3, rows[2]["driving_predecessors"][0]["predecessor_uid"] == 2
+# rows[N]["constraint_driven_predecessor_count"] > 0 when the node has a
+# hard-constraint-pinned predecessor (BUILD-PLAN §2.20 third bucket).
 ```
 
 Downstream consumption convention:
@@ -434,5 +538,7 @@ Forensic-integrity raises:
 * `ValidationError` on `DrivingPathEdge` when
   `relationship_slack_days > 1/86_400` (one-second tolerance).
 * `ValidationError` on `NonDrivingPredecessor` when
-  `slack_days <= 1/86_400`. The two regimes are mutually
-  exclusive — zero-slack edges are drivers by definition per §4/§5.
+  `slack_days <= 1/86_400`.
+* `ValidationError` on `ConstraintDrivenPredecessor` when
+  `slack_days >= -1/86_400`. The three slack regimes are mutually
+  exclusive and exhaustive per BUILD-PLAN §2.20.

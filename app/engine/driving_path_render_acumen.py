@@ -50,9 +50,19 @@ def render_acumen_table(result: DrivingPathResult) -> list[dict[str, Any]]:
           lag_days, relationship_slack_days}`` dicts.
         * ``non_driving_predecessor_count``: number of positive-
           slack predecessor edges terminating on this node.
+        * ``constraint_driven_predecessor_count``: number of
+          negative-slack constraint-driven predecessor edges
+          terminating on this node (BUILD-PLAN §2.20 three-bucket
+          partition).
+        * ``constraint_driven_predecessors``: list of
+          ``{predecessor_uid, predecessor_name, relation_type,
+          lag_days, slack_days, predecessor_constraint_type (enum
+          NAME string), predecessor_constraint_date (datetime |
+          None), rationale}`` dicts per BUILD-PLAN §2.20.
     """
-    # Index incoming edges and non-driving predecessors by
-    # successor UID so we can assemble each row in a single pass.
+    # Index incoming edges, non-driving predecessors, and constraint-
+    # driven predecessors by successor UID so we can assemble each row
+    # in a single pass.
     edges_by_successor: dict[int, list[dict[str, Any]]] = {
         uid: [] for uid in result.nodes
     }
@@ -73,9 +83,27 @@ def render_acumen_table(result: DrivingPathResult) -> list[dict[str, Any]]:
             non_driving_counts.get(ndp.successor_uid, 0) + 1
         )
 
+    constraint_driven_by_successor: dict[int, list[dict[str, Any]]] = {
+        uid: [] for uid in result.nodes
+    }
+    for cdp in result.constraint_driven_predecessors:
+        constraint_driven_by_successor.setdefault(cdp.successor_uid, []).append(
+            {
+                "predecessor_uid": cdp.predecessor_uid,
+                "predecessor_name": cdp.predecessor_name,
+                "relation_type": cdp.relation_type,
+                "lag_days": cdp.lag_days,
+                "slack_days": cdp.slack_days,
+                "predecessor_constraint_type": cdp.predecessor_constraint_type.name,
+                "predecessor_constraint_date": cdp.predecessor_constraint_date,
+                "rationale": cdp.rationale,
+            }
+        )
+
     rows: list[dict[str, Any]] = []
     for uid, node in result.nodes.items():
         driving = edges_by_successor.get(uid, [])
+        constraint_driven = constraint_driven_by_successor.get(uid, [])
         rows.append(
             {
                 "unique_id": node.unique_id,
@@ -87,6 +115,8 @@ def render_acumen_table(result: DrivingPathResult) -> list[dict[str, Any]]:
                 "driving_predecessor_count": len(driving),
                 "driving_predecessors": driving,
                 "non_driving_predecessor_count": non_driving_counts.get(uid, 0),
+                "constraint_driven_predecessor_count": len(constraint_driven),
+                "constraint_driven_predecessors": constraint_driven,
             }
         )
 
