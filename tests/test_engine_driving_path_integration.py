@@ -30,13 +30,14 @@ from app.engine import (
     DrivingPathResult,
     FocusPointAnchor,
     compute_cpm,
+    format_days,
     render_acumen_table,
     resolve_focus_point,
     trace_driving_path,
     trace_driving_path_cross_version,
 )
 from app.models.calendar import Calendar
-from app.models.enums import RelationType
+from app.models.enums import ConstraintType, RelationType
 from app.models.relation import Relation
 from app.models.schedule import Schedule
 from app.models.task import Task
@@ -324,3 +325,99 @@ def test_integration_rename_regression() -> None:
     assert renamed.period_b_result.nodes[1].name == "Alpha"
     assert plain.period_b_result.nodes[10].name == "D"
     assert renamed.period_b_result.nodes[10].name == "Foxtrot"
+
+
+# ----------------------------------------------------------------------
+# Three-bucket partition + renderer + format_days end-to-end (M10.1 B6)
+# ----------------------------------------------------------------------
+
+
+def test_integration_constraint_driven_renderer_and_format_days() -> None:
+    """End-to-end: parse-shaped Schedule → CPM → trace → render.
+
+    Exercises the BUILD-PLAN §2.20 third bucket (``ConstraintDrivenPredecessor``)
+    at the renderer boundary, plus the BUILD-PLAN §2.19 ``format_days``
+    user-visible formatter. Pairs predecessor A (MSO, pinned late) with
+    successor B (MSO, pinned earlier) so the FS edge A → B carries
+    strictly negative relationship slack — the Codex P1 condition that
+    routes into the third bucket.
+    """
+    mso_a = datetime(2026, 4, 22, 8, 0, tzinfo=UTC)  # A pinned two days after anchor
+    mso_b = datetime(2026, 4, 20, 8, 0, tzinfo=UTC)  # B pinned at anchor
+    tasks = [
+        Task(
+            unique_id=1,
+            task_id=1,
+            name="A",
+            duration_minutes=480,
+            constraint_type=ConstraintType.MUST_START_ON,
+            constraint_date=mso_a,
+        ),
+        Task(
+            unique_id=2,
+            task_id=2,
+            name="B",
+            duration_minutes=480,
+            constraint_type=ConstraintType.MUST_START_ON,
+            constraint_date=mso_b,
+        ),
+    ]
+    relations = [
+        Relation(
+            predecessor_unique_id=1,
+            successor_unique_id=2,
+            relation_type=RelationType.FS,
+        ),
+    ]
+    schedule = _sched(tasks, relations, name="constraint_driven_e2e")
+    cpm = compute_cpm(schedule)
+
+    schedule_before = schedule.model_dump(mode="json")
+    cpm_before = cpm_result_snapshot(cpm)
+
+    result = trace_driving_path(schedule, 2, cpm)
+
+    # Non-mutation invariant holds across parse → CPM → trace.
+    assert schedule.model_dump(mode="json") == schedule_before
+    assert cpm_result_snapshot(cpm) == cpm_before
+
+    # Tracer routed the negative-slack edge into the third bucket.
+    assert len(result.constraint_driven_predecessors) == 1
+
+    # Renderer surfaces the bucket on the successor row.
+    rows = render_acumen_table(result)
+    assert len(rows) == len(result.nodes)
+
+    constraint_rows = [r for r in rows if r["constraint_driven_predecessor_count"] >= 1]
+    assert len(constraint_rows) >= 1
+
+    target_row = constraint_rows[0]
+    assert target_row["unique_id"] == 2
+    assert target_row["constraint_driven_predecessor_count"] == 1
+    cdp_entries = target_row["constraint_driven_predecessors"]
+    assert len(cdp_entries) == 1
+
+    required_keys = {
+        "predecessor_uid",
+        "predecessor_name",
+        "relation_type",
+        "lag_days",
+        "slack_days",
+        "predecessor_constraint_type",
+        "predecessor_constraint_date",
+        "rationale",
+    }
+    for entry in cdp_entries:
+        assert required_keys.issubset(entry.keys())
+        # Enum serialised as its NAME string per the renderer contract.
+        assert entry["predecessor_constraint_type"] == "MUST_START_ON"
+        assert entry["predecessor_constraint_date"] == mso_a
+        assert entry["slack_days"] < 0
+        assert "MUST_START_ON" in entry["rationale"]
+
+    # format_days at the renderer boundary: any row's total_float_days
+    # round-trips through the user-visible formatter with a singular /
+    # plural unit suffix per BUILD-PLAN §2.19.
+    for row in rows:
+        text = format_days(row["total_float_days"])
+        assert text.endswith(" day") or text.endswith(" days")

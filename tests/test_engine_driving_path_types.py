@@ -15,6 +15,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.engine.driving_path_types import (
+    ConstraintDrivenPredecessor,
     DrivingPathCrossVersionResult,
     DrivingPathEdge,
     DrivingPathNode,
@@ -22,7 +23,7 @@ from app.engine.driving_path_types import (
     FocusPointAnchor,
     NonDrivingPredecessor,
 )
-from app.models.enums import RelationType
+from app.models.enums import ConstraintType, RelationType
 
 _T0 = datetime(2026, 1, 1, 8, 0)
 _T1 = datetime(2026, 1, 2, 16, 0)
@@ -287,3 +288,171 @@ def test_validator_error_messages_cite_skill_sections() -> None:
     message = str(exc_info.value)
     assert "No path is dropped" in message
     assert "walks recursively" in message
+
+
+# ----------------------------------------------------------------------
+# ConstraintDrivenPredecessor (M10.1 Block 1, BUILD-PLAN §2.20, AM10)
+#
+# The three-bucket partition — DrivingPathEdge (~0 slack),
+# NonDrivingPredecessor (strictly positive slack),
+# ConstraintDrivenPredecessor (strictly negative slack) — is mutually
+# exclusive and exhaustive over the reals. These tests verify the
+# validator enforces the negative-slack regime and that the three
+# types coexist on one DrivingPathResult without conflict.
+# ----------------------------------------------------------------------
+
+
+def _cdp(
+    pred: int = 1,
+    succ: int = 2,
+    slack_days: float = -2.5,
+    constraint_type: ConstraintType = ConstraintType.MUST_START_ON,
+    constraint_date: datetime | None = _T0,
+) -> ConstraintDrivenPredecessor:
+    return ConstraintDrivenPredecessor(
+        predecessor_uid=pred,
+        predecessor_name=f"T{pred}",
+        successor_uid=succ,
+        successor_name=f"T{succ}",
+        relation_type=RelationType.FS,
+        lag_days=0.0,
+        slack_days=slack_days,
+        calendar_hours_per_day=8.0,
+        predecessor_constraint_type=constraint_type,
+        predecessor_constraint_date=constraint_date,
+        rationale=f"Predecessor T{pred} held by {constraint_type.name}.",
+    )
+
+
+def test_constraint_driven_predecessor_valid_construction() -> None:
+    kwargs = {
+        "predecessor_uid": 11,
+        "predecessor_name": "T11",
+        "successor_uid": 22,
+        "successor_name": "T22",
+        "relation_type": RelationType.FS,
+        "lag_days": 0.0,
+        "slack_days": -2.5,
+        "calendar_hours_per_day": 8.0,
+        "predecessor_constraint_type": ConstraintType.MUST_START_ON,
+        "predecessor_constraint_date": _T0,
+        "rationale": "Predecessor T11 held by MUST_START_ON.",
+    }
+    obj = ConstraintDrivenPredecessor(**kwargs)
+    assert obj == ConstraintDrivenPredecessor(**kwargs)
+    assert obj.slack_days == -2.5
+    assert obj.predecessor_constraint_type is ConstraintType.MUST_START_ON
+
+
+def test_constraint_driven_predecessor_rejects_zero_slack() -> None:
+    # Boundary case: zero is not strictly negative.
+    with pytest.raises(ValidationError, match="strictly negative"):
+        _cdp(slack_days=0.0)
+
+
+def test_constraint_driven_predecessor_rejects_positive_slack() -> None:
+    # Clearly outside the negative regime.
+    with pytest.raises(ValidationError, match="strictly negative"):
+        _cdp(slack_days=2.5)
+
+
+def test_constraint_driven_predecessor_rejects_tolerance_edge() -> None:
+    # slack_days = -_ZERO_SLACK_TOLERANCE_DAYS is the inclusive edge:
+    # the validator check is ``>= -tolerance``, so equal-to-negative-
+    # tolerance is rejected. (Values strictly less than -tolerance
+    # are accepted.)
+    edge_value = -(1.0 / 86_400.0)
+    with pytest.raises(ValidationError, match="strictly negative"):
+        _cdp(slack_days=edge_value)
+
+
+def test_constraint_driven_predecessor_is_frozen() -> None:
+    obj = _cdp(slack_days=-1.0)
+    with pytest.raises(ValidationError):
+        obj.slack_days = -5.0  # type: ignore[misc]
+
+
+def test_constraint_driven_predecessor_validator_cites_skill_sections() -> None:
+    # Validator error message must cite §4 and §5 verbatim plus
+    # reference BUILD-PLAN §2.20.
+    with pytest.raises(ValidationError) as exc_info:
+        _cdp(slack_days=1.0)
+    message = str(exc_info.value)
+    assert "No path is dropped" in message
+    assert "walks recursively" in message
+    assert "§2.20" in message
+    assert "three-bucket partition" in message
+
+
+def test_driving_path_result_new_fields_default_empty() -> None:
+    # constraint_driven_predecessors and skipped_cycle_participants
+    # must default to [] so callers from prior blocks don't break.
+    result = DrivingPathResult(
+        focus_point_uid=2,
+        focus_point_name="Focus",
+        nodes={2: _node(2, "Focus")},
+        edges=[],
+        non_driving_predecessors=[],
+    )
+    assert result.constraint_driven_predecessors == []
+    assert result.skipped_cycle_participants == []
+
+
+def test_driving_path_result_populated_new_fields_round_trip() -> None:
+    result = DrivingPathResult(
+        focus_point_uid=2,
+        focus_point_name="Focus",
+        nodes={2: _node(2, "Focus"), 1: _node(1, "A")},
+        edges=[_edge(1, 2)],
+        non_driving_predecessors=[],
+        constraint_driven_predecessors=[_cdp(3, 2, slack_days=-1.0)],
+        skipped_cycle_participants=[7, 9, 11],
+    )
+    dumped = result.model_dump()
+    rehydrated = DrivingPathResult.model_validate(dumped)
+    assert rehydrated == result
+    assert len(rehydrated.constraint_driven_predecessors) == 1
+    assert rehydrated.skipped_cycle_participants == [7, 9, 11]
+
+
+def test_three_bucket_partition_coexistence() -> None:
+    # One instance of each of the three types, each in its own
+    # distinct slack regime, coexisting on one DrivingPathResult.
+    driving_edge = _edge(1, 2, slack_days=0.0)
+    non_driving = _ndp(3, 2, slack_days=4.0)
+    constraint_driven = _cdp(4, 2, slack_days=-1.5)
+
+    # Sign-check: each slack value is in its own regime.
+    assert abs(driving_edge.relationship_slack_days) <= 1.0 / 86_400.0
+    assert non_driving.slack_days > 1.0 / 86_400.0
+    assert constraint_driven.slack_days < -(1.0 / 86_400.0)
+
+    result = DrivingPathResult(
+        focus_point_uid=2,
+        focus_point_name="Focus",
+        nodes={
+            1: _node(1, "A"),
+            2: _node(2, "Focus"),
+            3: _node(3, "B"),
+            4: _node(4, "C"),
+        },
+        edges=[driving_edge],
+        non_driving_predecessors=[non_driving],
+        constraint_driven_predecessors=[constraint_driven],
+    )
+    assert len(result.edges) == 1
+    assert len(result.non_driving_predecessors) == 1
+    assert len(result.constraint_driven_predecessors) == 1
+
+    # Cross-regime rejection: a slack value from another bucket's
+    # regime must not validate on this bucket's type.
+    with pytest.raises(ValidationError):
+        # Driving edge rejects a non-driving-sized positive slack.
+        _edge(1, 2, slack_days=4.0)
+    with pytest.raises(ValidationError):
+        # NonDrivingPredecessor rejects a constraint-driven negative
+        # slack.
+        _ndp(1, 2, slack_days=-1.5)
+    with pytest.raises(ValidationError):
+        # ConstraintDrivenPredecessor rejects a driving-edge ~0 slack.
+        _cdp(1, 2, slack_days=0.0)
