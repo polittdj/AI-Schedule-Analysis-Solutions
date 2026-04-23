@@ -131,3 +131,50 @@ class TestFormatDaysCeilingBoundaries:
 
     def test_two_point_two_five_one_negative_floors(self) -> None:
         assert format_days(-2.251) == "-2.26 days"
+
+
+class TestFormatDaysDecimalSafeRounding:
+    """Regression coverage for the M10.2 Block 1 decimal-safe fix.
+
+    Authority: BUILD-PLAN §2.21 (AM11, 4/23/2026). Codex's PR #33
+    P1 finding flagged that the naive ``math.ceil(days * 100) / 100``
+    path in M10.1 Block 3 distorted exact-looking decimal inputs via
+    IEEE-754 binary representation error — ``format_days(2.2)`` emitted
+    ``"2.21 days"`` where ``"2.2 days"`` was required. The fix routes
+    rounding through :class:`decimal.Decimal` with ``Decimal(str(days))``
+    construction so the shortest round-tripping decimal representation
+    of the input float drives the quantize step.
+    """
+
+    def test_two_point_two_positive_no_cent_inflation(self) -> None:
+        assert format_days(2.2) == "2.2 days"
+
+    def test_negative_one_point_one_no_cent_inflation(self) -> None:
+        assert format_days(-1.1) == "-1.1 days"
+
+    def test_one_point_one_positive_no_cent_inflation(self) -> None:
+        assert format_days(1.1) == "1.1 days"
+
+    def test_three_point_three_positive_no_cent_inflation(self) -> None:
+        assert format_days(3.3) == "3.3 days"
+
+    def test_negative_two_point_two_no_cent_inflation(self) -> None:
+        assert format_days(-2.2) == "-2.2 days"
+
+    def test_zero_point_seven_positive(self) -> None:
+        assert format_days(0.7) == ".7 days"
+
+    def test_negative_zero_point_seven(self) -> None:
+        assert format_days(-0.7) == "-.7 days"
+
+    def test_zero_point_one_binary_imprecise_decimal(self) -> None:
+        assert format_days(0.1) == ".1 days"
+
+    def test_zero_point_two_binary_imprecise_decimal(self) -> None:
+        assert format_days(0.2) == ".2 days"
+
+    def test_zero_point_three_binary_imprecise_decimal(self) -> None:
+        assert format_days(0.3) == ".3 days"
+
+    def test_negative_zero_point_one_binary_imprecise_decimal(self) -> None:
+        assert format_days(-0.1) == "-.1 days"
