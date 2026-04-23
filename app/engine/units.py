@@ -25,6 +25,8 @@ re-running the engine.
 
 from __future__ import annotations
 
+import math
+
 
 def minutes_to_days(minutes: float, hours_per_day: float) -> float:
     """Convert a duration in minutes to days using a calendar factor.
@@ -66,4 +68,75 @@ def minutes_to_days(minutes: float, hours_per_day: float) -> float:
     return minutes / (hours_per_day * 60.0)
 
 
-__all__ = ["minutes_to_days"]
+def format_days(days: float) -> str:
+    """Format a days-denominated duration for user-visible output.
+
+    This helper is the **sole** formatting point for user-visible
+    durations — Pydantic contract string fields, renderer output,
+    README examples, Word/Excel/HTML report bodies, and CLI output
+    all route through here per BUILD-PLAN §2.19 (AM9, 4/23/2026).
+    Authority: NASA Schedule Management Handbook §5.5.9.1 ("task
+    durations should generally be assigned in workdays"); Papicito's
+    forensic-tool standard dated 4/23/2026.
+
+    Format rules (verbatim from BUILD-PLAN §2.19):
+
+    - Maximum 2-decimal precision.
+    - Positive values round by ceiling to the next 0.01; negative
+      values round by floor to the next -0.01; exactly ``0.0`` is
+      preserved without rounding.
+    - Trailing zeros and any orphan decimal point are stripped.
+    - Leading zero omitted on fractional absolute values (``0.5``
+      renders as ``.5``, ``-0.5`` renders as ``-.5``).
+    - Singular suffix ``" day"`` only when the rounded value equals
+      ``+1.0`` or ``-1.0`` exactly; ``" days"`` everywhere else,
+      including ``".5 days"`` and ``"0 days"``.
+
+    Example inputs and outputs:
+
+    =========  ============
+    Input      Output
+    =========  ============
+    ``0.0``    ``"0 days"``
+    ``1.0``    ``"1 day"``
+    ``-1.0``   ``"-1 day"``
+    ``3.0``    ``"3 days"``
+    ``0.5``    ``".5 days"``
+    ``-0.5``   ``"-.5 days"``
+    ``2.25``   ``"2.25 days"``
+    ``0.003``  ``".01 days"``
+    ``-0.003`` ``"-.01 days"``
+    ``100.0``  ``"100 days"``
+    =========  ============
+
+    Args:
+        days: Duration in days as a ``float``. May be negative,
+            zero, or positive.
+
+    Returns:
+        The formatted user-visible string with the appropriate
+        singular / plural unit suffix.
+    """
+    if days == 0.0:
+        return "0 days"
+
+    if days > 0.0:
+        rounded = math.ceil(days * 100.0) / 100.0
+    else:
+        rounded = math.floor(days * 100.0) / 100.0
+
+    text = f"{rounded:.2f}".rstrip("0").rstrip(".")
+
+    if text.startswith("0."):
+        text = text[1:]
+    elif text.startswith("-0."):
+        text = "-" + text[2:]
+
+    if text == "" or text == "-":
+        return "0 days"
+
+    suffix = " day" if rounded == 1.0 or rounded == -1.0 else " days"
+    return text + suffix
+
+
+__all__ = ["format_days", "minutes_to_days"]
