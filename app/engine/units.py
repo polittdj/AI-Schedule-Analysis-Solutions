@@ -25,7 +25,7 @@ re-running the engine.
 
 from __future__ import annotations
 
-import math
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
 
 def minutes_to_days(minutes: float, hours_per_day: float) -> float:
@@ -92,6 +92,15 @@ def format_days(days: float) -> str:
       ``+1.0`` or ``-1.0`` exactly; ``" days"`` everywhere else,
       including ``".5 days"`` and ``"0 days"``.
 
+    The rounding step uses :class:`decimal.Decimal` for base-10
+    arithmetic so IEEE-754 binary representation error does not
+    distort exact-looking decimal inputs. ``Decimal(str(days))``
+    captures the shortest round-tripping decimal representation of
+    the input float, so ``format_days(2.2)`` returns ``"2.2 days"``
+    rather than the pre-M10.2 ``"2.21 days"`` that the naive
+    ``math.ceil(days * 100) / 100`` path emitted. Authority for the
+    M10.2 fix: BUILD-PLAN §2.21 (AM11, 4/23/2026).
+
     Example inputs and outputs:
 
     =========  ============
@@ -107,6 +116,9 @@ def format_days(days: float) -> str:
     ``0.003``  ``".01 days"``
     ``-0.003`` ``"-.01 days"``
     ``100.0``  ``"100 days"``
+    ``2.2``    ``"2.2 days"``
+    ``-1.1``   ``"-1.1 days"``
+    ``3.3``    ``"3.3 days"``
     =========  ============
 
     Args:
@@ -120,10 +132,9 @@ def format_days(days: float) -> str:
     if days == 0.0:
         return "0 days"
 
-    if days > 0.0:
-        rounded = math.ceil(days * 100.0) / 100.0
-    else:
-        rounded = math.floor(days * 100.0) / 100.0
+    quantum = Decimal("0.01")
+    rounding = ROUND_CEILING if days > 0.0 else ROUND_FLOOR
+    rounded = float(Decimal(str(days)).quantize(quantum, rounding=rounding))
 
     text = f"{rounded:.2f}".rstrip("0").rstrip(".")
 

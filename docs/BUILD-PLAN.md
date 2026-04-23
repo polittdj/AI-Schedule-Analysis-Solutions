@@ -317,6 +317,102 @@ schedules). Authority references: driving-slack-and-paths §3, §4, §5;
 dcma-14-point-assessment §4.7; NASA Schedule Management Handbook
 §5.5.9.1 and hard-constraint sections; BUILD-PLAN §2.16, §2.18.
 
+### 2.21 M10.2 remediation — Codex PR #33 post-merge findings (AM11, 4/23/2026)
+
+After M10.1 merged to main via squash commit c496f5a, GitHub's Codex
+automated reviewer posted two additional findings on PR #33 that the
+in-flight audit missed. Both are real production bugs — neither is
+style or nit — and both require remediation in M10.2. This amendment
+records the findings and their remediation scope so that M10.2 Block 1
+and later blocks execute against a documented, bounded target rather
+than a drifting bug list.
+
+**Finding #1 — format_days decimal rounding error (severity 1).**
+
+The format_days helper in app/engine/units.py (M10.1 Block 3,
+commit 5623f35) implements 2-decimal precision by routing positive
+values through math.ceil(days * 100) / 100 and negative values through
+math.floor(days * 100) / 100. The intent is ceiling-round at 0.01
+for positive and floor-round at -0.01 for negative, preserving the
+AM9 rounding contract (§2.19).
+
+The defect is that IEEE-754 binary floating point cannot represent
+many exact-looking decimal values precisely. 2.2 stored as a Python
+float is actually 2.2000000000000002; multiplying by 100 yields
+220.00000000000003, not 220.0. math.ceil then bumps that to 221,
+and format_days emits "2.21 days" where the analyst expects
+"2.2 days". The same class of error fires for 1.1, 3.3, 4.4, and
+essentially any realistic fractional-day duration that happens to
+fall on one of the non-representable binary-float boundaries.
+
+This is a systematic numeric distortion present in every forensic
+report the tool produces. A deposition-grade schedule-analysis
+artifact cannot ship with this defect — adversarial counsel will
+locate it immediately and every rounded duration in every table
+becomes impeachable.
+
+Remediation: replace math.ceil and math.floor operating on binary
+floats with Python's decimal.Decimal using ROUND_CEILING and
+ROUND_FLOOR quantization at the 0.01 step. decimal.Decimal performs
+base-10 arithmetic internally and does not accumulate the binary
+representation error. The public format_days signature and
+contract (AM9 rules from §2.19) stay identical; only the internal
+rounding mechanism changes.
+
+**Finding #2 — skipped_cycle_participants incomplete capture (severity 2).**
+
+The skipped_cycle_participants list on DrivingPathResult (M10.1
+Block 2, commit 666226b, added per PR #31 Codex P2) is intended to
+preserve forensic visibility into every predecessor UID that the
+backward walk dropped because of a cycle in the logic network.
+Without this list the tracer silently loses evidence — a
+manipulation pattern per forensic-manipulation-patterns §3 that the
+tool must surface, not hide.
+
+The defect is that the current implementation only records UIDs at
+one of two points where cycle filtering occurs. It captures UIDs
+that the walk enqueued and then rejected at the visit-level
+CPM-row check. It does NOT capture UIDs filtered earlier, inside
+_link_slack_minutes, which returns None for any edge where either
+the predecessor or the successor task is marked
+skipped_due_to_cycle. When _link_slack_minutes returns None the
+tracer drops the edge silently and the predecessor UID on the far
+side of that edge is never enqueued, so the visit-level recorder
+never sees it. Cycle participants that terminate a driving branch
+at the edge level are therefore absent from
+skipped_cycle_participants and the forensic-visibility contract is
+incomplete.
+
+This gap was observed during M10.1 Block 5 test authoring: the
+test author had to surgically override a TaskCPMResult to exercise
+the skip-recording branch at all (documented in the Block 5
+session summary). Codex's PR #33 comment confirmed independently
+that the edge-drop recording path does not exist.
+
+Remediation: record the predecessor UID at the edge-drop level
+inside _link_slack_minutes (or at its call site in the tracer)
+when the None return is caused by cycle participation, not just at
+the visit level. The recording must dedupe against the visit-level
+recording so a single cycle participant that is reachable via
+multiple dropped edges, or via both filter points, appears exactly
+once in skipped_cycle_participants.
+
+**Scope cap.**
+
+M10.2 remediates only the two Codex PR #33 findings enumerated
+above, plus the regression tests required to prevent recurrence.
+No new features. No scope expansion. No opportunistic refactors.
+All other M10.1 work — the three-bucket partition (§2.20), the
+days-only UX enforcement (§2.19), the schema invariant test, the
+renderer, and the public API surface — stays as-is and is not
+re-opened by this amendment.
+
+Authority references: app/engine/units.py format_days
+implementation (M10.1 Block 3, commit 5623f35);
+app/engine/driving_path.py skip-recording logic (M10.1 Block 2,
+commit 666226b); PR #33 Codex review comments (two findings dated
+4/23/2026); BUILD-PLAN §2.19 (days-only UX convention, AM9).
+
 ---
 
 ## 3. Starting State

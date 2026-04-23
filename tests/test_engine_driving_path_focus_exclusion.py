@@ -209,3 +209,146 @@ def test_non_focus_cycle_ancestor_recorded_on_skipped_list() -> None:
     assert 2 in result.skipped_cycle_participants
     assert 4 in result.nodes
     assert 1 in result.nodes
+
+
+# ----------------------------------------------------------------------
+# 4.4: non-focus cycle predecessor captured at edge level
+# ----------------------------------------------------------------------
+
+
+def test_non_focus_cycle_predecessor_recorded_at_edge_level() -> None:
+    """Edge-level cycle drop records the predecessor UID.
+
+    Per BUILD-PLAN §2.21 (AM11) and the Codex PR #33 new P2 finding:
+    when ``_link_slack_minutes`` returns ``None`` because the
+    predecessor task is a cycle participant, the tracer must record
+    the predecessor UID on
+    :attr:`~app.engine.driving_path_types.DrivingPathResult.skipped_cycle_participants`
+    for forensic visibility. Before AM11 the edge was silently
+    dropped and the UID was lost.
+
+    Fixture: UID 4 is the clean focus, UID 1 is a clean driving
+    predecessor, and UIDs 2 and 3 form a two-node cycle. UID 2 is a
+    direct predecessor of the focus. No surgical TaskCPMResult
+    override — this is production CPM output exercising the edge-
+    level recording path end-to-end.
+
+    Asserts:
+
+    * No exception raised — focus itself is clean.
+    * ``skipped_cycle_participants`` contains UID 2 (the cycle
+      participant reached as the focus's predecessor).
+    * No :class:`~app.engine.driving_path_types.DrivingPathEdge`
+      emitted for the 2 -> 4 edge.
+    * UID 2 does not appear in ``non_driving_predecessors`` or
+      ``constraint_driven_predecessors`` — the edge is dropped
+      entirely, not reclassified.
+    """
+    tasks = [
+        Task(unique_id=1, task_id=1, name="Clean", duration_minutes=480),
+        Task(unique_id=2, task_id=2, name="CycleA", duration_minutes=480),
+        Task(unique_id=3, task_id=3, name="CycleB", duration_minutes=480),
+        Task(unique_id=4, task_id=4, name="Focus", duration_minutes=480),
+    ]
+    relations = [
+        Relation(predecessor_unique_id=1, successor_unique_id=4),
+        Relation(predecessor_unique_id=2, successor_unique_id=4),
+        Relation(predecessor_unique_id=2, successor_unique_id=3),
+        Relation(predecessor_unique_id=3, successor_unique_id=2),
+    ]
+    s = _sched(tasks, relations, name="edge_level_cycle_pred")
+    cpm = compute_cpm(s)
+
+    # Sanity check: natural lenient CPM flags the cycle.
+    assert 2 in cpm.cycles_detected
+    assert 3 in cpm.cycles_detected
+    assert cpm.tasks[2].skipped_due_to_cycle is True
+    assert cpm.tasks[3].skipped_due_to_cycle is True
+
+    s_before = s.model_dump(mode="json")
+    cpm_before = cpm_result_snapshot(cpm)
+
+    result = trace_driving_path(s, 4, cpm)
+
+    assert s.model_dump(mode="json") == s_before
+    assert cpm_result_snapshot(cpm) == cpm_before
+
+    assert 2 in result.skipped_cycle_participants
+    # The 2 -> 4 edge was dropped by _link_slack_minutes; it must
+    # not appear as a DrivingPathEdge.
+    assert not any(
+        e.predecessor_uid == 2 and e.successor_uid == 4 for e in result.edges
+    )
+    # And it must not be reclassified into either of the other
+    # two buckets.
+    assert all(n.predecessor_uid != 2 for n in result.non_driving_predecessors)
+    assert all(
+        c.predecessor_uid != 2 for c in result.constraint_driven_predecessors
+    )
+
+
+# ----------------------------------------------------------------------
+# 4.5: dedupe — cycle participant reached via two different paths
+# ----------------------------------------------------------------------
+
+
+def test_edge_level_cycle_recording_dedupes_across_multiple_edges() -> None:
+    """A cycle participant reached via two dropped edges records once.
+
+    Per BUILD-PLAN §2.21 (AM11) the edge-level recording must dedupe
+    against the existing ``skipped_cycle_participants`` contents so a
+    single cycle participant reached via multiple dropped edges
+    appears exactly once in the list.
+
+    Fixture: UID 1 is the clean focus. UIDs 2 and 3 are clean
+    intermediate ancestors (both driving preds of the focus). UIDs 4
+    and 5 form a two-node cycle. UID 4 is the predecessor of BOTH
+    UID 2 and UID 3 — so when the walk visits UID 2 and UID 3, the
+    edge-level path fires twice for UID 4.
+
+    Asserts:
+
+    * ``skipped_cycle_participants`` contains UID 4 exactly once —
+      no duplicates.
+    """
+    tasks = [
+        Task(unique_id=1, task_id=1, name="Focus", duration_minutes=480),
+        Task(unique_id=2, task_id=2, name="CleanA", duration_minutes=480),
+        Task(unique_id=3, task_id=3, name="CleanB", duration_minutes=480),
+        Task(unique_id=4, task_id=4, name="CycleA", duration_minutes=480),
+        Task(unique_id=5, task_id=5, name="CycleB", duration_minutes=480),
+    ]
+    relations = [
+        # Clean intermediates feed the focus (both driving).
+        Relation(predecessor_unique_id=2, successor_unique_id=1),
+        Relation(predecessor_unique_id=3, successor_unique_id=1),
+        # Cycle participant UID 4 is pred of BOTH intermediates —
+        # the edge-level path fires twice for UID 4.
+        Relation(predecessor_unique_id=4, successor_unique_id=2),
+        Relation(predecessor_unique_id=4, successor_unique_id=3),
+        # Two-node cycle between UID 4 and UID 5.
+        Relation(predecessor_unique_id=4, successor_unique_id=5),
+        Relation(predecessor_unique_id=5, successor_unique_id=4),
+    ]
+    s = _sched(tasks, relations, name="edge_level_dedupe")
+    cpm = compute_cpm(s)
+
+    # Sanity check: UIDs 4 and 5 are the cycle participants.
+    assert 4 in cpm.cycles_detected
+    assert 5 in cpm.cycles_detected
+    assert cpm.tasks[4].skipped_due_to_cycle is True
+
+    s_before = s.model_dump(mode="json")
+    cpm_before = cpm_result_snapshot(cpm)
+
+    result = trace_driving_path(s, 1, cpm)
+
+    assert s.model_dump(mode="json") == s_before
+    assert cpm_result_snapshot(cpm) == cpm_before
+
+    # UID 4 appears exactly once despite two dropped edges.
+    assert result.skipped_cycle_participants.count(4) == 1
+    # Full list has no duplicates.
+    assert len(result.skipped_cycle_participants) == len(
+        set(result.skipped_cycle_participants)
+    )
