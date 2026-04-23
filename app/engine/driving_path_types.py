@@ -34,7 +34,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.enums import RelationType
+from app.models.enums import ConstraintType, RelationType
 
 # One-second tolerance on "zero" relationship slack in days. Minutes
 # arithmetic uses integer minutes internally, so any non-zero slack
@@ -235,6 +235,100 @@ class NonDrivingPredecessor(BaseModel):
         return self
 
 
+class ConstraintDrivenPredecessor(BaseModel):
+    """A negative-relationship-slack predecessor held by a hard constraint.
+
+    Codex P1 origin: PR #31 review found
+    :class:`pydantic.ValidationError` crashes on constrained schedules
+    when the backward walk encountered predecessors whose CPM dates
+    are pinned by a hard constraint (MSO / MFO / SNLT / FNLT) or by
+    negative-float propagation from a missed deadline. Those
+    relationships carry strictly negative driving slack and could not
+    be placed on either :class:`DrivingPathEdge` (~0 slack) or
+    :class:`NonDrivingPredecessor` (strictly positive slack), so a
+    third bucket is required.
+
+    The three buckets — :class:`DrivingPathEdge`,
+    :class:`NonDrivingPredecessor`,
+    :class:`ConstraintDrivenPredecessor` — are mutually exclusive and
+    exhaustive over the reals per BUILD-PLAN §2.20 (three-bucket
+    partition). DCMA-EA Metric #7 (Edwards 2016, pp. 9-10) verbatim:
+    "Negative float occurs when the project schedule is forecasting a
+    missed deadline, or when a hard constraint is holding a task
+    further to the left than it would otherwise be." NASA Schedule
+    Management Handbook on hard constraints, verbatim: "Improper use
+    can cause negative float to be calculated throughout the
+    schedule."
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    predecessor_uid: int
+    """``Relation.predecessor_unique_id`` of the constraint-driven
+    edge."""
+
+    predecessor_name: str
+    """``Task.name`` of the predecessor."""
+
+    successor_uid: int
+    """``Relation.successor_unique_id`` — a task in the driving
+    sub-graph."""
+
+    successor_name: str
+    """``Task.name`` of the successor."""
+
+    relation_type: RelationType
+    """FS / SS / FF / SF per ``driving-slack-and-paths §3``."""
+
+    lag_days: float
+    """Working-day lag on the link. May be negative ("lead") per
+    ``dcma-14-point-assessment §4.2``."""
+
+    slack_days: float
+    """Working-day driving slack on this edge. Strictly < 0 —
+    enforced by ``_check_slack_is_negative``. Zero or positive slack
+    values belong on :class:`DrivingPathEdge` or
+    :class:`NonDrivingPredecessor` per BUILD-PLAN §2.20."""
+
+    calendar_hours_per_day: float = Field(gt=0)
+    """Hours-per-day factor used to compute ``lag_days`` and
+    ``slack_days``. Forensic audit trail per BUILD-PLAN §2.18."""
+
+    predecessor_constraint_type: ConstraintType
+    """``Task.constraint_type`` of the predecessor task. Typically one
+    of the four DCMA Metric 5 hard constraints (MSO / MFO / SNLT /
+    FNLT) per ``dcma-14-point-assessment §4.5``, but any
+    :class:`~app.models.enums.ConstraintType` is admissible —
+    negative float can also propagate from SNET / FNET / MSO / MFO
+    combinations and from missed deadlines on otherwise-unconstrained
+    tasks."""
+
+    predecessor_constraint_date: datetime | None
+    """``Task.constraint_date`` of the predecessor task. ``None`` when
+    the predecessor's ``constraint_type`` is ASAP / ALAP (no date
+    carried per ``Task`` validator G6); present otherwise. tz-aware
+    when non-``None`` per ``Task`` validator G1."""
+
+    rationale: str
+    """Human-readable narrative of why this edge landed in the
+    constraint-driven bucket. Written by the tracer (Block 2) for
+    deposition-grade export in the M13 UI and M12 AI narrative."""
+
+    @model_validator(mode="after")
+    def _check_slack_is_negative(self) -> ConstraintDrivenPredecessor:
+        if self.slack_days >= -_ZERO_SLACK_TOLERANCE_DAYS:
+            raise ValueError(
+                "ConstraintDrivenPredecessor.slack_days must be "
+                f"strictly negative (got {self.slack_days!r}). Zero "
+                "or positive slack would overlap with the "
+                "DrivingPathEdge (~0) or NonDrivingPredecessor "
+                "(strictly positive) regime and break the BUILD-PLAN "
+                "§2.20 three-bucket partition. Skill authority: "
+                f"{_SKILL_S4_QUOTE} {_SKILL_S5_QUOTE}"
+            )
+        return self
+
+
 class DrivingPathResult(BaseModel):
     """Adjacency-map representation of the driving-path subgraph.
 
@@ -273,6 +367,26 @@ class DrivingPathResult(BaseModel):
     terminated the backward walk on their successor. Ordering
     mirrors ``edges``: sorted by ``(successor_uid, predecessor_uid)``
     for determinism."""
+
+    constraint_driven_predecessors: list[ConstraintDrivenPredecessor] = Field(
+        default_factory=list
+    )
+    """Per BUILD-PLAN §2.20 (three-bucket partition): predecessors
+    whose CPM dates are held by a hard constraint (MSO / MFO / SNLT /
+    FNLT) or by negative-float propagation from a missed deadline.
+    Strictly negative driving slack, mutually exclusive with
+    ``edges`` and ``non_driving_predecessors``. Ordering will be
+    sorted by ``(successor_uid, predecessor_uid)`` at construction
+    time in the tracer (Block 2)."""
+
+    skipped_cycle_participants: list[int] = Field(default_factory=list)
+    """UniqueIDs of NON-focus tasks the backward walk encountered but
+    could not materialize as :class:`DrivingPathNode` records — cycle
+    participants or tasks missing CPM dates. When the FOCUS task
+    itself is excluded, :func:`trace_driving_path` raises
+    :class:`DrivingPathError` instead (documented on that function's
+    contract, Block 2). Ordering will be UniqueID ascending at
+    construction time."""
 
 
 class DrivingPathCrossVersionResult(BaseModel):
@@ -328,6 +442,7 @@ class DrivingPathCrossVersionResult(BaseModel):
 
 
 __all__ = [
+    "ConstraintDrivenPredecessor",
     "DrivingPathCrossVersionResult",
     "DrivingPathEdge",
     "DrivingPathNode",
