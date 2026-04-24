@@ -613,6 +613,16 @@ class ManipulationScoringResult(BaseModel):
     cluster. Forensic visibility trail — empty when no cycle
     participant touches this UID."""
 
+    windowing_incomplete: bool = False
+    """True when status-date filtering could not fully evaluate this UID
+    (missing Period B status_date, missing predecessor task in one or
+    both periods, or predecessor task present in M10.2
+    skipped_cycle_participants and thus carrying non-authoritative CPM
+    dates). Forensic visibility flag per subsection (f). When True, the
+    scoring record is retained rather than dropped; severity tier may be
+    degraded by downstream consumers but is NOT degraded by the scoring
+    engine itself."""
+
     rationale: str
     """Human-readable narrative composed from the contributing
     ConstraintDrivenPredecessor.rationale strings (M10.1) and the
@@ -648,6 +658,16 @@ class ManipulationScoringSummary(BaseModel):
     """Every per-UID record. Sorted by (severity_tier desc,
     unique_id asc) for deterministic renderer output."""
 ```
+
+Set-algebra disjointness invariant. The three set fields
+added_constraint_driven_uids, removed_constraint_driven_uids, and
+retained_constraint_driven_uids are pairwise disjoint by construction
+(they are respectively B−A, A−B, and A∩B on the successor_uid
+populations of the two periods' constraint_driven_predecessors lists).
+A @model_validator(mode="after") on ConstraintDrivenCrossVersionResult
+enforces this invariant and raises ValidationError on any overlap;
+Block 3 implements the validator, and the comparator test floor in
+subsection (g) covers the raise path.
 
 **(d) State machine.**
 
@@ -752,24 +772,35 @@ value, never the sum. Authority: `acumen-reference §3.3` (tripwire
 (M11 "per-UID dedup" contract carried forward from the archived
 always-100 bug fix).
 
-**Aggregate score clamping.** `ManipulationScoringSummary.total_score`
-is `sum(per_uid_scores)` clamped to `[0, 100]`. The clamp happens
-ONCE at aggregate construction; individual UID scores are NEVER
-scaled or normalized before the clamp. A schedule pair with 15 HIGH
-signals (15 × 10 = 150) reports total_score = 100, and the
-`per_uid_results` tuple carries all 15 un-scaled HIGH records for
-drill-down. This mirrors the Acumen Fuse tripwire-and-scorecard
-pattern (`acumen-reference §3.6` — weighting applied at scorecard
-assembly, not at per-activity tripwire evaluation). No unnormalized-
-additive logic; the always-100 bug regression bar from the original
-§5 M11 scope carries forward.
+**Aggregate score clamping.** The caller computes sum(per_uid_scores)
+and clamps it to [0, 100] BEFORE constructing ManipulationScoringSummary.
+The Pydantic Field(ge=0, le=100) bound on total_score is a
+safety-net validator, not the clamp mechanism itself; constructing
+the summary with an un-clamped sum greater than 100 raises
+ValidationError by contract. Individual UID scores are NEVER scaled
+or normalized before the clamp. A schedule pair with 15 HIGH signals
+(15 × 10 = 150) reports total_score = 100, and the per_uid_results
+tuple carries all 15 un-scaled HIGH records for drill-down. This
+mirrors the Acumen Fuse tripwire-and-scorecard pattern
+(`acumen-reference §3.6` — weighting applied at scorecard assembly,
+not at per-activity tripwire evaluation). No unnormalized-additive
+logic; the always-100 bug regression bar from the original §5 M11
+scope carries forward.
 
 **Authority.** `acumen-reference §3.3` (tripwire threshold = flag
 not verdict; [RW p.20] indicators-not-verdicts posture);
 `acumen-reference §3.6` (metric weighting applies at scorecard
-assembly); `forensic-manipulation-patterns §10` (red-flag
-aggregation is protocol-level, three-tier structure); BUILD-PLAN §6
-(forensic-defensibility — every score cites contributing UIDs).
+assembly); BUILD-PLAN §6 (forensic-defensibility — every score
+cites contributing UIDs). HIGH/MEDIUM/LOW weight values are a
+tool-side decision informed by `acumen-reference §3.6` (metric
+weighting applied at scorecard assembly).
+`forensic-manipulation-patterns §10` supplies the aggregation
+protocol (three evidence-source tiers: DCMA threshold breach /
+cross-version trend / EVMS probe) but does NOT supply severity
+weights; §13 of that skill explicitly disclaims quantitative
+severity formulas. The three severity tiers at the M11 scoring
+layer are a forensic-defensibility convention, not a skill-derived
+formula.
 
 **(f) Status-date filtering — legitimate-progress exclusion.**
 
@@ -792,7 +823,8 @@ corresponding Schedule, read its `finish` date, compare to the
 Period B `status_date`, and drop the edge from consideration when
 `predecessor.finish <= period_b.status_date`. Both a missing Period
 B status_date and a predecessor task missing in one or both periods
-route to "retain the edge, flag on the scoring record" rather than
+route to "retain the edge, flag on the scoring record via
+`ManipulationScoringResult.windowing_incomplete = True`" rather than
 silent drop — forensic visibility always wins when data is
 incomplete. This is a standing project decision; the same predicate
 is codified at `app/engine/windowing.py::is_legitimate_actual` and
@@ -846,8 +878,6 @@ Re-exported from `app/engine/__init__.py`:
 - `compare_constraint_driven_cross_version(period_a, period_b,
   focus_spec, period_a_cpm_result, period_b_cpm_result) ->
   ConstraintDrivenCrossVersionResult`
-- `score_manipulation` (also re-exported here for engine-level
-  callers that bypass the top-level facade).
 
 Re-exported from `app/contracts/__init__.py` (new package):
 
@@ -862,6 +892,11 @@ are not duplicated at the M11 facade). The M11 facade re-exports
 ConstraintDrivenPredecessor by attribute access on
 ConstraintDrivenCrossVersionResult.period_a_predecessors_by_successor
 values only — never as a top-level symbol on the M11 facade.
+
+Canonical entry point rule. score_manipulation is exported ONLY from
+app/__init__.py as the top-level facade. Callers that need to bypass
+the facade import directly from app.engine.manipulation_scoring;
+there is no engine-level re-export and no compatibility alias.
 
 **(i) Renderer scope.**
 
@@ -933,7 +968,7 @@ M11 does NOT:
 
 **(k) Estimated block count.**
 
-M11 is estimated at **5 to 8 blocks total**, inclusive of this
+M11 is estimated at **6 to 8 blocks total**, inclusive of this
 amendment block (Block 1). Expected decomposition:
 
 - **Block 1** (this amendment). Scope / contracts / state machine
@@ -953,19 +988,28 @@ amendment block (Block 1). Expected decomposition:
   22-test floor.
 - **Block 4.** Implement `app/engine/manipulation_scoring.py` —
   state-machine derivation per subsection (d), scoring arithmetic
-  per subsection (e), summary aggregation with clamp, dict
-  projection helper from subsection (i). Write
-  `tests/engine/test_manipulation_scoring.py` to the ≥ 26-test
-  floor.
+  per subsection (e), summary aggregation with clamp (caller-side
+  per revised subsection (e)). Write engine portion of
+  `tests/engine/test_manipulation_scoring.py` to a ≥ 20-test floor
+  covering state-machine transitions (8), scoring arithmetic (5),
+  per-UID dedup (4), always-zero regression (3).
+- **Block 4b.** Implement the dict projection helper
+  `render_manipulation_scoring_summary(summary) -> dict` per
+  subsection (i). Add the remaining ≥ 6 tests to
+  `tests/engine/test_manipulation_scoring.py` covering integration
+  (3: skipped_cycle_participants reference propagation, rationale
+  composition, summary sort order) and schema invariants (3:
+  total_score bound, no minutes/hours fields, name non-empty).
+  Combined with Block 4 this meets the ≥ 26-test floor from
+  subsection (g).
 - **Block 5.** Public-API wiring: update `app/__init__.py`,
   `app/engine/__init__.py`, `app/contracts/__init__.py` per
   subsection (h). Integration test combining M10.1 / M10.2 output
   with M11 scoring end-to-end.
-- **Block 6 (contingency).** Renderer dict-projection helper and
-  M13-precursor template fixture if Block 4 underruns on scope.
-- **Block 7–8 (contingency).** Codex / audit remediation cycle if
+- **Block 6 (pure contingency).** Codex / audit remediation cycle if
   PR-round findings surface. Modeled on the M10.1 / M10.2 two-pass
-  pattern (see §2.21 AM11).
+  pattern (see §2.21 AM11). No planned deliverable — this block is
+  reserved for remediation only.
 
 Per CLAUDE.md §4, M11 is flagged as potentially multi-session; AM12
 is the first session in that decomposition and produces amendment
@@ -994,6 +1038,17 @@ comment at line 516 confirming constraint-driven cross-version
 diff is M11 scope). M10.2 implementation:
 `DrivingPathResult.skipped_cycle_participants`,
 `driving_path_types.py` line 382.
+
+Inferred-source disclosure. Three of the predicates cited above
+carry an "inferred — not sourced in SSI or current Lessons Learned
+revision" note in their source skills:
+driving-slack-and-paths §9 (SKILL.md line 156),
+driving-slack-and-paths §10 (SKILL.md line 166), and
+forensic-manipulation-patterns §3.2 (§14 inference table of that
+skill). AM12 adopts these predicates as operational specifications
+for M11 on the authority of the tool's internal cross-skill
+reconciliation pass. Any downstream milestone that surfaces a
+sourced contradiction must flag it for M11 re-scoring review.
 
 ---
 
@@ -1073,7 +1128,7 @@ bucket partition (§2.20) and the M10.2 `skipped_cycle_participants`
 forensic trail (§2.21); the original §5 M11 scope's five sub-
 pattern detector families (logic, duration, date, float, critical-
 path) are superseded by AM12 and deferred out of M11. The "1–2"
-session estimate is superseded by AM12 subsection (k) — 5 to 8
+session estimate is superseded by AM12 subsection (k) — 6 to 8
 blocks total including the amendment. See §2.22 for the full
 restatement of M11 scope, contracts, state machine, and scoring.
 
