@@ -413,6 +413,643 @@ app/engine/driving_path.py skip-recording logic (M10.1 Block 2,
 commit 666226b); PR #33 Codex review comments (two findings dated
 4/23/2026); BUILD-PLAN §2.19 (days-only UX convention, AM9).
 
+### 2.22 M11 manipulation-scoring engine — scope, contracts, state machine (AM12, 4/23/2026)
+
+**(a) Scope statement.**
+
+M11 is the manipulation-scoring engine. It detects eroding
+constraint-driven slack across two UniqueID-matched schedule versions
+and produces weighted Acumen-Fuse-style manipulation scores per
+UniqueID, aggregated into a schedule-level summary. M11 is a NEW
+forensic domain separate from M9's cross-version comparator
+(`app/engine/comparator.py`, `ComparatorResult`) and from M10's
+task-specific driving-path cross-version trace
+(`app/engine/driving_path.py::trace_driving_path_cross_version`,
+`DrivingPathCrossVersionResult`). Neither of those two surfaces is
+modified by M11; M11 introduces its own comparator that operates on
+the `constraint_driven_predecessors` set emitted by the M10.1
+three-bucket partition (§2.20) and on the
+`skipped_cycle_participants` forensic trail emitted by M10.2 (§2.21).
+The authority layer is `forensic-manipulation-patterns §9`
+(cross-version erosion), `forensic-manipulation-patterns §10` (red-
+flag aggregation tiers), `acumen-reference §3.3` / `§3.6` (tripwire
+threshold scales and weighting), `driving-slack-and-paths §6`
+(TotalFloat trend classification vocabulary), and BUILD-PLAN §2.20
+(three-bucket partition) and §2.8 / §2.9 (status-date windowing and
+Period A but-for rule).
+
+**(b) New modules to be created.**
+
+Paths only — implementation is deferred to M11 Block 2+ and is
+explicitly forbidden by this amendment. Block 1 (this amendment) adds
+no `.py` files.
+
+- `app/contracts/manipulation_scoring.py` — frozen Pydantic v2
+  contract types for the M11 scoring surface. New package
+  `app/contracts/` introduced by this amendment as the home for
+  cross-milestone frozen contracts; M10.1's `ConstraintDrivenPredecessor`
+  and related types remain at `app/engine/driving_path_types.py` and
+  are imported by `app/contracts/manipulation_scoring.py` rather than
+  relocated (M11 is additive; §2.20 contract paths are not re-opened).
+- `app/engine/constraint_driven_cross_version.py` — dedicated
+  `ConstraintDrivenCrossVersionComparator` class. This class is NEW
+  and does NOT extend or subclass M9's `ComparatorResult` or M10's
+  `DrivingPathCrossVersionResult`. It consumes two
+  `DrivingPathResult` instances (one per period) and emits a
+  `ConstraintDrivenCrossVersionResult` carrying per-UID set algebra
+  on each period's `constraint_driven_predecessors` list.
+- `app/engine/manipulation_scoring.py` — scoring engine that consumes
+  a `ConstraintDrivenCrossVersionResult` plus both periods' CPM
+  outputs and emits a `ManipulationScoringResult` per UID plus a
+  `ManipulationScoringSummary` aggregate.
+- `tests/engine/test_constraint_driven_cross_version.py` — unit tests
+  for the comparator. NEW tests subdirectory `tests/engine/`
+  introduced by this amendment; pre-existing tests remain at
+  `tests/test_engine_*.py` flat-layout and are not relocated.
+- `tests/engine/test_manipulation_scoring.py` — unit tests for the
+  scoring engine.
+- `tests/contracts/test_manipulation_scoring.py` — frozen-contract
+  shape validation tests; parallel new subdirectory `tests/contracts/`.
+
+Path convention note. The existing codebase places engine contract
+types in `app/engine/<name>_types.py` (see `driving_path_types.py`,
+`result.py`) and tests flat under `tests/test_engine_*.py`. AM12
+introduces `app/contracts/` and `tests/engine/` / `tests/contracts/`
+subdirectories as new conventions scoped to M11 only. Rationale:
+manipulation scoring is a cross-layer domain (consumes engine
+outputs, emits renderer-ready scoring artifacts, will be imported by
+the M12 AI narrative layer and the M13 UI); a dedicated
+`app/contracts/` package gives M12 and M13 a stable import surface
+without forcing them to reach into `app/engine/` internals. Audit
+this convention choice before M11 Block 2 begins implementation.
+Retrofit of M10.1 types into `app/contracts/` is explicitly OUT of
+scope for M11 (§2.20 is frozen; see subsection (j) below).
+
+**(c) Contract shapes.**
+
+All three contracts are frozen Pydantic v2 models
+(`model_config = ConfigDict(frozen=True)`). Duration fields are
+denominated in days per §2.19 (AM9 days-only UX); integer minutes
+are never exposed on M11 public models. The specs below are
+authoritative for Block 2 implementation; field names, types, and
+ordering are frozen by this amendment.
+
+```python
+# app/contracts/manipulation_scoring.py
+
+from enum import StrEnum
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.engine.driving_path_types import (
+    ConstraintDrivenPredecessor,
+    DrivingPathResult,
+)
+
+
+class SlackState(StrEnum):
+    """Per-UID slack state transition from Period A to Period B.
+
+    Authority: forensic-manipulation-patterns §9 (cross-version
+    erosion); driving-slack-and-paths §6 (TotalFloat trend
+    classification vocabulary adapted for constraint-driven slack).
+    """
+
+    JOINED_PRIMARY = "joined_primary"
+    ERODING_TOWARD_PRIMARY = "eroding_toward_primary"
+    STABLE = "stable"
+    RECOVERING = "recovering"
+
+
+class SeverityTier(StrEnum):
+    """Per-UID severity tier driving the Acumen-Fuse-style weighted
+    score. Weights defined in subsection (e)."""
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class ConstraintDrivenCrossVersionResult(BaseModel):
+    """Per-UID set algebra on constraint_driven_predecessors across
+    Period A and Period B. Period A is the but-for reference per
+    BUILD-PLAN §2.9 / driving-slack-and-paths §9.
+
+    Emitted by ConstraintDrivenCrossVersionComparator. Consumed
+    read-only by the M11 scoring engine.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    period_a_result: DrivingPathResult
+    period_b_result: DrivingPathResult
+    period_a_status_date_days_offset: float | None
+    period_b_status_date_days_offset: float | None
+
+    added_constraint_driven_uids: set[int] = Field(default_factory=set)
+    """Successor UIDs that carry a ConstraintDrivenPredecessor in
+    Period B but not in Period A. Identity: successor_uid."""
+
+    removed_constraint_driven_uids: set[int] = Field(default_factory=set)
+    """Successor UIDs that carried a ConstraintDrivenPredecessor in
+    Period A but not in Period B."""
+
+    retained_constraint_driven_uids: set[int] = Field(default_factory=set)
+    """Successor UIDs present in both periods' constraint_driven_
+    predecessors lists. State transition computed by the scoring
+    engine per subsection (d)."""
+
+    period_a_predecessors_by_successor: dict[
+        int, tuple[ConstraintDrivenPredecessor, ...]
+    ] = Field(default_factory=dict)
+    """Period A's ConstraintDrivenPredecessor records indexed by
+    successor_uid. Preserves the full forensic trail for drill-down."""
+
+    period_b_predecessors_by_successor: dict[
+        int, tuple[ConstraintDrivenPredecessor, ...]
+    ] = Field(default_factory=dict)
+    """Period B's records indexed by successor_uid."""
+
+
+class ManipulationScoringResult(BaseModel):
+    """Per-UID scoring result. One record per successor_uid that
+    appears in any of the three set-algebra sets.
+
+    Consumed by the M11 summary aggregator (subsection (e)) and the
+    M13 renderer (subsection (i)).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    unique_id: int
+    """successor_uid of the constraint-driven edge(s)."""
+
+    name: str
+    """Task.name at Period B if the UID is present in Period B;
+    Period A name otherwise. Every scoring record cites a name per
+    BUILD-PLAN §6 AC bar #3."""
+
+    score: int
+    """Per-UID weighted-Acumen-Fuse score — 10, 5, or 2 per
+    subsection (e). Integer by contract."""
+
+    severity_tier: SeverityTier
+    """HIGH / MEDIUM / LOW. Highest-severity tier wins on
+    per-UID dedup (subsection (e))."""
+
+    slack_state: SlackState
+    """Transition classification per subsection (d)."""
+
+    period_a_predecessors: tuple[ConstraintDrivenPredecessor, ...] = ()
+    """Constraint-driven edges on this successor in Period A.
+    Empty if the UID first appears in Period B."""
+
+    period_b_predecessors: tuple[ConstraintDrivenPredecessor, ...] = ()
+    """Constraint-driven edges on this successor in Period B.
+    Empty if the UID is only in Period A (RECOVERING full exit)."""
+
+    skipped_cycle_participants_reference: tuple[int, ...] = ()
+    """UIDs from DrivingPathResult.skipped_cycle_participants (M10.2,
+    §2.21) that are implicated in this UID's constraint-driven
+    cluster. Forensic visibility trail — empty when no cycle
+    participant touches this UID."""
+
+    windowing_incomplete: bool = False
+    """True when status-date filtering could not fully evaluate this UID
+    (missing Period B status_date, missing predecessor task in one or
+    both periods, or predecessor task present in M10.2
+    skipped_cycle_participants and thus carrying non-authoritative CPM
+    dates). Forensic visibility flag per subsection (f). When True, the
+    scoring record is retained rather than dropped; severity tier may be
+    degraded by downstream consumers but is NOT degraded by the scoring
+    engine itself."""
+
+    rationale: str
+    """Human-readable narrative composed from the contributing
+    ConstraintDrivenPredecessor.rationale strings (M10.1) and the
+    SlackState transition. Deposition-grade for M12 / M13
+    consumption."""
+
+
+class ManipulationScoringSummary(BaseModel):
+    """Schedule-level aggregate across every per-UID scoring record.
+
+    One instance per ConstraintDrivenCrossVersionResult. The total_score
+    is bounded at 100 per the Acumen-Fuse-style clamp (subsection (e))
+    — additive-before-clamp, never additive-unclamped.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    total_score: int = Field(ge=0, le=100)
+    """Sum of per-UID scores, clamped to [0, 100]. An
+    all-clean schedule pair returns 0 per the M11 always-100
+    regression bar (superseded phrasing; numeric contract identical)."""
+
+    uid_count_high: int = Field(ge=0)
+    uid_count_medium: int = Field(ge=0)
+    uid_count_low: int = Field(ge=0)
+
+    uid_count_joined_primary: int = Field(ge=0)
+    uid_count_eroding_toward_primary: int = Field(ge=0)
+    uid_count_stable: int = Field(ge=0)
+    uid_count_recovering: int = Field(ge=0)
+
+    per_uid_results: tuple[ManipulationScoringResult, ...] = ()
+    """Every per-UID record. Sorted by (severity_tier desc,
+    unique_id asc) for deterministic renderer output."""
+```
+
+Set-algebra disjointness invariant. The three set fields
+added_constraint_driven_uids, removed_constraint_driven_uids, and
+retained_constraint_driven_uids are pairwise disjoint by construction
+(they are respectively B−A, A−B, and A∩B on the successor_uid
+populations of the two periods' constraint_driven_predecessors lists).
+A @model_validator(mode="after") on ConstraintDrivenCrossVersionResult
+enforces this invariant and raises ValidationError on any overlap;
+Block 3 implements the validator, and the comparator test floor in
+subsection (g) covers the raise path.
+
+**(d) State machine.**
+
+Each `successor_uid` that appears in the comparator's three sets
+(`added`, `removed`, `retained`) is assigned exactly one
+`SlackState` by the scoring engine. The four states are mutually
+exclusive and exhaustive over the set-algebra output. State is
+derived from two inputs: (1) set-algebra membership on
+`constraint_driven_predecessors`; (2) per-edge `slack_days`
+magnitude comparison between Period A and Period B for retained
+successors. No other input (total float, free slack, project
+finish slip) participates in state derivation; those are for
+downstream renderer context only.
+
+The transition rules are:
+
+- **JOINED_PRIMARY** — The successor_uid is in
+  `added_constraint_driven_uids`. In Period A it had no
+  ConstraintDrivenPredecessor (its incoming edges were all on
+  DrivingPathEdge or NonDrivingPredecessor). In Period B it has at
+  least one ConstraintDrivenPredecessor. Interpretation: a
+  previously-flexible task newly joined the primary constraint-
+  driven regime — a hard constraint has been injected upstream or
+  negative float has propagated into its chain between the two
+  status dates. Authority: `forensic-manipulation-patterns §4.4`
+  (constraint injection).
+
+- **ERODING_TOWARD_PRIMARY** — The successor_uid is in
+  `retained_constraint_driven_uids` AND the minimum (most negative)
+  `slack_days` across its Period B ConstraintDrivenPredecessor
+  records is STRICTLY less than (more negative than) the minimum
+  across its Period A records, outside the zero-slack tolerance
+  band of ±1/86,400 days. Interpretation: a task already in the
+  constraint-driven regime is drifting deeper into negative slack
+  — the constraint is pulling harder without being removed.
+  Authority: `forensic-manipulation-patterns §9`.
+
+- **STABLE** — The successor_uid is in
+  `retained_constraint_driven_uids` AND the minimum `slack_days`
+  between the two periods differs by less than the zero-slack
+  tolerance band of ±1/86,400 days. Interpretation: the
+  constraint-driven state is unchanged across the window — not
+  improving, not worsening. This is the background "already hot"
+  population; it scores LOW per subsection (e), not zero, because
+  a persistent constraint-driven state is itself a forensic
+  signal.
+
+- **RECOVERING** — The successor_uid is in
+  `removed_constraint_driven_uids`, OR it is in
+  `retained_constraint_driven_uids` AND the minimum `slack_days`
+  in Period B is STRICTLY greater (less negative) than in Period A
+  outside the tolerance band. Interpretation: the constraint is
+  being released — either a hard constraint removed, negative float
+  propagation broken, or the driving relationship replaced with a
+  flexible one. Still a forensic signal (constraint removal hiding
+  slip per `forensic-manipulation-patterns §4.5`), but scored LOW
+  because the Period B state is healthier than Period A.
+
+State-derivation implementation is Block 2 scope. This amendment
+specifies only the decision logic. The Pydantic contract on
+`ManipulationScoringResult.slack_state` is the public surface; the
+scoring engine is the sole producer.
+
+**(e) Scoring weights — weighted-Acumen-Fuse logic.**
+
+Per-UID contribution weights are:
+
+| Severity tier | Points |
+|---------------|-------:|
+| HIGH          |     10 |
+| MEDIUM        |      5 |
+| LOW           |      2 |
+
+Tier assignment is determined by `SlackState` AND by the forensic
+severity of the constraint type(s) involved:
+
+- **HIGH** — `slack_state == JOINED_PRIMARY` OR
+  `slack_state == ERODING_TOWARD_PRIMARY`. A newly-joined or
+  deepening constraint-driven regime between two status dates is the
+  strongest manipulation signal short of a rebaseline without
+  governance authority (`nasa-schedule-management §7.3.4`).
+- **MEDIUM** — `slack_state == RECOVERING` AND any contributing
+  Period A ConstraintDrivenPredecessor carries
+  `predecessor_constraint_type` ∈ {MSO, MFO, SNLT, FNLT} (the four
+  09NOV09 hard constraints per `dcma-14-point-assessment §4.5`).
+  Constraint-removal hiding slip per
+  `forensic-manipulation-patterns §4.5` is a MEDIUM signal — it
+  warrants investigation but is lower-severity than active erosion.
+- **LOW** — `slack_state == STABLE`, OR `slack_state == RECOVERING`
+  with no hard-constraint predecessor in Period A. A persistent-but-
+  unchanged constraint-driven state is noted for context; pure
+  negative-float-propagation recovery without a hard-constraint
+  Period A anchor is a LOW signal.
+
+**Per-UID deduplication.** A single successor_uid is represented by
+exactly one `ManipulationScoringResult` record regardless of how
+many ConstraintDrivenPredecessor edges it carries or how many
+detectors it trips. When multiple detectors classify the same UID,
+the HIGHEST tier wins; the per-UID score is the single tier's point
+value, never the sum. Authority: `acumen-reference §3.3` (tripwire
+= single-activity Boolean, not an accumulator); BUILD-PLAN §2.21
+(M11 "per-UID dedup" contract carried forward from the archived
+always-100 bug fix).
+
+**Aggregate score clamping.** The caller computes sum(per_uid_scores)
+and clamps it to [0, 100] BEFORE constructing ManipulationScoringSummary.
+The Pydantic Field(ge=0, le=100) bound on total_score is a
+safety-net validator, not the clamp mechanism itself; constructing
+the summary with an un-clamped sum greater than 100 raises
+ValidationError by contract. Individual UID scores are NEVER scaled
+or normalized before the clamp. A schedule pair with 15 HIGH signals
+(15 × 10 = 150) reports total_score = 100, and the per_uid_results
+tuple carries all 15 un-scaled HIGH records for drill-down. This
+mirrors the Acumen Fuse tripwire-and-scorecard pattern
+(`acumen-reference §3.6` — weighting applied at scorecard assembly,
+not at per-activity tripwire evaluation). No unnormalized-additive
+logic; the always-100 bug regression bar from the original §5 M11
+scope carries forward.
+
+**Authority.** `acumen-reference §3.3` (tripwire threshold = flag
+not verdict; [RW p.20] indicators-not-verdicts posture);
+`acumen-reference §3.6` (metric weighting applies at scorecard
+assembly); BUILD-PLAN §6 (forensic-defensibility — every score
+cites contributing UIDs). HIGH/MEDIUM/LOW weight values are a
+tool-side decision informed by `acumen-reference §3.6` (metric
+weighting applied at scorecard assembly).
+`forensic-manipulation-patterns §10` supplies the aggregation
+protocol (three evidence-source tiers: DCMA threshold breach /
+cross-version trend / EVMS probe) but does NOT supply severity
+weights; §13 of that skill explicitly disclaims quantitative
+severity formulas. The three severity tiers at the M11 scoring
+layer are a forensic-defensibility convention, not a skill-derived
+formula.
+
+**(f) Status-date filtering — legitimate-progress exclusion.**
+
+Before any set-algebra or state-derivation runs, the comparator
+applies the standing status-date filter from BUILD-PLAN §2.8
+(status-date-aware windowing), §5 M9 AC#2, and
+`forensic-manipulation-patterns §3.2`:
+
+> A ConstraintDrivenPredecessor edge whose PREDECESSOR TASK carries
+> a Period A `finish` date on or before the Period B `status_date`
+> is excluded from manipulation detection. The predecessor's work is
+> a legitimate recorded actual per
+> `forensic-manipulation-patterns §3.2` and
+> `driving-slack-and-paths §10`; its constraint posture is historical,
+> not prospective manipulation.
+
+Concretely: for each ConstraintDrivenPredecessor in the two periods'
+lists, look up the predecessor task by `predecessor_uid` in the
+corresponding Schedule, read its `finish` date, compare to the
+Period B `status_date`, and drop the edge from consideration when
+`predecessor.finish <= period_b.status_date`. Both a missing Period
+B status_date and a predecessor task missing in one or both periods
+route to "retain the edge, flag on the scoring record via
+`ManipulationScoringResult.windowing_incomplete = True`" rather than
+silent drop — forensic visibility always wins when data is
+incomplete. This is a standing project decision; the same predicate
+is codified at `app/engine/windowing.py::is_legitimate_actual` and
+the M11 comparator MUST reuse that helper rather than reimplement it
+(Block 2 implementation constraint).
+
+Filter exception: if the predecessor task itself appears in the M10.2
+`skipped_cycle_participants` list on either period's
+DrivingPathResult, the edge is NOT dropped — cycle participation
+overrides legitimate-actual exclusion because cycle-skipped
+predecessors have non-authoritative CPM dates by construction
+(`app/engine/driving_path.py` cycle-skip semantics per §2.21). The
+scoring record's `skipped_cycle_participants_reference` tuple
+carries these UIDs so the renderer can annotate the finding.
+
+**(g) Test coverage targets.**
+
+Minimum per-file test counts and required categories. Block 2
+Shipping Below These Counts = blocker. Categories are non-exhaustive
+(Block 2 may add tests); they are floor requirements, not ceilings.
+
+| File                                                      | Min tests | Required categories                                                                                                                                     |
+|-----------------------------------------------------------|----------:|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `tests/contracts/test_manipulation_scoring.py`            |        18 | Contract shape validation (5): frozen-config on all four public models; field-type correctness; SlackState / SeverityTier enum completeness; Field(ge=0, le=100) bounds on total_score; default_factory invariants on set / dict / tuple fields. Field presence (4): every field named in subsection (c) exists with the stated type. Integration (3): ConstraintDrivenPredecessor imported from driving_path_types (no circular import); DrivingPathResult reference resolves; skipped_cycle_participants_reference accepts tuple[int, ...]. Validator-raise cases (6): total_score = -1 raises; total_score = 101 raises; uid_count_* negative raises; set algebra with overlapping adds/removes raises (mutual exclusion). |
+| `tests/engine/test_constraint_driven_cross_version.py`    |        22 | Set algebra correctness (6): empty both periods; add-only; remove-only; retain-only; mixed; UID in neither period. Status-date filter (4): predecessor finish < status date excluded; = status date excluded; > status date included; missing status date retained. Skipped-cycle override (3): predecessor in skipped_cycle_participants of period A only retained; period B only retained; both periods retained. Integration with M10.1 (3): ConstraintDrivenPredecessor with MSO / MFO / SNLT / FNLT all sort into added / removed / retained correctly; rationale string preserved verbatim on pass-through; predecessor_constraint_date None passes through. Integration with M10.2 (2): skipped_cycle_participants reference correctly forwarded to per-UID output. Edge cases (4): successor UID appears in period A retained bucket AND period B retained bucket with different constraint types; multiple predecessors on same successor; predecessor task deleted between periods (structural ADDED_IN_B/DELETED_FROM_A from M9 comparator territory — verify M11 does not touch that path). |
+| `tests/engine/test_manipulation_scoring.py`               |        26 | State-machine transitions (8): one per (SlackState × tolerance-band-edge case) matrix — JOINED_PRIMARY; ERODING_TOWARD_PRIMARY at exactly tolerance; ERODING_TOWARD_PRIMARY strictly beyond tolerance; STABLE at zero delta; STABLE within tolerance; RECOVERING at tolerance edge (removed bucket); RECOVERING with hard-constraint Period A anchor; RECOVERING without hard-constraint anchor. Scoring arithmetic (5): HIGH = 10; MEDIUM = 5; LOW = 2; three HIGH UIDs sum to 30; fifteen HIGH UIDs clamp to 100 exactly. Per-UID dedup (4): one UID with two predecessors scores once at highest tier; two detectors both classify as MEDIUM -> single MEDIUM record; HIGH + LOW -> single HIGH record; three-tier overlap -> single HIGH record. Always-zero regression (3): identical Period A and Period B -> total_score = 0; both periods with no constraint_driven_predecessors -> 0; status-date filter drains all candidates -> 0. Integration (3): skipped_cycle_participants reference appears on per-UID result; rationale string composed from M10.1 rationale fields; summary sort order (severity desc, uid asc) verified. Schema invariant (3): total_score bounded to 100; no *_minutes or *_hours fields on any public model (§2.19 invariant holds); ManipulationScoringResult.name non-empty. |
+
+The AM11 test-convention note (flat `tests/test_engine_*.py`) is
+superseded by this amendment for M11 tests only; pre-existing tests
+remain at their original flat layout.
+
+**(h) Public API surface.**
+
+After M11 Block 2 lands, the following symbols are added to the
+tool's public API. Every other M11-introduced symbol is package-
+private (prefix `_`) and unsupported for downstream import.
+
+Re-exported from `app/__init__.py` (top-level):
+
+- `ConstraintDrivenCrossVersionResult`
+- `ManipulationScoringResult`
+- `ManipulationScoringSummary`
+- `SlackState`
+- `SeverityTier`
+- `score_manipulation(period_a, period_b, period_a_cpm_result,
+  period_b_cpm_result, focus_spec) -> ManipulationScoringSummary`
+
+Re-exported from `app/engine/__init__.py`:
+
+- `ConstraintDrivenCrossVersionComparator`
+- `compare_constraint_driven_cross_version(period_a, period_b,
+  focus_spec, period_a_cpm_result, period_b_cpm_result) ->
+  ConstraintDrivenCrossVersionResult`
+
+Re-exported from `app/contracts/__init__.py` (new package):
+
+- All four Pydantic contract classes and the two StrEnums from
+  `app/contracts/manipulation_scoring.py`.
+
+Not re-exported: any helper function inside
+`app/engine/manipulation_scoring.py` whose identifier begins with
+`_`; the `ConstraintDrivenPredecessor` / `DrivingPathResult` types
+themselves (they remain exported from `app/engine/` per §2.20 and
+are not duplicated at the M11 facade). The M11 facade re-exports
+ConstraintDrivenPredecessor by attribute access on
+ConstraintDrivenCrossVersionResult.period_a_predecessors_by_successor
+values only — never as a top-level symbol on the M11 facade.
+
+Canonical entry point rule. score_manipulation is exported ONLY from
+app/__init__.py as the top-level facade. Callers that need to bypass
+the facade import directly from app.engine.manipulation_scoring;
+there is no engine-level re-export and no compatibility alias.
+
+**(i) Renderer scope.**
+
+This amendment fixes only the high-level shape of the renderer
+output; detailed UI / report layout is deferred to a later M11 block
+and to M13 (Web UI). In M11 the renderer produces:
+
+- A machine-readable `ManipulationScoringSummary` for the M12 AI
+  narrative layer and the M13 Flask UI. No HTML / DOCX / XLSX is
+  emitted by M11 itself.
+- A Jinja2-ready dict projection produced by a pure helper
+  (`render_manipulation_scoring_summary(summary) -> dict`) that the
+  M13 templates consume. The dict contains: top-line
+  `total_score` with severity banner; per-tier UID counts; per-slack-
+  state UID counts; a flat list of per-UID rows sorted by
+  `(severity_tier desc, unique_id asc)` with columns `unique_id`,
+  `name`, `score`, `severity_tier`, `slack_state`, and a rendered
+  rationale string.
+- No PDF output is produced directly by M11; PDF export lives in
+  the M13/export modules and consumes the same dict projection.
+
+Detailed column ordering, CSS classes, drill-down affordances, and
+AI-narrative prompt templates are out of scope for this amendment
+and are fixed in the M11 renderer block (M11 Block 4 or later) and
+in M13.
+
+**(j) Out of scope for M11.**
+
+M11 does NOT:
+
+- Modify M9's `ComparatorResult`, `TaskDelta`, `RelationshipDelta`,
+  or any symbol exported from `app/engine/comparator.py` or
+  `app/engine/delta.py`. M9's surface is frozen from M9 forward.
+- Modify M10's `DrivingPathCrossVersionResult`,
+  `DrivingPathResult`, `DrivingPathEdge`, `NonDrivingPredecessor`,
+  `ConstraintDrivenPredecessor`, or `trace_driving_path*` functions.
+  §2.20 (AM10) is frozen; the M11 comparator is a new class that
+  consumes M10 output read-only.
+- Rewrite or relocate the five sub-pattern detectors originally
+  scoped in §5 M11 (logic, duration, date, float, critical-path).
+  The original M11 scope's detector families are superseded by the
+  AM12 constraint-driven-erosion focus; other detector families
+  (logic, duration, date, float, critical-path manipulation proper)
+  are deferred to a later milestone and NOT built in M11 under this
+  amendment. The always-100 bug regression bar from §5 M11 is
+  preserved by the AM12 always-zero / clamp-at-100 contract
+  (subsection (e)).
+- Produce PDF, DOCX, or XLSX reports directly. Export lives in
+  M13 / export modules.
+- Address relationship-slack field availability on the `Relation`
+  model. The M10 Block 0 §2.2 decision stands:
+  relationship_slack_minutes is NOT a field on `Relation` and is
+  computed at query time via `link_driving_slack_minutes`. Any
+  material reopening of that decision is deferred to a future
+  milestone — M11 does not touch `app/engine/relations.py` or
+  `app/models/relation.py`.
+- Introduce multi-version (>2) analysis. Phase 1 supports exactly
+  two schedule versions per §1.4; M11 consumes exactly one Period A
+  and one Period B `DrivingPathResult`.
+- Introduce EVA-layer scoring or cost-side signals. EVA is Phase 3
+  per §1.5; the DECM manipulation probes in
+  `forensic-manipulation-patterns §10.3` (Tier 3 EVMS probes) are
+  noted as authoritative vocabulary but not implemented as
+  detectors in M11.
+- Re-derive any DCMA 14-Point metric. M11 consumes M5–M7
+  `MetricResult`s read-only if it needs them at all (and the
+  amendment does NOT require any such consumption; the comparator
+  operates purely on `DrivingPathResult` inputs).
+
+**(k) Estimated block count.**
+
+M11 is estimated at **6 to 8 blocks total**, inclusive of this
+amendment block (Block 1). Expected decomposition:
+
+- **Block 1** (this amendment). Scope / contracts / state machine
+  / weights specified. Amendment-only; no implementation code. PR
+  opens as DRAFT per CLAUDE.md §7.
+- **Block 2.** Create `app/contracts/manipulation_scoring.py` with
+  the four public Pydantic models and two StrEnums from subsection
+  (c). Create `app/contracts/__init__.py`. Write
+  `tests/contracts/test_manipulation_scoring.py` to the
+  subsection (g) floor (≥ 18 tests). No engine code yet.
+- **Block 3.** Implement
+  `app/engine/constraint_driven_cross_version.py` —
+  `ConstraintDrivenCrossVersionComparator` and
+  `compare_constraint_driven_cross_version`. Wire the status-date
+  filter from subsection (f). Write
+  `tests/engine/test_constraint_driven_cross_version.py` to the ≥
+  22-test floor.
+- **Block 4.** Implement `app/engine/manipulation_scoring.py` —
+  state-machine derivation per subsection (d), scoring arithmetic
+  per subsection (e), summary aggregation with clamp (caller-side
+  per revised subsection (e)). Write engine portion of
+  `tests/engine/test_manipulation_scoring.py` to a ≥ 20-test floor
+  covering state-machine transitions (8), scoring arithmetic (5),
+  per-UID dedup (4), always-zero regression (3).
+- **Block 4b.** Implement the dict projection helper
+  `render_manipulation_scoring_summary(summary) -> dict` per
+  subsection (i). Add the remaining ≥ 6 tests to
+  `tests/engine/test_manipulation_scoring.py` covering integration
+  (3: skipped_cycle_participants reference propagation, rationale
+  composition, summary sort order) and schema invariants (3:
+  total_score bound, no minutes/hours fields, name non-empty).
+  Combined with Block 4 this meets the ≥ 26-test floor from
+  subsection (g).
+- **Block 5.** Public-API wiring: update `app/__init__.py`,
+  `app/engine/__init__.py`, `app/contracts/__init__.py` per
+  subsection (h). Integration test combining M10.1 / M10.2 output
+  with M11 scoring end-to-end.
+- **Block 6 (pure contingency).** Codex / audit remediation cycle if
+  PR-round findings surface. Modeled on the M10.1 / M10.2 two-pass
+  pattern (see §2.21 AM11). No planned deliverable — this block is
+  reserved for remediation only.
+
+Per CLAUDE.md §4, M11 is flagged as potentially multi-session; AM12
+is the first session in that decomposition and produces amendment
+text only.
+
+**Authority references (full AM12 amendment).**
+
+`forensic-manipulation-patterns §3.2` (status-date windowing filter);
+§4.4 (constraint injection); §4.5 (constraint removal hiding slip);
+§9 (cross-version erosion detection); §10 (red-flag aggregation
+tiers). `acumen-reference §3.3` (tripwire-not-verdict);
+§3.6 (weighting at scorecard assembly);
+§5.2 (PreviousActualStart/Finish as cross-version primitive analog).
+`driving-slack-and-paths §6` (TotalFloat trend classification
+vocabulary); §9 (Period A slack but-for rule); §10 (status-date
+filter predicate). BUILD-PLAN §2.7 (UniqueID-only matching);
+§2.8 (status-date-aware windowing); §2.9 (Period A slack rule);
+§2.13 (mutation-vs-wrap invariant); §2.19 (days-only UX
+convention); §2.20 (three-bucket partition, AM10); §2.21 (M10.2
+format_days + skipped_cycle_participants, AM11); §6 (forensic-
+defensibility criteria). M10.1 implementation:
+`app/engine/driving_path_types.py::ConstraintDrivenPredecessor`,
+lines 238–329; `app/engine/driving_path.py::
+trace_driving_path_cross_version`, lines 460–573 (with the inline
+comment at line 516 confirming constraint-driven cross-version
+diff is M11 scope). M10.2 implementation:
+`DrivingPathResult.skipped_cycle_participants`,
+`driving_path_types.py` line 382.
+
+Inferred-source disclosure. Three of the predicates cited above
+carry an "inferred — not sourced in SSI or current Lessons Learned
+revision" note in their source skills:
+driving-slack-and-paths §9 (SKILL.md line 156),
+driving-slack-and-paths §10 (SKILL.md line 166), and
+forensic-manipulation-patterns §3.2 (§14 inference table of that
+skill). AM12 adopts these predicates as operational specifications
+for M11 on the authority of the tool's internal cross-skill
+reconciliation pass. Any downstream milestone that surfaces a
+sourced contradiction must flag it for M11 re-scoring review.
+
 ---
 
 ## 3. Starting State
@@ -483,6 +1120,17 @@ AI backend late; 500 MB limit ratified in Milestone 1.
 
 Milestones 11 and 13 may require two sessions; any milestone that
 exceeds two is a decomposition candidate at plan-review time.
+
+**M11 scope amendment.** The M11 row above is reframed by §2.22
+(AM12, 4/23/2026). The amendment narrows M11 to the constraint-
+driven cross-version erosion domain built atop the M10.1 three-
+bucket partition (§2.20) and the M10.2 `skipped_cycle_participants`
+forensic trail (§2.21); the original §5 M11 scope's five sub-
+pattern detector families (logic, duration, date, float, critical-
+path) are superseded by AM12 and deferred out of M11. The "1–2"
+session estimate is superseded by AM12 subsection (k) — 6 to 8
+blocks total including the amendment. See §2.22 for the full
+restatement of M11 scope, contracts, state machine, and scoring.
 
 ---
 
@@ -1447,6 +2095,16 @@ Mutation-invariance tests snapshot `Schedule.model_dump()` and
 ### Milestone 11 — Manipulation scoring engine
 
 **Dependencies.** Milestones 3, 4, 9, 10.
+
+> **AM12 SUPERSEDES (4/23/2026).** The deliverables / file scope /
+> detector-family decomposition below is reframed by BUILD-PLAN §2.22
+> (AM12). M11 is narrowed to a constraint-driven cross-version
+> erosion engine built on the M10.1 three-bucket partition and the
+> M10.2 `skipped_cycle_participants` forensic trail. New file scope,
+> contract shapes, state machine, scoring weights, and block
+> decomposition live in §2.22. The original §5 M11 text below is
+> preserved as historical context only; Block 2 implementation
+> reads §2.22 as the authoritative spec.
 
 **Deliverables.** `app/engine/manipulation/` package with five
 sub-pattern groups from `forensic-manipulation-patterns §§4–8`: logic,
