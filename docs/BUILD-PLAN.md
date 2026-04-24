@@ -542,8 +542,38 @@ class ConstraintDrivenCrossVersionResult(BaseModel):
 
     period_a_result: DrivingPathResult
     period_b_result: DrivingPathResult
-    period_a_status_date_days_offset: float | None
-    period_b_status_date_days_offset: float | None
+
+    period_a_status_date: datetime | None
+    """Absolute status_date carried forward from Schedule A. This is the
+    "ProjectPreviousTimeNow" in Acumen Fuse's comparative-metric model.
+    None when Schedule A.status_date is None. Consumers reference this
+    value directly when constructing comparative predicates over the
+    (period_a_status_date, period_b_status_date] window."""
+
+    period_b_status_date: datetime | None
+    """Absolute status_date carried forward from Schedule B. This is the
+    "ProjectTimeNow" in Acumen Fuse's comparative-metric model. None
+    when Schedule B.status_date is None."""
+
+    period_a_project_start: datetime | None
+    """Absolute project_start carried forward from Schedule A. Provided
+    so downstream consumers can reason about per-period timelines
+    without re-accessing the Schedule object. None when Schedule
+    A.project_start is None."""
+
+    period_b_project_start: datetime | None
+    """Absolute project_start carried forward from Schedule B. None when
+    Schedule B.project_start is None."""
+
+    period_working_days_elapsed: float | None
+    """Pre-computed working days between period_a_status_date and
+    period_b_status_date, using PERIOD B's calendar. Computed once at
+    result construction time to spare downstream consumers repeated
+    calendar arithmetic. None when either status_date is None, or
+    when Period B's calendar is missing or unresolvable. Rationale
+    for using Period B's calendar: comparative forensic metrics
+    reason about the CURRENT period's working-time frame; Period A's
+    calendar may be stale if calendars changed between snapshots."""
 
     added_constraint_driven_uids: set[int] = Field(default_factory=set)
     """Successor UIDs that carry a ConstraintDrivenPredecessor in
@@ -668,6 +698,36 @@ A @model_validator(mode="after") on ConstraintDrivenCrossVersionResult
 enforces this invariant and raises ValidationError on any overlap;
 Block 3 implements the validator, and the comparator test floor in
 subsection (g) covers the raise path.
+
+Authority for the five status-date / project-start / working-days
+fields (added by AM13):
+
+Acumen Fuse exposes two named dynamic variables in every comparative
+metric expression: ProjectTimeNow (the current schedule's status_date)
+and ProjectPreviousTimeNow (the prior snapshot's status_date). All
+comparative metrics in the NASA Quick Library
+(NASA_Metrics_Complete_20260423.aft, 941 formula definitions, 389 of
+which reference these variables) are written as predicates over the
+(ProjectPreviousTimeNow, ProjectTimeNow] window. SSI's Baseline
+Execution Performance tool uses the same absolute-date pattern
+organized as weekly or monthly calendar buckets. Per the tool
+fidelity promise (build-chat session 2026-04-24), our
+ConstraintDrivenCrossVersionResult mirrors this model: both status
+dates are first-class datetime fields, both project_starts are
+first-class datetime fields, and period_working_days_elapsed is a
+pre-computed convenience derived from the two status dates using
+Period B's calendar. This contract shape lets downstream consumers
+(Block 4 and beyond) reproduce any Acumen Fuse comparative metric
+without re-touching the Schedule objects.
+
+Note: period_working_days_elapsed is a tool-side convenience and
+does not appear on Acumen Fuse's variable surface. Acumen computes
+equivalent values on demand per metric via its Phase Analyzer. We
+precompute once because the M11 scoring engine (Block 4) consumes
+this value in multiple scoring sub-rules and recomputing per rule
+would duplicate calendar arithmetic. The choice to anchor on Period
+B's calendar (not Period A's, not a shared calendar) is documented
+above and tested in Block 3's test floor per subsection (g).
 
 **(d) State machine.**
 
@@ -829,7 +889,13 @@ silent drop — forensic visibility always wins when data is
 incomplete. This is a standing project decision; the same predicate
 is codified at `app/engine/windowing.py::is_legitimate_actual` and
 the M11 comparator MUST reuse that helper rather than reimplement it
-(Block 2 implementation constraint).
+(Block 2 implementation constraint). Note (AM13):
+is_legitimate_actual continues to take absolute datetimes (no change
+to the helper), but Block 3's filter logic now has direct access to
+period_a_status_date and period_b_status_date on the result object
+and does not need to look them up from the period_a_result /
+period_b_result DrivingPathResult fields or from the Schedule
+objects.
 
 Filter exception: if the predecessor task itself appears in the M10.2
 `skipped_cycle_participants` list on either period's
@@ -849,7 +915,7 @@ Shipping Below These Counts = blocker. Categories are non-exhaustive
 | File                                                      | Min tests | Required categories                                                                                                                                     |
 |-----------------------------------------------------------|----------:|---------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `tests/contracts/test_manipulation_scoring.py`            |        18 | Contract shape validation (5): frozen-config on all four public models; field-type correctness; SlackState / SeverityTier enum completeness; Field(ge=0, le=100) bounds on total_score; default_factory invariants on set / dict / tuple fields. Field presence (4): every field named in subsection (c) exists with the stated type. Integration (3): ConstraintDrivenPredecessor imported from driving_path_types (no circular import); DrivingPathResult reference resolves; skipped_cycle_participants_reference accepts tuple[int, ...]. Validator-raise cases (6): total_score = -1 raises; total_score = 101 raises; uid_count_* negative raises; set algebra with overlapping adds/removes raises (mutual exclusion). |
-| `tests/engine/test_constraint_driven_cross_version.py`    |        22 | Set algebra correctness (6): empty both periods; add-only; remove-only; retain-only; mixed; UID in neither period. Status-date filter (4): predecessor finish < status date excluded; = status date excluded; > status date included; missing status date retained. Skipped-cycle override (3): predecessor in skipped_cycle_participants of period A only retained; period B only retained; both periods retained. Integration with M10.1 (3): ConstraintDrivenPredecessor with MSO / MFO / SNLT / FNLT all sort into added / removed / retained correctly; rationale string preserved verbatim on pass-through; predecessor_constraint_date None passes through. Integration with M10.2 (2): skipped_cycle_participants reference correctly forwarded to per-UID output. Edge cases (4): successor UID appears in period A retained bucket AND period B retained bucket with different constraint types; multiple predecessors on same successor; predecessor task deleted between periods (structural ADDED_IN_B/DELETED_FROM_A from M9 comparator territory — verify M11 does not touch that path). |
+| `tests/engine/test_constraint_driven_cross_version.py`    |        24 | Set algebra correctness (6): empty both periods; add-only; remove-only; retain-only; mixed; UID in neither period. Status-date filter (4): predecessor finish < status date excluded; = status date excluded; > status date included; missing status date retained. Skipped-cycle override (3): predecessor in skipped_cycle_participants of period A only retained; period B only retained; both periods retained. Integration with M10.1 (3): ConstraintDrivenPredecessor with MSO / MFO / SNLT / FNLT all sort into added / removed / retained correctly; rationale string preserved verbatim on pass-through; predecessor_constraint_date None passes through. Integration with M10.2 (2): skipped_cycle_participants reference correctly forwarded to per-UID output. Edge cases (4): successor UID appears in period A retained bucket AND period B retained bucket with different constraint types; multiple predecessors on same successor; predecessor task deleted between periods (structural ADDED_IN_B/DELETED_FROM_A from M9 comparator territory — verify M11 does not touch that path). Field presence (AM13 addition, Category B): B-new: Assert that ConstraintDrivenCrossVersionResult carries all five new datetime/float fields from AM13 with their correct type annotations: period_a_status_date: datetime \| None, period_b_status_date: datetime \| None, period_a_project_start: datetime \| None, period_b_project_start: datetime \| None, period_working_days_elapsed: float \| None. Assert field ordering matches the AM12(c)-as-amended-by-AM13 specification. Validator-raise / edge-case (AM13 additions, Category D, 2 new scenarios): D-new-1: period_working_days_elapsed is None when period_b_status_date is None. D-new-2: period_working_days_elapsed is None when Period B's calendar is missing or unresolvable (per Block 3 implementation's chosen failure mode). |
 | `tests/engine/test_manipulation_scoring.py`               |        26 | State-machine transitions (8): one per (SlackState × tolerance-band-edge case) matrix — JOINED_PRIMARY; ERODING_TOWARD_PRIMARY at exactly tolerance; ERODING_TOWARD_PRIMARY strictly beyond tolerance; STABLE at zero delta; STABLE within tolerance; RECOVERING at tolerance edge (removed bucket); RECOVERING with hard-constraint Period A anchor; RECOVERING without hard-constraint anchor. Scoring arithmetic (5): HIGH = 10; MEDIUM = 5; LOW = 2; three HIGH UIDs sum to 30; fifteen HIGH UIDs clamp to 100 exactly. Per-UID dedup (4): one UID with two predecessors scores once at highest tier; two detectors both classify as MEDIUM -> single MEDIUM record; HIGH + LOW -> single HIGH record; three-tier overlap -> single HIGH record. Always-zero regression (3): identical Period A and Period B -> total_score = 0; both periods with no constraint_driven_predecessors -> 0; status-date filter drains all candidates -> 0. Integration (3): skipped_cycle_participants reference appears on per-UID result; rationale string composed from M10.1 rationale fields; summary sort order (severity desc, uid asc) verified. Schema invariant (3): total_score bounded to 100; no *_minutes or *_hours fields on any public model (§2.19 invariant holds); ManipulationScoringResult.name non-empty. |
 
 The AM11 test-convention note (flat `tests/test_engine_*.py`) is
@@ -969,7 +1035,11 @@ M11 does NOT:
 **(k) Estimated block count.**
 
 M11 is estimated at **6 to 8 blocks total**, inclusive of this
-amendment block (Block 1). Expected decomposition:
+amendment block (Block 1).
+AM13 does NOT introduce a new block. The six-block M11 plan
+(Blocks 2, 3, 4, 4b, 5, 6) remains intact. AM13 amends the
+contract consumed by Blocks 3+.
+Expected decomposition:
 
 - **Block 1** (this amendment). Scope / contracts / state machine
   / weights specified. Amendment-only; no implementation code. PR
@@ -985,7 +1055,16 @@ amendment block (Block 1). Expected decomposition:
   `compare_constraint_driven_cross_version`. Wire the status-date
   filter from subsection (f). Write
   `tests/engine/test_constraint_driven_cross_version.py` to the ≥
-  22-test floor.
+  22-test floor. Scope extension (AM13): Block 3 additionally
+  modifies app/contracts/manipulation_scoring.py to replace the two
+  float offset fields on ConstraintDrivenCrossVersionResult with the
+  five AM13 datetime/float fields, and correspondingly updates
+  tests/contracts/test_manipulation_scoring.py for the new field
+  set. This scope extension is explicit: Block 3 is no longer a
+  pure engine-file-plus-tests write; it is a contract-modification
+  plus engine-file-plus-tests write. All other AM13 constraints on
+  Block 3 (file path, class name, function name, public-API
+  non-touch, etc.) remain as in AM12.
 - **Block 4.** Implement `app/engine/manipulation_scoring.py` —
   state-machine derivation per subsection (d), scoring arithmetic
   per subsection (e), summary aggregation with clamp (caller-side
@@ -1049,6 +1128,44 @@ skill). AM12 adopts these predicates as operational specifications
 for M11 on the authority of the tool's internal cross-skill
 reconciliation pass. Any downstream milestone that surfaces a
 sourced contradiction must flag it for M11 re-scoring review.
+
+## 2.23 Amendment AM13 — M11 comparative-metric anchor correction (doc-only)
+
+  Date: 2026-04-24
+  Type: BUILD-PLAN.md-only amendment (no code, no tests modified in
+    this amendment; code and test modifications land in Block 3 per
+    §2.22(k) scope extension)
+  Preceded by: AM12 (PR #35, commit 03af553)
+  Changes:
+    Replaces ConstraintDrivenCrossVersionResult.period_a_status_date
+    _days_offset and period_b_status_date_days_offset with five new
+    fields: period_a_status_date, period_b_status_date,
+    period_a_project_start, period_b_project_start,
+    period_working_days_elapsed. Updates §2.22 subsections (c), (f),
+    (g), and (k) accordingly.
+  Motivation:
+    M11 comparative-metric output must be reproducible against
+    Acumen Fuse and SSI when the same files and metrics are fed into
+    either reference tool. Acumen Fuse writes every comparative
+    metric as a predicate over (ProjectPreviousTimeNow,
+    ProjectTimeNow] with both status dates exposed as named
+    variables. Our float-offset contract from AM12 would have
+    forced downstream consumers to reconstruct absolute dates for
+    parity, which is both error-prone and opaque. Replacing the two
+    offsets with five absolute-context fields eliminates this gap.
+  Authority:
+    - NASA_Metrics_Complete_20260423.aft (Acumen Fuse NASA Quick
+      Library export; 5585 Name elements; 941 Formula elements; 389
+      formulas reference ProjectTimeNow / ProjectPreviousTimeNow /
+      _PeriodStart / _PeriodEnd / BaselineStart / BaselineFinish)
+    - Deltek Acumen 8.8 Metric Developer's Guide, Phase Analyzer
+      Formulas and Settings (Period Start and Period End Dynamic
+      Formula Fields)
+    - ssitools.com/helpandsuport/ssianalysishelp/baseline_execution
+      _performance.htm (SSI absolute-calendar-bucket pattern)
+    - Build-chat session 2026-04-24 (Option C selected; Path 2
+      confirmed; Sub-decision Option X confirmed; tool-fidelity
+      promise recorded)
 
 ---
 
