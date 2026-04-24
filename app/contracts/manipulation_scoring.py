@@ -27,10 +27,15 @@ Authority references:
 * BUILD-PLAN §2.20 (three-bucket partition, AM10) —
   ``ConstraintDrivenPredecessor`` origin.
 * BUILD-PLAN §2.21 (M10.2 ``skipped_cycle_participants``, AM11).
+* BUILD-PLAN §2.23 (AM13, 4/24/2026) — comparative-metric anchor
+  correction: the two pre-AM13 ``*_status_date_days_offset`` fields
+  are replaced by five absolute-date / working-days-elapsed fields
+  on :class:`ConstraintDrivenCrossVersionResult`.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -77,8 +82,49 @@ class ConstraintDrivenCrossVersionResult(BaseModel):
 
     period_a_result: DrivingPathResult
     period_b_result: DrivingPathResult
-    period_a_status_date_days_offset: float | None
-    period_b_status_date_days_offset: float | None
+
+    period_a_status_date: datetime | None = Field(
+        default=None,
+        description=(
+            "Absolute status date for Period A (Schedule A). "
+            "Acumen Fuse ProjectPreviousTimeNow equivalent. "
+            "None when Schedule A status date is missing."
+        ),
+    )
+    period_b_status_date: datetime | None = Field(
+        default=None,
+        description=(
+            "Absolute status date for Period B (Schedule B). "
+            "Acumen Fuse ProjectTimeNow equivalent. "
+            "None when Schedule B status date is missing."
+        ),
+    )
+    period_a_project_start: datetime | None = Field(
+        default=None,
+        description=(
+            "Absolute project start date for Period A (Schedule A). "
+            "Used for per-period timeline reasoning without re-accessing "
+            "Schedule objects. None when Schedule A project_start is missing."
+        ),
+    )
+    period_b_project_start: datetime | None = Field(
+        default=None,
+        description=(
+            "Absolute project start date for Period B (Schedule B). "
+            "Used for per-period timeline reasoning without re-accessing "
+            "Schedule objects. None when Schedule B project_start is missing."
+        ),
+    )
+    period_working_days_elapsed: float | None = Field(
+        default=None,
+        description=(
+            "Working days elapsed between period_a_status_date and "
+            "period_b_status_date using PERIOD B's calendar. "
+            "Rationale: current-period reasoning; Period A calendar may be "
+            "stale if calendars changed. None when either status_date is None "
+            "OR Period B calendar missing/unresolvable."
+        ),
+    )
 
     added_constraint_driven_uids: set[int] = Field(default_factory=set)
     """Successor UIDs that carry a ConstraintDrivenPredecessor in

@@ -98,8 +98,6 @@ def _canonical_cross_version() -> ConstraintDrivenCrossVersionResult:
     return ConstraintDrivenCrossVersionResult(
         period_a_result=_empty_driving_path_result(1),
         period_b_result=_empty_driving_path_result(1),
-        period_a_status_date_days_offset=0.0,
-        period_b_status_date_days_offset=30.0,
     )
 
 
@@ -118,7 +116,7 @@ def test_all_four_models_frozen() -> None:
     """
     cv = _canonical_cross_version()
     with pytest.raises(ValidationError):
-        cv.period_a_status_date_days_offset = 1.0  # type: ignore[misc]
+        cv.period_working_days_elapsed = 1.0  # type: ignore[misc]
 
     result = _canonical_result()
     with pytest.raises(ValidationError):
@@ -144,7 +142,11 @@ def test_field_types_well_formed() -> None:
     cv = _canonical_cross_version()
     assert isinstance(cv.period_a_result, DrivingPathResult)
     assert isinstance(cv.period_b_result, DrivingPathResult)
-    assert isinstance(cv.period_a_status_date_days_offset, float)
+    assert cv.period_a_status_date is None
+    assert cv.period_b_status_date is None
+    assert cv.period_a_project_start is None
+    assert cv.period_b_project_start is None
+    assert cv.period_working_days_elapsed is None
     assert isinstance(cv.added_constraint_driven_uids, set)
     assert isinstance(cv.period_a_predecessors_by_successor, dict)
 
@@ -237,14 +239,23 @@ def test_total_score_bounds_and_default_factory_invariants() -> None:
 
 
 def test_constraint_driven_cross_version_result_fields() -> None:
-    """B1: Every field named in AM12 subsection (c) for the comparator
-    result exists on the model with the stated annotation."""
+    """B1: Every field named in AM12 subsection (c) (as amended by
+    AM13) for the comparator result exists on the model with the
+    stated annotation.
+
+    AM13 removed the two ``*_status_date_days_offset`` fields and
+    replaced them with the five absolute-date / working-days-elapsed
+    fields asserted here.
+    """
     fields = ConstraintDrivenCrossVersionResult.model_fields
     assert set(fields.keys()) == {
         "period_a_result",
         "period_b_result",
-        "period_a_status_date_days_offset",
-        "period_b_status_date_days_offset",
+        "period_a_status_date",
+        "period_b_status_date",
+        "period_a_project_start",
+        "period_b_project_start",
+        "period_working_days_elapsed",
         "added_constraint_driven_uids",
         "removed_constraint_driven_uids",
         "retained_constraint_driven_uids",
@@ -254,8 +265,11 @@ def test_constraint_driven_cross_version_result_fields() -> None:
     hints = get_type_hints(ConstraintDrivenCrossVersionResult)
     assert hints["period_a_result"] is DrivingPathResult
     assert hints["period_b_result"] is DrivingPathResult
-    assert hints["period_a_status_date_days_offset"] == (float | None)
-    assert hints["period_b_status_date_days_offset"] == (float | None)
+    assert hints["period_a_status_date"] == (datetime | None)
+    assert hints["period_b_status_date"] == (datetime | None)
+    assert hints["period_a_project_start"] == (datetime | None)
+    assert hints["period_b_project_start"] == (datetime | None)
+    assert hints["period_working_days_elapsed"] == (float | None)
     assert hints["added_constraint_driven_uids"] == set[int]
     assert hints["removed_constraint_driven_uids"] == set[int]
     assert hints["retained_constraint_driven_uids"] == set[int]
@@ -265,6 +279,54 @@ def test_constraint_driven_cross_version_result_fields() -> None:
     assert hints["period_b_predecessors_by_successor"] == dict[
         int, tuple[ConstraintDrivenPredecessor, ...]
     ]
+
+
+def test_am13_new_fields_defaults_are_none() -> None:
+    """B1b (AM13): the five new fields default to ``None`` on
+    canonical construction — every new field is optional and the
+    comparator populates them lazily from schedule state."""
+    cv = _canonical_cross_version()
+    assert cv.period_a_status_date is None
+    assert cv.period_b_status_date is None
+    assert cv.period_a_project_start is None
+    assert cv.period_b_project_start is None
+    assert cv.period_working_days_elapsed is None
+
+    fields = ConstraintDrivenCrossVersionResult.model_fields
+    assert fields["period_a_status_date"].default is None
+    assert fields["period_b_status_date"].default is None
+    assert fields["period_a_project_start"].default is None
+    assert fields["period_b_project_start"].default is None
+    assert fields["period_working_days_elapsed"].default is None
+
+
+def test_am13_new_fields_round_trip_with_values() -> None:
+    """B1c (AM13): construct a ConstraintDrivenCrossVersionResult with
+    all five new fields populated with concrete values and assert the
+    stored values round-trip unchanged."""
+    dpr = _empty_driving_path_result(1)
+    sd_a = datetime(2026, 1, 15, 8, 0)
+    sd_b = datetime(2026, 2, 14, 8, 0)
+    ps_a = datetime(2025, 12, 1, 8, 0)
+    ps_b = datetime(2025, 12, 1, 8, 0)
+    elapsed = 21.5
+
+    cv = ConstraintDrivenCrossVersionResult(
+        period_a_result=dpr,
+        period_b_result=dpr,
+        period_a_status_date=sd_a,
+        period_b_status_date=sd_b,
+        period_a_project_start=ps_a,
+        period_b_project_start=ps_b,
+        period_working_days_elapsed=elapsed,
+    )
+    assert cv.period_a_status_date == sd_a
+    assert cv.period_b_status_date == sd_b
+    assert cv.period_a_project_start == ps_a
+    assert cv.period_b_project_start == ps_b
+    assert cv.period_working_days_elapsed == elapsed
+    assert isinstance(cv.period_a_status_date, datetime)
+    assert isinstance(cv.period_working_days_elapsed, float)
 
 
 def test_manipulation_scoring_result_fields_includes_windowing_incomplete() -> None:
@@ -481,8 +543,6 @@ def test_set_algebra_overlap_raises() -> None:
         ConstraintDrivenCrossVersionResult(
             period_a_result=dpr,
             period_b_result=dpr,
-            period_a_status_date_days_offset=None,
-            period_b_status_date_days_offset=None,
             added_constraint_driven_uids={1, 2},
             retained_constraint_driven_uids={2, 3},
         )
