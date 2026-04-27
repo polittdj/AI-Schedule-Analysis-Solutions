@@ -282,13 +282,20 @@ def _edge_survives_filter(
     if predecessor_task is None:
         return True
 
-    # is_legitimate_actual's 4-arg contract was designed for the M9
-    # delta-row comparator; here the predecessor task plays both the
-    # Period A and Period B roles (it is the single task whose finish
-    # is compared) and ``period_b_status_date`` is the sole cutoff.
-    # Passing the cutoff for both status_date args satisfies the
-    # helper's non-None boundary while leaving the authoritative
-    # "Period A finish ≤ Period B status_date" comparison intact.
+    # is_legitimate_actual is invoked here with predecessor_task in both
+    # the period_a_task and period_b_task slots, and period_b_status_date
+    # in both the period_a_status_date and period_b_status_date slots.
+    # This engine relies on is_legitimate_actual reading only
+    # period_a_task.finish and period_b_status_date after its non-None
+    # boundary checks, so passing the predecessor_task twice and the
+    # Period B status_date twice satisfies those non-None checks while
+    # preserving the authoritative comparison: predecessor finish in
+    # Period A vs the Period B status_date. If is_legitimate_actual is
+    # ever refactored to (a) cross-check that the two task arguments
+    # differ, (b) compare the two status-date arguments for ordering,
+    # or (c) read any attribute of period_b_task beyond its non-None
+    # check, this invocation must be revisited — it will silently
+    # misbehave under any of those changes.
     if is_legitimate_actual(
         predecessor_task,
         predecessor_task,

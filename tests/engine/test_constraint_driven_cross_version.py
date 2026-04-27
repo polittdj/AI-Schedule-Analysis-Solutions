@@ -891,3 +891,27 @@ def test_am13_working_days_none_when_period_b_calendar_missing() -> None:
 
     assert result.period_b_status_date == _STATUS_B
     assert result.period_working_days_elapsed is None
+
+
+def test_am13_working_days_elapsed_pinned_value() -> None:
+    """Pin the exact ``period_working_days_elapsed`` value emitted by
+    the production ``working_minutes_between`` + ``minutes_to_days``
+    chain on the Standard Mon–Fri 8h/day calendar between
+    2026-01-15 08:00 UTC and 2026-02-15 08:00 UTC.
+
+    Guards against silent Period-A-calendar substitution regressions
+    and against any future drift in the calendar-math chain that
+    would change the working-days-elapsed arithmetic without being
+    caught by the looser
+    :func:`test_am13_five_new_fields_present_with_correct_types`
+    field-presence assertion.
+    """
+    schedule_a = _make_schedule([], status_date=_STATUS_A)
+    schedule_b = _make_schedule([], status_date=_STATUS_B)
+    dpr = _make_dpr()
+
+    result = ConstraintDrivenCrossVersionComparator(
+        schedule_a, schedule_b, dpr, dpr
+    ).compare()
+
+    assert result.period_working_days_elapsed == 22.0
