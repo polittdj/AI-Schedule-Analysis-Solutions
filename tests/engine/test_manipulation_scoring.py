@@ -88,42 +88,6 @@ def _cdp(
     )
 
 
-def _on_primary_cdp(
-    pred_uid: int,
-    succ_uid: int,
-    *,
-    slack_days: float = -1e-12,
-    constraint_type: ConstraintType = ConstraintType.MUST_START_ON,
-    rationale: str = "on-primary anchor",
-) -> ConstraintDrivenPredecessor:
-    """Build a CDP with on-primary slack via Pydantic ``model_construct``.
-
-    The CDP validator rejects ``slack_days >= -1/86_400`` (~ -1.157e-5),
-    while the slack-state classifier's ``_on_primary`` requires
-    ``|slack_days| < 1e-9``. The two bands do not overlap, so an
-    on-primary CDP cannot be produced by normal validated construction.
-
-    Per ``app/engine/slack_state.py`` module docstring: the on-primary
-    classifier branches "are unreachable for valid CDP records but are
-    encoded for completeness of the classification table." This helper
-    bypasses the validator with ``model_construct`` so the JOINED_PRIMARY
-    branches are exercisable as Block 4 unit tests.
-    """
-    return ConstraintDrivenPredecessor.model_construct(
-        predecessor_uid=pred_uid,
-        predecessor_name=f"P{pred_uid}",
-        successor_uid=succ_uid,
-        successor_name=f"S{succ_uid}",
-        relation_type=RelationType.FS,
-        lag_days=0.0,
-        slack_days=slack_days,
-        calendar_hours_per_day=8.0,
-        predecessor_constraint_type=constraint_type,
-        predecessor_constraint_date=_T0,
-        rationale=rationale,
-    )
-
-
 def _empty_driving_path_result(focus_uid: int = 1) -> DrivingPathResult:
     """Minimal DrivingPathResult containing only the focus node."""
     focus_node = DrivingPathNode(
@@ -264,30 +228,44 @@ def _score(
 # ----------------------------------------------------------------------
 
 
-def test_joined_primary_added_bucket_scores_high() -> None:
-    """ADDED + Period B on-primary -> JOINED_PRIMARY -> HIGH (10).
+def test_eroding_added_bucket_scores_high() -> None:
+    """ADDED + Period B off-primary -> ERODING_TOWARD_PRIMARY -> HIGH (10).
 
-    Uses ``_on_primary_cdp`` (model_construct) because no validated CDP
-    can carry on-primary slack; see helper docstring.
+    The ADDED-bucket state-machine transition with a HIGH outcome.
+
+    Note on the JOINED_PRIMARY branch: the AM12 ADDED-bucket has two
+    classifier outcomes per ``slack_state.py`` rows 1-2 - JOINED_PRIMARY
+    (B on-primary) and ERODING_TOWARD_PRIMARY (B off-primary). Both
+    classify HIGH. JOINED_PRIMARY is unreachable through this engine
+    because (a) the CDP validator forbids ``slack_days >= -1.157e-5``
+    while ``_on_primary`` requires ``|slack_days| < 1e-9``, AND (b)
+    Pydantic v2 re-validates nested CDPs when the engine constructs
+    its ``ManipulationScoringResult(period_b_predecessors=...)``
+    emission - so even ``model_construct``-bypassed CDPs trip the
+    validator at engine emission time. The classifier's on-primary
+    branches (slack_state.py rows 1, 5) are unit-tested directly at
+    the classifier layer in tests/engine/test_slack_state.py per
+    Block 4 step 1; the engine layer can only exercise the
+    off-primary ADDED branch, which is what this test does.
     """
     succ = 42
     cv = _make_cross_version_result(
         added=(succ,),
         period_b_predecessors_by_successor={
-            succ: (_on_primary_cdp(100, succ, slack_days=0.0),),
+            succ: (_cdp(100, succ, slack_days=-1.0),),
         },
     )
 
     summary = _score(cv)
 
     assert summary.uid_count_high == 1
-    assert summary.uid_count_joined_primary == 1
+    assert summary.uid_count_eroding_toward_primary == 1
     assert summary.total_score == _SCORE_HIGH
     assert len(summary.per_uid_results) == 1
     record = summary.per_uid_results[0]
     assert record.unique_id == succ
     assert record.severity_tier == SeverityTier.HIGH
-    assert record.slack_state == SlackState.JOINED_PRIMARY
+    assert record.slack_state == SlackState.ERODING_TOWARD_PRIMARY
     assert record.score == _SCORE_HIGH
 
 
