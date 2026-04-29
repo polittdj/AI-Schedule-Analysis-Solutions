@@ -30,6 +30,25 @@ from app.engine.driving_path_types import (
     DrivingPathNode,
     DrivingPathResult,
 )
+
+# Package-private engine imports: these tests intentionally couple to
+# the engine module's private constants and inner helper. Rationale:
+#   * The four _SCORE_* constants and _AGGREGATE_SCORE_CLAMP_MAX are
+#     the canonical numeric values that BUILD-PLAN §2.22(e) freezes;
+#     asserting against the named constants (rather than re-typing
+#     2/5/10/100 in the test bodies) means a future change to the
+#     spec-frozen weights surfaces as an import error or a test
+#     failure at exactly one site, not as silent test drift.
+#   * _score_from_cross_version_result is the inner helper that
+#     accepts a pre-built ConstraintDrivenCrossVersionResult and
+#     returns a ManipulationScoringSummary, bypassing the full
+#     score_manipulation facade. Building synthetic CPMResults to
+#     drive the public facade is expensive; the inner helper keeps
+#     these unit tests fast. End-to-end facade coverage is reserved
+#     for Block 4b's integration category per BUILD-PLAN §2.22(k).
+# Do NOT "promote" these imports to the public API surface; that is
+# Block 5's responsibility per §2.22(k). Authority: PR #40 audit
+# POTENTIAL_REVISION 4.
 from app.engine.manipulation_scoring import (
     _AGGREGATE_SCORE_CLAMP_MAX,
     _SCORE_HIGH,
@@ -605,13 +624,14 @@ def test_two_predecessors_same_tier_yields_single_record() -> None:
     assert summary.total_score == _SCORE_HIGH
 
 
-def test_uid_with_high_and_low_signals_records_high_only() -> None:
-    """UID that classifies HIGH carries one record at HIGH tier / score 10.
-
-    The AM12 algorithm is per-UID classification + per-UID dedup; the
-    per-record severity is the tier the classifier returns, not a mix.
-    Verified here by combining multiple Period B predecessors whose
-    minimum drives ERODING_TOWARD_PRIMARY.
+def test_one_uid_with_multiple_off_primary_predecessors_records_single_high() -> None:
+    """Per-UID dedup: multiple ConstraintDrivenPredecessor edges sharing
+    a successor_uid collapse into a single ManipulationScoringResult via
+    structural set iteration; the SlackState classifier consumes the full
+    predecessor tuple and emits one state via min-slack aggregation. The
+    engine performs no per-edge tier classification or "highest tier
+    wins" merging — see BUILD-PLAN §2.22(d) and §2.22(e) for the
+    canonical per-UID semantics. Authority: PR #40 audit POTENTIAL_REVISION 2.
     """
     succ = 502
     cv = _make_cross_version_result(
@@ -635,9 +655,15 @@ def test_uid_with_high_and_low_signals_records_high_only() -> None:
     assert record.score == _SCORE_HIGH
 
 
-def test_three_tier_overlap_records_single_high() -> None:
-    """Multiple predecessors spanning multiple potential classifications
-    -> single record at the highest applicable tier."""
+def test_one_uid_with_three_off_primary_predecessors_records_single_high() -> None:
+    """Per-UID dedup: multiple ConstraintDrivenPredecessor edges sharing
+    a successor_uid collapse into a single ManipulationScoringResult via
+    structural set iteration; the SlackState classifier consumes the full
+    predecessor tuple and emits one state via min-slack aggregation. The
+    engine performs no per-edge tier classification or "highest tier
+    wins" merging — see BUILD-PLAN §2.22(d) and §2.22(e) for the
+    canonical per-UID semantics. Authority: PR #40 audit POTENTIAL_REVISION 2.
+    """
     succ = 503
     cv = _make_cross_version_result(
         retained=(succ,),
@@ -680,13 +706,14 @@ def test_three_tier_overlap_records_single_high() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_identical_period_a_and_b_yields_zero_total_score() -> None:
-    """Empty buckets on both sides -> empty per_uid_results -> 0.
-
-    The "always-zero regression" baseline interpretation: a clean pair
-    is one with NO constraint-driven activity at all. Set algebra over
-    two empty CDP populations yields three empty buckets, the engine
-    short-circuits the per-UID loop, and total_score is 0.
+def test_empty_buckets_yield_zero_total_score() -> None:
+    """Always-zero floor: when both Period A and Period B have empty
+    constraint-driven predecessor buckets — i.e., no CDPs at all — the
+    engine yields total_score == 0 with no per-UID records. Note this
+    test exercises the empty-bucket short-circuit; identical-with-content
+    Period A/B is covered by
+    test_identical_retained_cdps_classify_stable_and_yield_low_score.
+    Authority: BUILD-PLAN §2.22(g); PR #40 audit POTENTIAL_REVISION 3.
     """
     cv = _make_cross_version_result()
 
@@ -701,6 +728,39 @@ def test_identical_period_a_and_b_yields_zero_total_score() -> None:
     assert summary.uid_count_stable == 0
     assert summary.uid_count_recovering == 0
     assert summary.per_uid_results == ()
+
+
+def test_identical_retained_cdps_classify_stable_and_yield_low_score() -> None:
+    """Hardens the always-zero semantic boundary: identical-with-content
+    Period A and Period B do NOT yield zero — they classify STABLE per
+    UID and contribute LOW (score 2) per UID per §2.22(d) state-machine
+    and §2.22(e) weights. This is the test the BUILD-PLAN §2.22(g) line
+    "identical Period A and Period B → total_score = 0" wording could
+    easily be misread as covering. Pin the non-zero LOW outcome
+    explicitly so a future regression that conflates "identical
+    periods" with "always-zero" surfaces here. Authority: BUILD-PLAN
+    §2.22(d), §2.22(e), §2.22(g); PR #40 audit POTENTIAL_REVISION 3.
+    """
+    # Identical retained CDPs in both periods: same successor_uid, same
+    # predecessor_uid, same slack_days (-1.0, comfortably outside the
+    # _ZERO_SLACK_TOLERANCE_DAYS = 1.157e-5 boundary on the negative
+    # side), same constraint_type. Mirrors the construction idiom of
+    # the neighboring retained-bucket tests (e.g.
+    # test_low_severity_scores_two, test_stable_zero_delta_classifies_stable).
+    succ = 700
+    cv = _make_cross_version_result(
+        retained=(succ,),
+        period_a_predecessors_by_successor={succ: (_cdp(800, succ, slack_days=-1.0),)},
+        period_b_predecessors_by_successor={succ: (_cdp(800, succ, slack_days=-1.0),)},
+    )
+
+    summary = _score(cv)
+
+    assert summary.total_score == _SCORE_LOW
+    assert len(summary.per_uid_results) == 1
+    assert summary.per_uid_results[0].slack_state == SlackState.STABLE
+    assert summary.per_uid_results[0].severity_tier == SeverityTier.LOW
+    assert summary.per_uid_results[0].score == _SCORE_LOW
 
 
 def test_both_periods_no_constraint_driven_predecessors_yields_zero() -> None:

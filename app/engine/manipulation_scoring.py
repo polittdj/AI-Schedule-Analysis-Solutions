@@ -433,7 +433,13 @@ def _score_from_cross_version_result(
     uid_count_stable = sum(1 for r in per_uid_records if r.slack_state == SlackState.STABLE)
     uid_count_recovering = sum(1 for r in per_uid_records if r.slack_state == SlackState.RECOVERING)
 
-    total_score = min(sum(r.score for r in per_uid_records), _AGGREGATE_SCORE_CLAMP_MAX)
+    # Lower bound is explicit per docstring's [0, 100] contract. Currently
+    # safe because _compute_score returns only 2/5/10, but a future change
+    # introducing a negative or float score would silently produce a
+    # negative total_score absent this max(0, ...). Cheap defensive parity
+    # with the upper-bound clamp; do not remove without revisiting the
+    # docstring's [0, 100] guarantee.
+    total_score = max(0, min(sum(r.score for r in per_uid_records), _AGGREGATE_SCORE_CLAMP_MAX))
 
     sorted_records = tuple(
         sorted(
