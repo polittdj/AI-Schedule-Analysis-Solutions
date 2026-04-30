@@ -25,6 +25,7 @@ Parser gotcha coverage map
 
 from __future__ import annotations
 
+import sys
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
@@ -823,6 +824,7 @@ class TestLargeSchedule:
 
 
 class TestParseMppConvenience:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Linux-only COMUnavailableError path; Windows path tested separately")
     def test_parse_mpp_on_linux_raises_comunavailable(self, tmp_path) -> None:
         """parse_mpp uses the default Dispatch which requires win32com.
 
