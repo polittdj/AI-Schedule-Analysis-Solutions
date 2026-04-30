@@ -1083,11 +1083,20 @@ def test_render_severity_banner_thresholds() -> None:
 
 
 def test_render_strenum_fields_are_value_strings_not_enum_objects() -> None:
-    """severity_tier and slack_state on rows are .value strings, not enum objects.
+    """severity_tier and slack_state on rows are .value strings, not enum members.
 
     StrEnum convention: rendered dict carries no enum instances; only
     the lowercase string identity from SeverityTier.value /
     SlackState.value is exposed to downstream consumers.
+
+    Discrimination matters because StrEnum is a str subclass — both
+    isinstance(SeverityTier.HIGH, str) and SeverityTier.HIGH == "high"
+    evaluate True. To actually catch a regression where the renderer
+    drops .value and emits the enum member directly, this test uses
+    type(x) is str (strict identity, False for enum members) AND
+    not isinstance(x, SeverityTier/SlackState) as discriminating
+    predicates. Authority: Block 4b post-audit revision per audit
+    verdict 2026-04-30T19:08:51Z.
     """
     result = ManipulationScoringResult(
         unique_id=42,
@@ -1112,7 +1121,12 @@ def test_render_strenum_fields_are_value_strings_not_enum_objects() -> None:
     rendered = render_manipulation_scoring_summary(summary)
     row = rendered["rows"][0]
 
-    assert isinstance(row["severity_tier"], str)
+    # type(x) is str — strict identity check; would fail if x were a
+    # SeverityTier/SlackState member (StrEnum is a str subclass so
+    # isinstance(x, str) passes for both members and plain str).
+    assert type(row["severity_tier"]) is str
+    assert not isinstance(row["severity_tier"], SeverityTier)
     assert row["severity_tier"] == "high"
-    assert isinstance(row["slack_state"], str)
+    assert type(row["slack_state"]) is str
+    assert not isinstance(row["slack_state"], SlackState)
     assert row["slack_state"] == "joined_primary"
