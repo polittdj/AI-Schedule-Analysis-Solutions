@@ -21,6 +21,7 @@ from datetime import datetime
 
 from app.contracts.manipulation_scoring import (
     ConstraintDrivenCrossVersionResult,
+    ManipulationScoringResult,
     ManipulationScoringSummary,
     SeverityTier,
     SlackState,
@@ -56,6 +57,7 @@ from app.engine.manipulation_scoring import (
     _SCORE_MEDIUM,
     _score_from_cross_version_result,
 )
+from app.engine.manipulation_scoring_renderer import render_manipulation_scoring_summary
 from app.models.calendar import Calendar
 from app.models.enums import ConstraintType, RelationType
 from app.models.schedule import Schedule
@@ -804,3 +806,313 @@ def test_status_date_filter_drains_all_candidates_yields_zero() -> None:
     assert summary.uid_count_medium == 0
     assert summary.uid_count_low == 0
     assert summary.per_uid_results == ()
+
+
+# ----------------------------------------------------------------------
+# Category 5 - Integration (>=3 tests)
+# Authority: AM12 section 2.22(g) - Block 4b renderer integration tests
+# closing the §2.22(g) Category 5 deficit deferred by Block 4. Exercises
+# render_manipulation_scoring_summary against ManipulationScoringSummary
+# instances constructed via Pydantic directly (no engine round-trip).
+# ----------------------------------------------------------------------
+
+
+def test_render_returns_expected_dict_for_synthetic_summary() -> None:
+    """Synthetic three-row summary renders to the §2.22(i) dict shape.
+
+    Verifies the full renderer projection: total_score, severity_banner,
+    uid_counts_by_severity, uid_counts_by_slack_state, and rows with the
+    six prescribed columns. total_score=15 falls in the [1, 25) band so
+    severity_banner == "low".
+    """
+    high_result = ManipulationScoringResult(
+        unique_id=100,
+        name="task-100",
+        score=_SCORE_HIGH,
+        severity_tier=SeverityTier.HIGH,
+        slack_state=SlackState.JOINED_PRIMARY,
+        rationale="HIGH rationale",
+    )
+    medium_result = ManipulationScoringResult(
+        unique_id=200,
+        name="task-200",
+        score=_SCORE_MEDIUM,
+        severity_tier=SeverityTier.MEDIUM,
+        slack_state=SlackState.RECOVERING,
+        rationale="MEDIUM rationale",
+    )
+    low_result = ManipulationScoringResult(
+        unique_id=300,
+        name="task-300",
+        score=_SCORE_LOW,
+        severity_tier=SeverityTier.LOW,
+        slack_state=SlackState.ERODING_TOWARD_PRIMARY,
+        rationale="LOW rationale",
+    )
+    summary = ManipulationScoringSummary(
+        total_score=15,
+        uid_count_high=1,
+        uid_count_medium=1,
+        uid_count_low=1,
+        uid_count_joined_primary=1,
+        uid_count_eroding_toward_primary=1,
+        uid_count_stable=0,
+        uid_count_recovering=1,
+        per_uid_results=(high_result, medium_result, low_result),
+    )
+
+    rendered = render_manipulation_scoring_summary(summary)
+
+    assert rendered == {
+        "total_score": 15,
+        "severity_banner": "low",
+        "uid_counts_by_severity": {
+            "high": 1,
+            "medium": 1,
+            "low": 1,
+        },
+        "uid_counts_by_slack_state": {
+            "joined_primary": 1,
+            "eroding_toward_primary": 1,
+            "stable": 0,
+            "recovering": 1,
+        },
+        "rows": [
+            {
+                "unique_id": 100,
+                "name": "task-100",
+                "score": _SCORE_HIGH,
+                "severity_tier": "high",
+                "slack_state": "joined_primary",
+                "rationale": "HIGH rationale",
+            },
+            {
+                "unique_id": 200,
+                "name": "task-200",
+                "score": _SCORE_MEDIUM,
+                "severity_tier": "medium",
+                "slack_state": "recovering",
+                "rationale": "MEDIUM rationale",
+            },
+            {
+                "unique_id": 300,
+                "name": "task-300",
+                "score": _SCORE_LOW,
+                "severity_tier": "low",
+                "slack_state": "eroding_toward_primary",
+                "rationale": "LOW rationale",
+            },
+        ],
+    }
+
+
+def test_render_handles_empty_summary() -> None:
+    """Empty summary renders with all required keys, rows=[], banner='clean'.
+
+    Empty-safe behavior: every top-level key is present even with zero
+    per-UID records and zero counts; rows is the empty list, not a
+    missing key. severity_banner == "clean" is the total_score==0 band.
+    """
+    summary = ManipulationScoringSummary(
+        total_score=0,
+        uid_count_high=0,
+        uid_count_medium=0,
+        uid_count_low=0,
+        uid_count_joined_primary=0,
+        uid_count_eroding_toward_primary=0,
+        uid_count_stable=0,
+        uid_count_recovering=0,
+        per_uid_results=(),
+    )
+
+    rendered = render_manipulation_scoring_summary(summary)
+
+    assert rendered == {
+        "total_score": 0,
+        "severity_banner": "clean",
+        "uid_counts_by_severity": {"high": 0, "medium": 0, "low": 0},
+        "uid_counts_by_slack_state": {
+            "joined_primary": 0,
+            "eroding_toward_primary": 0,
+            "stable": 0,
+            "recovering": 0,
+        },
+        "rows": [],
+    }
+
+
+def test_render_preserves_contract_sort_order_in_rows() -> None:
+    """Rows preserve summary.per_uid_results order; combined invariant check.
+
+    Verifies two invariants in one assertion:
+      (a) Renderer preserves input order (does NOT re-sort).
+      (b) Input is contract-sorted to begin with, where the contract
+          sort is (severity_tier desc, unique_id asc) — within HIGH
+          tier, lower unique_id comes first.
+
+    Build sequence: HIGH uid=100, HIGH uid=200, MEDIUM uid=50, LOW
+    uid=10 (the contract-correct order). Rendered row unique_ids must
+    appear as [100, 200, 50, 10].
+    """
+    high_low_uid = ManipulationScoringResult(
+        unique_id=100,
+        name="task-100",
+        score=_SCORE_HIGH,
+        severity_tier=SeverityTier.HIGH,
+        slack_state=SlackState.JOINED_PRIMARY,
+        rationale="r-100",
+    )
+    high_high_uid = ManipulationScoringResult(
+        unique_id=200,
+        name="task-200",
+        score=_SCORE_HIGH,
+        severity_tier=SeverityTier.HIGH,
+        slack_state=SlackState.ERODING_TOWARD_PRIMARY,
+        rationale="r-200",
+    )
+    medium_result = ManipulationScoringResult(
+        unique_id=50,
+        name="task-50",
+        score=_SCORE_MEDIUM,
+        severity_tier=SeverityTier.MEDIUM,
+        slack_state=SlackState.RECOVERING,
+        rationale="r-50",
+    )
+    low_result = ManipulationScoringResult(
+        unique_id=10,
+        name="task-10",
+        score=_SCORE_LOW,
+        severity_tier=SeverityTier.LOW,
+        slack_state=SlackState.STABLE,
+        rationale="r-10",
+    )
+    summary = ManipulationScoringSummary(
+        total_score=27,
+        uid_count_high=2,
+        uid_count_medium=1,
+        uid_count_low=1,
+        uid_count_joined_primary=1,
+        uid_count_eroding_toward_primary=1,
+        uid_count_stable=1,
+        uid_count_recovering=1,
+        per_uid_results=(high_low_uid, high_high_uid, medium_result, low_result),
+    )
+
+    rendered = render_manipulation_scoring_summary(summary)
+
+    rendered_uids = [row["unique_id"] for row in rendered["rows"]]
+    assert rendered_uids == [100, 200, 50, 10]
+
+
+# ----------------------------------------------------------------------
+# Category 6 - Schema invariant (>=3 tests)
+# Authority: AM12 section 2.22(g) - Block 4b renderer schema invariants
+# closing the §2.22(g) Category 6 deficit deferred by Block 4. Pinned
+# top-level keys, banner-band boundaries, and the StrEnum value-string
+# convention are renderer-version-drift detectors.
+# ----------------------------------------------------------------------
+
+
+def test_render_dict_contains_required_top_level_keys() -> None:
+    """Rendered dict carries every §2.22(i) prescribed top-level key.
+
+    Forward-compatibility headroom via subset comparison: future
+    additive keys are permitted, but the five required keys must all
+    be present on every render call regardless of summary content.
+    """
+    summary = ManipulationScoringSummary(
+        total_score=0,
+        uid_count_high=0,
+        uid_count_medium=0,
+        uid_count_low=0,
+        uid_count_joined_primary=0,
+        uid_count_eroding_toward_primary=0,
+        uid_count_stable=0,
+        uid_count_recovering=0,
+        per_uid_results=(),
+    )
+    required = {
+        "total_score",
+        "severity_banner",
+        "uid_counts_by_severity",
+        "uid_counts_by_slack_state",
+        "rows",
+    }
+
+    rendered = render_manipulation_scoring_summary(summary)
+
+    assert set(rendered.keys()) >= required
+
+
+def test_render_severity_banner_thresholds() -> None:
+    """Banner-band boundaries match the §2.22(i) build-chat banner table.
+
+    Boundary cases pinned in both directions: the upper-edge of each
+    band and the lower-edge of the next band must classify correctly.
+    Bands: clean=0, low=[1,25), moderate=[25,50), high=[50,75),
+    critical=[75,100].
+    """
+    cases: list[tuple[int, str]] = [
+        (0, "clean"),
+        (1, "low"),
+        (24, "low"),
+        (25, "moderate"),
+        (49, "moderate"),
+        (50, "high"),
+        (74, "high"),
+        (75, "critical"),
+        (100, "critical"),
+    ]
+    for total_score, expected_banner in cases:
+        summary = ManipulationScoringSummary(
+            total_score=total_score,
+            uid_count_high=0,
+            uid_count_medium=0,
+            uid_count_low=0,
+            uid_count_joined_primary=0,
+            uid_count_eroding_toward_primary=0,
+            uid_count_stable=0,
+            uid_count_recovering=0,
+            per_uid_results=(),
+        )
+        rendered = render_manipulation_scoring_summary(summary)
+        assert rendered["severity_banner"] == expected_banner, (
+            f"total_score={total_score} produced banner "
+            f"{rendered['severity_banner']!r}, expected {expected_banner!r}"
+        )
+
+
+def test_render_strenum_fields_are_value_strings_not_enum_objects() -> None:
+    """severity_tier and slack_state on rows are .value strings, not enum objects.
+
+    StrEnum convention: rendered dict carries no enum instances; only
+    the lowercase string identity from SeverityTier.value /
+    SlackState.value is exposed to downstream consumers.
+    """
+    result = ManipulationScoringResult(
+        unique_id=42,
+        name="task-42",
+        score=_SCORE_HIGH,
+        severity_tier=SeverityTier.HIGH,
+        slack_state=SlackState.JOINED_PRIMARY,
+        rationale="r-42",
+    )
+    summary = ManipulationScoringSummary(
+        total_score=10,
+        uid_count_high=1,
+        uid_count_medium=0,
+        uid_count_low=0,
+        uid_count_joined_primary=1,
+        uid_count_eroding_toward_primary=0,
+        uid_count_stable=0,
+        uid_count_recovering=0,
+        per_uid_results=(result,),
+    )
+
+    rendered = render_manipulation_scoring_summary(summary)
+    row = rendered["rows"][0]
+
+    assert isinstance(row["severity_tier"], str)
+    assert row["severity_tier"] == "high"
+    assert isinstance(row["slack_state"], str)
+    assert row["slack_state"] == "joined_primary"
