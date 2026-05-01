@@ -914,7 +914,7 @@ Shipping Below These Counts = blocker. Categories are non-exhaustive
 
 | File                                                      | Min tests | Required categories                                                                                                                                     |
 |-----------------------------------------------------------|----------:|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `tests/contracts/test_manipulation_scoring.py`            |        18 | Contract shape validation (5): frozen-config on all four public models; field-type correctness; SlackState / SeverityTier enum completeness; Field(ge=0, le=100) bounds on total_score; default_factory invariants on set / dict / tuple fields. Field presence (4): every field named in subsection (c) exists with the stated type. Integration (3): ConstraintDrivenPredecessor imported from driving_path_types (no circular import); DrivingPathResult reference resolves; skipped_cycle_participants_reference accepts tuple[int, ...]. Validator-raise cases (6): total_score = -1 raises; total_score = 101 raises; uid_count_* negative raises; set algebra with overlapping adds/removes raises (mutual exclusion). |
+| `tests/contracts/test_manipulation_scoring.py`            |        18 | Contract shape validation (5): frozen-config on all three public models; field-type correctness; SlackState / SeverityTier enum completeness; Field(ge=0, le=100) bounds on total_score; default_factory invariants on set / dict / tuple fields. Field presence (4): every field named in subsection (c) exists with the stated type. Integration (3): ConstraintDrivenPredecessor imported from driving_path_types (no circular import); DrivingPathResult reference resolves; skipped_cycle_participants_reference accepts tuple[int, ...]. Validator-raise cases (6): total_score = -1 raises; total_score = 101 raises; uid_count_* negative raises; set algebra with overlapping adds/removes raises (mutual exclusion). |
 | `tests/engine/test_constraint_driven_cross_version.py`    |        24 | Set algebra correctness (6): empty both periods; add-only; remove-only; retain-only; mixed; UID in neither period. Status-date filter (4): predecessor finish < status date excluded; = status date excluded; > status date included; missing status date retained. Skipped-cycle override (3): predecessor in skipped_cycle_participants of period A only retained; period B only retained; both periods retained. Integration with M10.1 (3): ConstraintDrivenPredecessor with MSO / MFO / SNLT / FNLT all sort into added / removed / retained correctly; rationale string preserved verbatim on pass-through; predecessor_constraint_date None passes through. Integration with M10.2 (2): skipped_cycle_participants reference correctly forwarded to per-UID output. Edge cases (4): successor UID appears in period A retained bucket AND period B retained bucket with different constraint types; multiple predecessors on same successor; predecessor task deleted between periods (structural ADDED_IN_B/DELETED_FROM_A from M9 comparator territory — verify M11 does not touch that path). Field presence (AM13 addition, Category B): B-new: Assert that ConstraintDrivenCrossVersionResult carries all five new datetime/float fields from AM13 with their correct type annotations: period_a_status_date: datetime \| None, period_b_status_date: datetime \| None, period_a_project_start: datetime \| None, period_b_project_start: datetime \| None, period_working_days_elapsed: float \| None. Assert field ordering matches the AM12(c)-as-amended-by-AM13 specification. Validator-raise / edge-case (AM13 additions, Category D, 2 new scenarios): D-new-1: period_working_days_elapsed is None when period_b_status_date is None. D-new-2: period_working_days_elapsed is None when Period B's calendar is missing or unresolvable (per Block 3 implementation's chosen failure mode). |
 | `tests/engine/test_manipulation_scoring.py`               |        26 | State-machine transitions (8): one per (SlackState × tolerance-band-edge case) matrix — JOINED_PRIMARY; ERODING_TOWARD_PRIMARY at exactly tolerance; ERODING_TOWARD_PRIMARY strictly beyond tolerance; STABLE at zero delta; STABLE within tolerance; RECOVERING at tolerance edge (removed bucket); RECOVERING with hard-constraint Period A anchor; RECOVERING without hard-constraint anchor. Scoring arithmetic (5): HIGH = 10; MEDIUM = 5; LOW = 2; three HIGH UIDs sum to 30; fifteen HIGH UIDs clamp to 100 exactly. Per-UID dedup (4): one UID with two predecessors scores once at highest tier; two detectors both classify as MEDIUM -> single MEDIUM record; HIGH + LOW -> single HIGH record; three-tier overlap -> single HIGH record. Always-zero regression (3): identical Period A and Period B -> total_score = 0; both periods with no constraint_driven_predecessors -> 0; status-date filter drains all candidates -> 0. Integration (3): skipped_cycle_participants reference appears on per-UID result; rationale string composed from M10.1 rationale fields; summary sort order (severity desc, uid asc) verified. Schema invariant (3): total_score bounded to 100; no *_minutes or *_hours fields on any public model (§2.19 invariant holds); ManipulationScoringResult.name non-empty. |
 
@@ -941,13 +941,13 @@ Re-exported from `app/__init__.py` (top-level):
 Re-exported from `app/engine/__init__.py`:
 
 - `ConstraintDrivenCrossVersionComparator`
-- `compare_constraint_driven_cross_version(period_a, period_b,
-  focus_spec, period_a_cpm_result, period_b_cpm_result) ->
-  ConstraintDrivenCrossVersionResult`
+- `compare_constraint_driven_cross_version(schedule_a, schedule_b,
+    dpr_a=None, dpr_b=None, *, focus_uid=None) ->
+    ConstraintDrivenCrossVersionResult`
 
 Re-exported from `app/contracts/__init__.py` (new package):
 
-- All four Pydantic contract classes and the two StrEnums from
+- All three Pydantic contract classes and the two StrEnums from
   `app/contracts/manipulation_scoring.py`.
 
 Not re-exported: any helper function inside
@@ -1045,7 +1045,7 @@ Expected decomposition:
   / weights specified. Amendment-only; no implementation code. PR
   opens as DRAFT per CLAUDE.md §7.
 - **Block 2.** Create `app/contracts/manipulation_scoring.py` with
-  the four public Pydantic models and two StrEnums from subsection
+  the three public Pydantic models and two StrEnums from subsection
   (c). Create `app/contracts/__init__.py`. Write
   `tests/contracts/test_manipulation_scoring.py` to the
   subsection (g) floor (≥ 18 tests). No engine code yet.
@@ -1128,6 +1128,61 @@ skill). AM12 adopts these predicates as operational specifications
 for M11 on the authority of the tool's internal cross-skill
 reconciliation pass. Any downstream milestone that surfaces a
 sourced contradiction must flag it for M11 re-scoring review.
+
+## 2.24 Amendment AM14 — §2.22 documentation corrections (doc-only)
+
+  Date: 2026-05-01
+  Type: BUILD-PLAN.md-only amendment (no code, no tests modified
+    in this amendment)
+  Preceded by: AM13 (PR #37, commit c26075c)
+  Changes:
+    Subsection (h), bullet text "All four Pydantic contract
+    classes and the two StrEnums" corrected to "All three
+    Pydantic contract classes and the two StrEnums". Subsection
+    (g) test floor row, "frozen-config on all four public
+    models" corrected to "frozen-config on all three public
+    models". Subsection (k) Block 2 description, "the four
+    public Pydantic models and two StrEnums" corrected to "the
+    three public Pydantic models and two StrEnums". All three
+    "four" → "three" corrections align with §2.22(c) line 490
+    which explicitly prescribes "three contracts" and with the
+    implementation merged in PR #36 (commit 8f7e4d1) which
+    carries three Pydantic BaseModel classes
+    (ConstraintDrivenCrossVersionResult,
+    ManipulationScoringResult, ManipulationScoringSummary) plus
+    two StrEnum classes (SlackState, SeverityTier).
+    Subsection (h), the compare_constraint_driven_cross_version
+    bullet's call signature is corrected from (period_a,
+    period_b, focus_spec, period_a_cpm_result,
+    period_b_cpm_result) to (schedule_a, schedule_b, dpr_a=None,
+    dpr_b=None, *, focus_uid=None). Block 3 (PR #38, commit
+    bc76e2e) shipped the corrected signature after audit; the
+    AM12 prescription on the original signature did not match
+    Block 3's design choices around pre-computed DPR caching
+    and the keyword-only focus_uid. Code is authoritative;
+    AM14 aligns the doc to the merged code.
+  Motivation:
+    Block 5 (public-API wiring per §2.22(h) plus end-to-end
+    integration test per §2.22(k)) was about to be drafted
+    against §2.22(h) text as-written. Pre-Block-5 verification
+    on 2026-05-01 surfaced both errors before any Block 5 code
+    was written. Correcting §2.22(h) before Block 5 starts
+    means the Block 5 kickoff prompt can quote §2.22(h)
+    verbatim without footnotes, and the Block 5 audit can
+    compare implementation against a clean spec.
+  Authority:
+    - app/contracts/manipulation_scoring.py (PR #36, commit
+      8f7e4d1) — three BaseModel + two StrEnum classes; __all__
+      at line 280 lists exactly five names.
+    - app/engine/constraint_driven_cross_version.py
+      compare_constraint_driven_cross_version (PR #38, commit
+      bc76e2e) — actual signature lines 310–317.
+    - Build-chat verification session 2026-05-01.
+  Block count impact: NONE. AM14 is doc-only and does not
+  introduce a new block. The six-block M11 plan (Blocks 2, 3, 4,
+  4b, 5, 6) remains intact.
+
+---  
 
 ## 2.23 Amendment AM13 — M11 comparative-metric anchor correction (doc-only)
 
