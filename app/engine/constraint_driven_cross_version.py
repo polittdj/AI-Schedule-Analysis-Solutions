@@ -46,8 +46,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from app.contracts.manipulation_scoring import ConstraintDrivenCrossVersionResult
 from app.engine.calendar_math import working_minutes_between
 from app.engine.driving_path import trace_driving_path
 from app.engine.driving_path_types import (
@@ -59,6 +59,11 @@ from app.engine.windowing import is_legitimate_actual
 from app.models.calendar import Calendar
 from app.models.schedule import Schedule
 from app.models.task import Task
+
+if TYPE_CHECKING:
+    from app.contracts.manipulation_scoring import (
+        ConstraintDrivenCrossVersionResult,
+    )
 
 
 def _tasks_by_uid(schedule: Schedule) -> dict[int, Task]:
@@ -180,6 +185,7 @@ class ConstraintDrivenCrossVersionComparator:
             period_b_status_date,
         )
 
+        from app.contracts.manipulation_scoring import ConstraintDrivenCrossVersionResult
         return ConstraintDrivenCrossVersionResult(
             period_a_result=self._dpr_a,
             period_b_result=self._dpr_b,
