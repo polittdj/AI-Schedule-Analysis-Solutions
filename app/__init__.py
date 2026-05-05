@@ -10,8 +10,26 @@ from __future__ import annotations
 from flask import Flask
 
 from app.config import Config
+from app.contracts import (
+    ConstraintDrivenCrossVersionResult,
+    ManipulationScoringResult,
+    ManipulationScoringSummary,
+    SeverityTier,
+    SlackState,
+)
+from app.engine.manipulation_scoring import score_manipulation
 from app.errors import register_error_handlers
 from app.routes.health import health_bp
+
+__all__ = (
+    "ConstraintDrivenCrossVersionResult",
+    "ManipulationScoringResult",
+    "ManipulationScoringSummary",
+    "SeverityTier",
+    "SlackState",
+    "create_app",
+    "score_manipulation",
+)
 
 
 def create_app(config: type[Config] | Config | None = None) -> Flask:
