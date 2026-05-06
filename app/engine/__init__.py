@@ -21,6 +21,10 @@ from app.engine.comparator import (
     ComparatorOptions,
     compare_schedules,
 )
+from app.engine.constraint_driven_cross_version import (
+    ConstraintDrivenCrossVersionComparator,
+    compare_constraint_driven_cross_version,
+)
 from app.engine.cpm import CPMEngine, compute_cpm
 from app.engine.delta import (
     ComparatorResult,
@@ -59,6 +63,9 @@ from app.engine.exceptions import (
     MissingCalendarError,
 )
 from app.engine.focus_point import resolve_focus_point
+from app.engine.manipulation_scoring_renderer import (
+    render_manipulation_scoring_summary,
+)
 from app.engine.options import CPMOptions
 from app.engine.paths import (
     critical_path_chains,
@@ -77,6 +84,7 @@ __all__ = [
     "ComparatorError",
     "ComparatorOptions",
     "ComparatorResult",
+    "ConstraintDrivenCrossVersionComparator",
     "ConstraintDrivenPredecessor",
     "ConstraintViolation",
     "DeltaType",
@@ -97,6 +105,7 @@ __all__ = [
     "TaskCPMResult",
     "TaskDelta",
     "TaskPresence",
+    "compare_constraint_driven_cross_version",
     "compare_schedules",
     "compute_cpm",
     "critical_path_chains",
@@ -106,6 +115,7 @@ __all__ = [
     "minutes_to_working_days",
     "near_critical_chain",
     "render_acumen_table",
+    "render_manipulation_scoring_summary",
     "resolve_focus_point",
     "trace_driving_path",
     "trace_driving_path_cross_version",

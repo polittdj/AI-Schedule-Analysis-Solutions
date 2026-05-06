@@ -22,9 +22,10 @@ columns, contract-sort preservation); §2.22(e) (per-UID weights and
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from app.contracts.manipulation_scoring import ManipulationScoringSummary
+if TYPE_CHECKING:
+    from app.contracts.manipulation_scoring import ManipulationScoringSummary
 
 _BANNER_LOW_THRESHOLD = 25
 _BANNER_MODERATE_THRESHOLD = 50
