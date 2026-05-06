@@ -944,6 +944,7 @@ Re-exported from `app/engine/__init__.py`:
 - `compare_constraint_driven_cross_version(schedule_a, schedule_b,
     dpr_a=None, dpr_b=None, *, focus_uid=None) ->
     ConstraintDrivenCrossVersionResult`
+- `render_manipulation_scoring_summary(summary) -> dict` per §2.22(i)
 
 Re-exported from `app/contracts/__init__.py` (new package):
 
