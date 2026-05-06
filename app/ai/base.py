@@ -7,7 +7,7 @@ active raises CuiViolationError before any HTTP call is made.
 """
 
 from abc import ABC, abstractmethod
-from typing import Iterator
+from collections.abc import Iterator
 
 
 class CuiViolationError(RuntimeError):

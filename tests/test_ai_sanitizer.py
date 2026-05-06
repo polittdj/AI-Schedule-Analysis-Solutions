@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.ai import AIClient, DataSanitizer, SanitizationMap, desanitize_text
+from app.ai import AIClient, DataSanitizer, desanitize_text
 
 
 def test_build_creates_forward_and_reverse_maps_in_insertion_order():
