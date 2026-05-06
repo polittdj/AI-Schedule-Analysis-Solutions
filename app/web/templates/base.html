@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Schedule Forensics{% block title %}{% endblock %}</title>
+</head>
+<body>
+{% if classification == "unclassified" %}
+  <div id="cloud-active-banner"
+       role="alert"
+       style="position:sticky;top:0;background:#b00020;color:#fff;padding:12px;font-weight:bold;text-align:center;z-index:9999;">
+    CLOUD AI ACTIVE — Anthropic Claude API
+    (model: <span class="cloud-banner-model">{{ cloud_model }}</span>,
+    endpoint: <span class="cloud-banner-endpoint">{{ cloud_endpoint }}</span>).
+    Prompt content is being transmitted to an external service. This
+    banner cannot be dismissed for the duration of an active
+    cloud-backed session.
+  </div>
+{% endif %}
+{% block content %}{% endblock %}
+</body>
+</html>

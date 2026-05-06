@@ -19,6 +19,8 @@ from app.contracts import (
 )
 from app.engine.manipulation_scoring import score_manipulation
 from app.errors import register_error_handlers
+from app.routes.ai_analyze import ai_analyze_bp
+from app.routes.classification import classification_bp
 from app.routes.health import health_bp
 
 __all__ = (
@@ -41,10 +43,23 @@ def create_app(config: type[Config] | Config | None = None) -> Flask:
         Optional Config class or instance. Defaults to the module-level
         ``Config`` in ``app.config``.
     """
-    app = Flask(__name__)
-    app.config.from_object(config or Config)
+    resolved_config = config or Config
+    config_cls: type[Config]
+    if isinstance(resolved_config, type):
+        config_cls = resolved_config
+    else:
+        config_cls = type(resolved_config)
+
+    app = Flask(
+        __name__,
+        template_folder="web/templates",
+    )
+    app.config.from_object(resolved_config)
+    app.config["SECRET_KEY"] = config_cls.resolve_secret_key()
 
     register_error_handlers(app)
     app.register_blueprint(health_bp)
+    app.register_blueprint(classification_bp)
+    app.register_blueprint(ai_analyze_bp)
 
     return app

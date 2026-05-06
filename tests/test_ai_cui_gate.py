@@ -102,15 +102,27 @@ def test_claude_client_construction_makes_no_http_calls(
 def test_select_client_construction_path_is_only_via_router():
     # Importing the router module must not construct a client as a side
     # effect. Routes call select_client; module load does not.
-    import importlib
+    #
+    # We verify this in a fresh subprocess to avoid mutating the in-process
+    # module table (sys.modules pollution / class-identity drift in
+    # subsequent tests). Per Block 2 audit R3 follow-up.
+    import subprocess
+    import sys
 
-    import app.ai.router as router_module
-
-    importlib.reload(router_module)
-    # If any client had been instantiated at import time with CUI-safe
-    # mode active, ClaudeClient would have raised. Reaching this line
-    # with no exception is the assertion.
-    assert hasattr(router_module, "select_client")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import app.ai.router as r; assert hasattr(r, 'select_client')",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"Importing app.ai.router in a fresh interpreter failed:\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
 
 
 def test_config_is_cui_safe_mode_defaults_true():

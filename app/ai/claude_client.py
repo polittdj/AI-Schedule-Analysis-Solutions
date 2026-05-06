@@ -67,7 +67,7 @@ class ClaudeClient(AIClient):
         anthropic SDK is imported lazily so that Block 2 unit tests do
         not require the package."""
         # Lazy import — Block 3 adds anthropic to requirements.txt.
-        from anthropic import Anthropic  # type: ignore[import-not-found]
+        from anthropic import Anthropic
 
         client = Anthropic()
         with client.messages.stream(
